@@ -7,8 +7,8 @@ ShopStack is a full-stack, enterprise-grade multi-vendor e-commerce platform bui
 ## 🛠️ Tech Stack & Prerequisites
 
 ### **Backend**
-* **Language:** Java 17+ / 21
-* **Framework:** Spring Boot 3.x
+* **Language:** Java 26
+* **Framework:** Spring Boot 4.1.0
 * **Security:** Spring Security & CORS Configuration
 * **ORM / Database:** Spring Data JPA, Hibernate, PostgreSQL
 * **Build Tool:** Apache Maven
@@ -53,3 +53,64 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
     │   ├── App.jsx                              # Main App Component Container
     │   └── main.jsx                             # React Application Entrypoint
     └── package.json
+
+    🚀 Features Implemented (Day 1 Milestone)
+[x] Database Setup: Initialized shopstack_db inside PostgreSQL server.
+
+[x] Spring Boot Core: Initialized backend structure with Spring Data JPA and PostgreSQL database connection driver[cite: 1].
+
+[x] User Entity Data Model: Created User schema containing id, fullName, email, password, and role (CUSTOMER / VENDOR)[cite: 1].
+
+[x] Spring Security Configuration: Custom SecurityFilterChain permitting public CORS access to authentication endpoints (/api/auth/**)[cite: 1].
+
+[x] RESTful API Endpoints:
+
+POST /api/auth/register — Validates non-duplicate emails and registers new accounts[cite: 1].
+
+POST /api/auth/login — Authenticates credentials and returns user details[cite: 1].
+
+[x] React Frontend Setup: Created a Vite-powered React client connected to the backend via axios[cite: 1].
+
+[x] API Testing: Endpoints successfully verified and tested using Postman.
+
+⚙️ How to Run locally
+1. Database Configuration
+Ensure PostgreSQL is running locally on default port 5432 with a database named shopstack_db.
+
+Update credentials in backend/src/main/resources/application.properties:
+
+Properties
+spring.datasource.url=jdbc:postgresql://localhost:5432/shopstack_db
+spring.datasource.username=postgres
+spring.datasource.password=YOUR_POSTGRES_PASSWORD
+
+2. Running the Backend
+Bash
+cd backend
+mvn clean compile
+mvn spring-boot:run
+The Spring Boot server will start on port 8080.
+
+3. Running the Frontend
+Bash
+cd frontend
+npm install
+npm run dev
+The Vite development client will start at http://localhost:5173/.
+
+🧪 Postman Endpoint Testing
+Register Endpoint (POST)
+URL: http://localhost:8080/api/auth/register
+
+Headers: Content-Type: application/json
+
+Request Body:
+
+JSON
+{
+  "fullName": "Test User",
+  "email": "test@example.com",
+  "password": "password123",
+  "role": "CUSTOMER"
+}
+Success Response (200 OK): "User registered successfully!"
