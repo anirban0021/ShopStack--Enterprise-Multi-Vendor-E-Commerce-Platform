@@ -1,27 +1,27 @@
 # ShopStack - Enterprise Multi-Vendor E-Commerce Platform
 
-ShopStack is a full-stack, enterprise-grade multi-vendor e-commerce platform built with **Spring Boot** for the backend RESTful API services and **React.js (Vite)** for the frontend client layer.
+ShopStack is a full-stack, enterprise-grade multi-vendor e-commerce platform built with Spring Boot for the backend RESTful API services and React.js (Vite) for the frontend client layer.
 
 ---
 
 ## 🛠️ Tech Stack & Prerequisites
 
-### **Backend**
+### Backend
 * **Language:** Java 26
 * **Framework:** Spring Boot 4.1.0
 * **Security:** Spring Security & CORS Configuration
 * **ORM / Database:** Spring Data JPA, Hibernate, PostgreSQL
 * **Build Tool:** Apache Maven
 
-### **Frontend**
+### Frontend
 * **Framework:** React.js (Bootstrapped with Vite)
-* **HTTP Client:** Axios[cite: 1]
-* **Routing:** React Router DOM[cite: 1]
+* **HTTP Client:** Axios
+* **Routing:** React Router DOM
 
-### **Tools & Testing**
-* **API Testing:** Postman[cite: 1]
+### Tools & Testing
+* **API Testing:** Postman
 * **Database Client:** pgAdmin 4 / psql
-* **Version Control:** Git & GitHub[cite: 1]
+* **Version Control:** Git & GitHub
 
 ---
 
@@ -34,7 +34,7 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 │   │   ├── main/
 │   │   │   ├── java/com/shopstack/backend/
 │   │   │   │   ├── config/
-│   │   │   │   │   └── SecurityConfig.java      # Spring Security & Request Permissive Config
+│   │   │   │   │   └── SecurityConfig.java      # Spring Security & Permissive CORS Config
 │   │   │   │   ├── controller/
 │   │   │   │   │   └── AuthController.java      # Authentication REST APIs (/api/auth)
 │   │   │   │   ├── model/
@@ -49,8 +49,9 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 └── frontend/
     ├── src/
     │   ├── components/
-    │   │   └── Register.jsx                     # User Registration UI Component
-    │   ├── App.jsx                              # Main App Component Container
+    │   │   ├── Register.jsx                     # User Registration UI Component
+    │   │   └── Login.jsx                        # User Authentication UI Component
+    │   ├── App.jsx                              # Dynamic View State & Navigation Toggle
     │   └── main.jsx                             # React Application Entrypoint
     └── package.json
 
