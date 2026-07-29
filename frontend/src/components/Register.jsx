@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-export default function Register() {
+export default function Register({ switchToLogin }) {
   const [formData, setFormData] = useState({ 
     fullName: '', 
     email: '', 
@@ -55,6 +55,16 @@ export default function Register() {
           Register
         </button>
       </form>
+
+      <p style={{ marginTop: '20px', textAlign: 'center', color: '#fff' }}>
+        Already have an account?{' '}
+        <span 
+          onClick={switchToLogin} 
+          style={{ color: '#00d2ff', cursor: 'pointer', textDecoration: 'underline' }}
+        >
+          Login here
+        </span>
+      </p>
     </div>
   );
 }
