@@ -114,3 +114,27 @@ JSON
   "role": "CUSTOMER"
 }
 Success Response (200 OK): "User registered successfully!"
+
+2. Login Endpoint (POST)
+URL: http://localhost:8080/api/auth/login
+
+Headers: Content-Type: application/json
+
+Request Body:
+
+JSON
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+Success Response (200 OK):
+
+JSON
+{
+  "id": 1,
+  "fullName": "Test User",
+  "email": "test@example.com",
+  "password": "password123",
+  "role": "CUSTOMER"
+}
+Error Response (401 Unauthorized): "Invalid email or password"
