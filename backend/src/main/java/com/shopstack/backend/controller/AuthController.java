@@ -1,11 +1,14 @@
 package com.shopstack.backend.controller;
 
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -38,5 +41,25 @@ public class AuthController {
             return ResponseEntity.ok(userOpt.get());
         }
         return ResponseEntity.status(401).body("Invalid email or password!");
+    }
+
+    // Endpoint to allow customers to upgrade their account role (e.g., to VENDOR)
+    @PutMapping("/customer/{id}/role")
+    public ResponseEntity<?> updateUserRole(@PathVariable Long id, @RequestBody Map<String, String> request) {
+        Optional<User> userOptional = userRepository.findById(id);
+        if (userOptional.isEmpty()) {
+            return ResponseEntity.badRequest().body("User not found");
+        }
+
+        User user = userOptional.get();
+        String newRole = request.get("role");
+        
+        if (newRole != null && (newRole.equalsIgnoreCase("VENDOR") || newRole.equalsIgnoreCase("CUSTOMER"))) {
+            user.setRole(newRole.toUpperCase());
+            userRepository.save(user);
+            return ResponseEntity.ok(user);
+        }
+
+        return ResponseEntity.badRequest().body("Invalid role requested");
     }
 }

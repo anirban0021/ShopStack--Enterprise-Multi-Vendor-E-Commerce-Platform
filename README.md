@@ -1,27 +1,27 @@
 # ShopStack - Enterprise Multi-Vendor E-Commerce Platform
 
-ShopStack is a full-stack, enterprise-grade multi-vendor e-commerce platform built with **Spring Boot** for the backend RESTful API services and **React.js (Vite)** for the frontend client layer.
+ShopStack is a full-stack, enterprise-grade multi-vendor e-commerce platform built with Spring Boot for the backend RESTful API services and React.js (Vite) for the frontend client layer.
 
 ---
 
 ## 🛠️ Tech Stack & Prerequisites
 
-### **Backend**
+### Backend
 * **Language:** Java 26
 * **Framework:** Spring Boot 4.1.0
 * **Security:** Spring Security & CORS Configuration
 * **ORM / Database:** Spring Data JPA, Hibernate, PostgreSQL
 * **Build Tool:** Apache Maven
 
-### **Frontend**
+### Frontend
 * **Framework:** React.js (Bootstrapped with Vite)
-* **HTTP Client:** Axios[cite: 1]
-* **Routing:** React Router DOM[cite: 1]
+* **HTTP Client:** Axios
+* **Routing:** React Router DOM
 
-### **Tools & Testing**
-* **API Testing:** Postman[cite: 1]
+### Tools & Testing
+* **API Testing:** Postman
 * **Database Client:** pgAdmin 4 / psql
-* **Version Control:** Git & GitHub[cite: 1]
+* **Version Control:** Git & GitHub
 
 ---
 
@@ -34,7 +34,7 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 │   │   ├── main/
 │   │   │   ├── java/com/shopstack/backend/
 │   │   │   │   ├── config/
-│   │   │   │   │   └── SecurityConfig.java      # Spring Security & Request Permissive Config
+│   │   │   │   │   └── SecurityConfig.java      # Spring Security & Permissive CORS Config
 │   │   │   │   ├── controller/
 │   │   │   │   │   └── AuthController.java      # Authentication REST APIs (/api/auth)
 │   │   │   │   ├── model/
@@ -49,8 +49,9 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 └── frontend/
     ├── src/
     │   ├── components/
-    │   │   └── Register.jsx                     # User Registration UI Component
-    │   ├── App.jsx                              # Main App Component Container
+    │   │   ├── Register.jsx                     # User Registration UI Component
+    │   │   └── Login.jsx                        # User Authentication UI Component
+    │   ├── App.jsx                              # Dynamic View State & Navigation Toggle
     │   └── main.jsx                             # React Application Entrypoint
     └── package.json
 
@@ -138,3 +139,89 @@ JSON
   "role": "CUSTOMER"
 }
 Error Response (401 Unauthorized): "Invalid email or password"
+
+# 🛒 ShopStack — Day 2: Customer Module
+
+This repository contains the implementation for **Day 2 (Customer Module)** of the ShopStack E-Commerce platform built with **Spring Boot** and **React (Vite)**.
+
+---
+
+## 📌 Day 2 Deliverables & Features
+
+### 1. Customer Module
+- [x] **Customer Registration & Login:** Authentication flow supporting user roles and credentials.
+- [x] **Product Browsing:** Live product grid fetching available inventory from PostgreSQL via Spring Boot REST APIs.
+- [x] **Product Search:** Case-insensitive search bar filtering items by name or category in real time.
+- [x] **Wishlist Management:** Toggleable product wishlist counter integrated into the navigation bar.
+- [x] **Cart Management:** Shopping cart drawer with live total calculation, item removal, and persistent state using `localStorage`.
+- [x] **Order History:** Automatic cart cleanup upon checkout and persistent order history tracking with unique order IDs (`ORD-XXXXXX`), timestamps, item lists, and order statuses.
+- [x] **Profile Management & Address Updates:** Endpoints to view and edit profile details (Full Name, Phone Number, Shipping Address).
+- [x] **Flexible Role Switching:** Dynamic option allowing users to toggle freely between **Customer View** and **Vendor View** at any time without losing account data.
+
+---
+
+## 📂 Project Structure
+
+```text
+ShopStack/
+├── backend/
+│   ├── src/main/java/com/shopstack/backend/
+│   │   ├── config/
+│   │   │   └── SecurityConfig.java
+│   │   ├── controller/
+│   │   │   ├── AuthController.java
+│   │   │   ├── CustomerController.java
+│   │   │   └── ProductController.java
+│   │   ├── model/
+│   │   │   ├── User.java
+│   │   │   └── Product.java
+│   │   └── repository/
+│   │       ├── UserRepository.java
+│   │       └── ProductRepository.java
+│   └── pom.xml
+│
+└── frontend/
+    ├── src/
+    │   ├── components/
+    │   │   ├── Login.jsx
+    │   │   ├── Register.jsx
+    │   │   ├── HomeDashboard.jsx
+    │   │   └── CustomerDashboard.jsx
+    │   ├── App.jsx
+    │   └── main.jsx
+    └── package.json
+
+📡 API Endpoints (Day 2)
+Authentication & Customer Profile
+
+Method | Endpoint                    | Description
+--------------------------------------------------------------------------------
+POST   | /api/auth/register          | Register new user account
+POST   | /api/auth/login             | User login
+GET    | /api/customer/{id}          | Get customer profile details
+PUT    | /api/customer/{id},         | Update profile (phone & shipping address)
+PUT    | /api/auth/customer/{id}/role| Toggle account role (CUSTOMER ↔ VENDOR)
+
+Products
+
+Method | Endpoint                         | Description
+--------------------------------------------------------------------------------
+GET    | /api/products                    | Fetch all products (auto-seeds 
+       |                                  | inventory if empty)
+       |                                  |
+GET    |/api/products/search?query={term} | Search products by name or category
+
+🧪 Postman Testing Checklist
+Register Customer: POST http://localhost:8080/api/auth/register
+
+Login: POST http://localhost:8080/api/auth/login
+
+Get Profile: GET http://localhost:8080/api/customer/{id}
+
+Update Profile: PUT http://localhost:8080/api/customer/{id}
+
+Switch Role: PUT http://localhost:8080/api/auth/customer/{id}/role with body {"role": "VENDOR"}
+
+Browse Inventory: GET http://localhost:8080/api/products
+
+Search Inventory: GET http://localhost:8080/api/products/search?query=Headphones
