@@ -157,6 +157,10 @@ This repository contains the implementation for **Day 2 (Customer Module)** of t
 - [x] **Order History:** Automatic cart cleanup upon checkout and persistent order history tracking with unique order IDs (`ORD-XXXXXX`), timestamps, item lists, and order statuses.
 - [x] **Profile Management & Address Updates:** Endpoints to view and edit profile details (Full Name, Phone Number, Shipping Address).
 - [x] **Flexible Role Switching:** Dynamic option allowing users to toggle freely between **Customer View** and **Vendor View** at any time without losing account data.
+- [x] **Premium UI Redesign & Dark/Light Theme Switching:** Transitioned layouts to fluid screens with adaptive CSS variables, interactive Sun/Moon togglers, transitions, and glassmorphic overlays.
+- [x] **SVG Vector Icon Integration:** Completely replaced emojis across navigations, forms, buttons, and sidebars with professional `lucide-react` scalable vectors.
+- [x] **Dynamically Categorized Product Icons:** Replaced raw character placeholders with visual helper containers centered around headphones, watches, jewelry, gift boxes, and cosmetics icons.
+- [x] **Interactive Password Complexity Validation:** Client-side registration validator checklist enforcing 8+ characters, uppercase, lowercase, numbers, and special symbols.
 
 ---
 
@@ -225,3 +229,131 @@ Switch Role: PUT http://localhost:8080/api/auth/customer/{id}/role with body {"r
 Browse Inventory: GET http://localhost:8080/api/products
 
 Search Inventory: GET http://localhost:8080/api/products/search?query=Headphones
+
+
+
+# 🏢 ShopStack — Day 3: Multi-Role Dashboards, Collaboration & Product Media
+
+This repository contains the implementation for **Day 3 (Multi-Role Dashboards, Approvals, Fulfillment, Reviews, and Product Media)** of the ShopStack E-Commerce platform built with **Spring Boot** and **React (Vite)**.
+
+---
+
+## 📌 Day 3 Deliverables & Features
+
+### 1. Multi-Role Account Support & Sign-up Protections
+- [x] **New Business Roles:** Added support for **Administrator** and **Warehouse Staff** roles alongside existing Customer and Vendor accounts.
+- [x] **Email Suffix Validation:** Secure client-side and server-side rules requiring Administrator emails to end with `@admin` and Warehouse Staff emails to end with `@staff`.
+- [x] **Unique Vendor ID Generation:** Registration of a new Vendor dynamically generates and shows a permanent, unique 6-digit Vendor ID used for mode switching and secure console entry.
+
+### 2. Merchant/Seller Dashboard (Vendor Mode)
+- [x] **Vendor Inventory Management:** Complete CRUD capabilities for merchants to add new listings, update product details (price, stock, category, name, brand, description), and delete products.
+- [x] **Product Images & Gallery Manager:** A comprehensive media uploader inside the product form allowing merchants to:
+  - Upload local image files directly (converted dynamically into self-contained Base64 Data URLs).
+  - Import external web links.
+  - Pick quick emojis.
+  - Delete thumbnails or click any image to set it as the product's primary cover image.
+- [x] **Real-time Analytics Console:** Rich visual widgets displaying total revenue, total orders containing their items, total units sold, average order value, active listing counts, and low-stock warning counts (< 5 units).
+- [x] **Merchant Sales Logs:** View dedicated listings of orders containing the vendor's products, specifying order dates, quantities, and pricing.
+
+### 3. Interactive Catalog Gallery & Product Details
+- [x] **Interactive Gallery Carousel**: A split layout details modal featuring an image slideshow with left/right arrow controls, a main viewport, and clickable preview thumbnails.
+- [x] **Merchant Profile Card**: Dynamic lookup querying the vendor profile details (Store Name, Email, Phone, Location) and displaying them within the product card.
+
+### 4. Product Reviews & Ratings System
+- [x] **Real-time Ratings & Comments:** Customers can submit 1 to 5-star product reviews with comments directly from the product details modal.
+- [x] **Dynamic Catalog Star Ratings:** Star ratings and review counts are dynamically calculated in the backend and updated in real-time on all store catalog cards. If a product has no reviews, it correctly displays `★ 0.0 (0 reviews)`.
+- [x] **Inline Edit and Remove Reviews:** Authorized owners can edit or delete their submitted reviews inline via interactive forms. Security validations on the backend prevent modifying other users' feedback.
+
+### 5. Admin Approvals Workflow Console
+- [x] **Listing Moderation:** New product submissions from vendors default to a `PENDING` status and are withheld from the storefront until verified.
+- [x] **Approval Actions:** Administrators can view all pending catalog listings and approve or reject submissions in real-time, instantly updating the marketplace storefront.
+
+### 6. Warehouse Fulfillment & Shipping Console
+- [x] **Fulfillment Queue:** Warehouse staff can monitor all customer orders placed across the entire platform in a logistics log.
+- [x] **Shipment Dispatch Pipeline:** Direct buttons to update order dispatch state from `CONFIRMED` to `SHIPPED` and `DELIVERED`.
+- [x] **Catalog Stock Inventory Watch:** Centralized master inventory table showing stock levels with highlighted warning states and visual banners for items running low.
+
+---
+
+## 📂 Project Structure Updates
+
+```text
+ShopStack/
+├── backend/
+│   ├── src/main/java/com/shopstack/backend/
+│   │   ├── controller/
+│   │   │   ├── VendorController.java       # Vendor analytics, vendor orders and status updates
+│   │   │   ├── CustomerController.java     # Added general order management for warehouse staff
+│   │   │   └── ProductController.java      # CRUD listings, dynamic ratings, PUT/DELETE reviews
+│   │   ├── model/
+│   │   │   ├── Review.java                 # JPA Entity for reviews/ratings
+│   │   │   ├── Product.java                # Added brand, description, and @ElementCollection images
+│   │   │   └── OrderItem.java              # Updated to track vendorId association
+│   │   └── repository/
+│   │       └── ReviewRepository.java       # Spring Data JPA Repository for reviews
+│   
+└── frontend/
+    ├── src/
+    │   ├── components/
+    │   │   ├── AdminDashboard.jsx          # Admin Console for product approvals/rejections
+    │   │   ├── WarehouseDashboard.jsx      # Logistical Fulfillment & Shipping Management
+    │   │   ├── VendorDashboard.jsx         # Merchant listings CRUD, media uploader, and analytics
+    │   │   └── HomeDashboard.jsx           # Browser catalog, gallery carousel, reviews management
+```
+
+## 📡 API Endpoints (Day 3)
+
+### Products, Media & Reviews
+Method | Endpoint                          | Description
+------ | --------------------------------- | -----------
+POST   | `/api/products`                   | Submit new vendor product (default: `PENDING`)
+PUT    | `/api/products/{id}`              | Update existing product details, brand, and gallery images
+DELETE | `/api/products/{id}`              | Remove product listing from catalog
+GET    | `/api/products/vendor/{vendorId}` | Fetch all listings submitted by a specific merchant
+GET    | `/api/products/pending`           | Admin only: Fetch all pending product submissions
+PUT    | `/api/products/{id}/approve`      | Admin only: Set product status to `APPROVED`
+PUT    | `/api/products/{id}/reject`       | Admin only: Set product status to `REJECTED`
+GET    | `/api/products/{id}/reviews`      | Get list of reviews for a product
+POST   | `/api/products/{id}/reviews`      | Add a new customer review (rating 1-5 & comments)
+PUT    | `/api/products/reviews/{id}`      | Update existing customer review (owner only)
+DELETE | `/api/products/reviews/{id}`      | Delete customer review (owner only)
+
+### Vendor Analytics & Orders
+Method | Endpoint                          | Description
+------ | --------------------------------- | -----------
+GET    | `/api/vendor/{vendorId}/analytics`| Retrieve sales revenue, orders count, AOV, and top-selling list
+GET    | `/api/vendor/{vendorId}/orders`   | Retrieve order items linked to this vendor's catalog
+PUT    | `/api/vendor/orders/{orderId}/status`| Update order status (`SHIPPED` / `DELIVERED` / `CONFIRMED`)
+
+### Warehouse / Platform Orders
+Method | Endpoint                          | Description
+------ | --------------------------------- | -----------
+GET    | `/api/customer/orders/all`        | Warehouse staff: Retrieve all customer orders in the system
+
+---
+
+## 🧪 Postman & Testing Checklists
+
+### 🔐 1. Role Constraints & Emails
+- **Admin Sign Up:** Register with role `ADMINISTRATOR` and email ending in `@admin` (e.g. `owner@admin`). Verify that normal domains or `@staff` fail.
+- **Warehouse Sign Up:** Register with role `WAREHOUSE_STAFF` and email ending in `@staff` (e.g. `shipper@staff`).
+- **Vendor ID:** Register a `VENDOR`. Verify the modal pops up showing a generated 6-digit ID.
+
+### 🏪 2. Vendor Catalog & Analytics
+- **Add Product:** `POST http://localhost:8080/api/products`
+  Body: `{"name":"Mechanical Keyboard", "category":"Electronics", "price":1299.00, "stock":15, "vendorId":3}`
+- **Retrieve Vendor Sales Log:** `GET http://localhost:8080/api/vendor/3/orders`
+- **Retrieve Analytics Widget Info:** `GET http://localhost:8080/api/vendor/3/analytics`
+
+### 🛡️ 3. Admin Verification Queue
+- **View Pending Approvals:** `GET http://localhost:8080/api/products/pending` (Should list the "Mechanical Keyboard" with `PENDING` status).
+- **Approve Product:** `PUT http://localhost:8080/api/products/{productId}/approve` (Changes status to `APPROVED`).
+
+### 📦 4. Warehouse Shipping Console
+- **Fetch Platform Orders:** `GET http://localhost:8080/api/customer/orders/all`
+- **Ship Shipment:** `PUT http://localhost:8080/api/vendor/orders/{orderId}/status` with JSON body `{"status": "SHIPPED"}`
+
+### 💬 5. Ratings & Reviews
+- **Retrieve Reviews:** `GET http://localhost:8080/api/products/{productId}/reviews`
+- **Submit Review:** `POST http://localhost:8080/api/products/{productId}/reviews`
+  Body: `{"reviewerName": "Alice Johnson", "rating": 5, "comment": "Excellent build quality!"}`

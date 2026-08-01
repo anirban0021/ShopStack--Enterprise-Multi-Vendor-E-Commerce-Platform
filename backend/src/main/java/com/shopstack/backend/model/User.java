@@ -29,6 +29,7 @@ public class User {
 
     private String phone;
     private String address;
+    private String vendorCode; // 6-digit random unique ID for Vendors
 
     public User() {}
 
@@ -39,6 +40,7 @@ public class User {
         this.role = role;
         this.phone = phone;
         this.address = address;
+        this.vendorCode = null;
     }
 
     public Long getId() { return id; }
@@ -61,4 +63,7 @@ public class User {
 
     public String getAddress() { return address; }
     public void setAddress(String address) { this.address = address; }
+
+    public String getVendorCode() { return vendorCode; }
+    public void setVendorCode(String vendorCode) { this.vendorCode = vendorCode; }
 }
