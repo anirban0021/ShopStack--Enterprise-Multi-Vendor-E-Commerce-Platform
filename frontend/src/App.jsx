@@ -237,6 +237,7 @@ function App() {
           toggleWishlist={toggleWishlist}
           addToCart={addToCart}
           fetchOrders={fetchOrders}
+          fetchWishlist={fetchWishlist}
           onUpdateUser={handleUpdateUser}
           onLogout={handleLogout} 
           onGoToHome={() => navigateTo('home')} 

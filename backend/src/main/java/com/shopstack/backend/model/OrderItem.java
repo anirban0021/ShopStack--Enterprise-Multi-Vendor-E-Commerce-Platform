@@ -16,6 +16,7 @@ public class OrderItem {
 
     private String orderId;
     private Long productId;
+    @jakarta.persistence.Column(length = 1000)
     private String productName;
     private double price;
     private int quantity;

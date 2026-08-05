@@ -82,8 +82,8 @@ export default function HomeDashboard({
   const calculateSubtotal = () => {
     return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   };
-  const taxRate = 0.18; // 18% GST
-  const shippingFee = 99.00;
+  const taxRate = 0.0; // Removed GST
+  const shippingFee = 0.0; // Removed shipping fee
   
   const calculateTotal = () => {
     const sub = calculateSubtotal();
@@ -104,7 +104,7 @@ export default function HomeDashboard({
       fetchOrders();
       fetchProducts();
     } catch (err) {
-      showFlash('error', "Failed to check out order. Please check inventory stock.");
+      showFlash('error', err.response?.data || "Failed to check out order. Please check inventory stock.");
     }
   };
 
@@ -459,7 +459,7 @@ export default function HomeDashboard({
                       <div className="flex-between" style={{ marginTop: 'auto' }}>
                         <p className="product-price" style={{ margin: '0' }}>₹{prod.price}</p>
                         {prod.stock <= 0 ? (
-                          <span className="badge badge-rejected">Sold Out</span>
+                          <span className="badge badge-rejected">Out of Stock</span>
                         ) : prod.stock < 5 ? (
                           <span className="badge badge-pending">Only {prod.stock} left!</span>
                         ) : (
@@ -480,7 +480,7 @@ export default function HomeDashboard({
                     style={{ marginTop: '16px' }}
                     disabled={prod.stock <= 0}
                   >
-                    <Plus size={16} /> Add to Cart
+                    {prod.stock <= 0 ? "Out of Stock" : <><Plus size={16} /> Add to Cart</>}
                   </button>
                 </div>
               );
@@ -561,14 +561,6 @@ export default function HomeDashboard({
                   <div className="flex-between">
                     <span>Items Subtotal</span>
                     <strong>₹{calculateSubtotal()}</strong>
-                  </div>
-                  <div className="flex-between">
-                    <span>GST Tax (18%)</span>
-                    <span>₹{Math.round(calculateSubtotal() * taxRate * 100) / 100}</span>
-                  </div>
-                  <div className="flex-between">
-                    <span>Standard Shipping</span>
-                    <span>₹{shippingFee}</span>
                   </div>
                   <div className="flex-between" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '8px', fontSize: '16px', color: 'var(--text-primary)' }}>
                     <span>Total Amount</span>
@@ -743,7 +735,7 @@ export default function HomeDashboard({
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px' }}>
                       <span style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-primary)' }}>₹{selectedProduct.price}</span>
                       <span className={`badge ${selectedProduct.stock > 0 ? 'badge-approved' : 'badge-rejected'}`}>
-                        {selectedProduct.stock > 0 ? `In Stock (${selectedProduct.stock} units)` : 'Sold Out'}
+                        {selectedProduct.stock > 0 ? `In Stock (${selectedProduct.stock} units)` : 'Out of Stock'}
                       </span>
                     </div>
                   </div>
@@ -760,7 +752,7 @@ export default function HomeDashboard({
                   {selectedProduct.description && (
                     <div>
                       <span style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', display: 'block' }}>Description</span>
-                      <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '4px 0 0 0' }}>{selectedProduct.description}</p>
+                      <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '4px 0 0 0', whiteSpace: 'pre-wrap' }}>{selectedProduct.description}</p>
                     </div>
                   )}
                 </div>

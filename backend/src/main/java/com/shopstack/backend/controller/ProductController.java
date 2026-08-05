@@ -224,4 +224,24 @@ public class ProductController {
         }
         return ResponseEntity.notFound().build();
     }
+
+    // Quick stock update (does not reset status to PENDING)
+    @PutMapping("/{id}/stock")
+    public ResponseEntity<?> updateProductStock(@PathVariable Long id, @RequestBody Map<String, Integer> payload) {
+        if (!payload.containsKey("stock")) {
+            return ResponseEntity.badRequest().body("Stock value is required.");
+        }
+        Integer newStock = payload.get("stock");
+        if (newStock < 0) {
+            return ResponseEntity.badRequest().body("Stock cannot be negative.");
+        }
+        Optional<Product> optional = productRepository.findById(id);
+        if (optional.isPresent()) {
+            Product p = optional.get();
+            p.setStock(newStock);
+            Product saved = productRepository.save(p);
+            return ResponseEntity.ok(saved);
+        }
+        return ResponseEntity.notFound().build();
+    }
 }

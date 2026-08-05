@@ -9,7 +9,7 @@ import ProductIcon from './ProductIcon';
 
 export default function CustomerDashboard({ 
   user, orders = [], setOrders, cart = [], setCart, wishlist = [], setWishlist, 
-  toggleWishlist, addToCart, fetchOrders, onUpdateUser, onLogout, onGoToHome, theme, onToggleTheme,
+  toggleWishlist, addToCart, fetchOrders, fetchWishlist, onUpdateUser, onLogout, onGoToHome, theme, onToggleTheme,
   initialTab = 'profile'
 }) {
   const [profile, setProfile] = useState({
@@ -27,6 +27,12 @@ export default function CustomerDashboard({
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
+
+  useEffect(() => {
+    if (activeTab === 'wishlist' && fetchWishlist) {
+      fetchWishlist();
+    }
+  }, [activeTab, fetchWishlist]);
 
   const [isEditing, setIsEditing] = useState(false);
   const [flash, setFlash] = useState({ type: '', title: '', text: '' });
@@ -47,8 +53,8 @@ export default function CustomerDashboard({
     if (cartItems.length === 0) return;
     try {
       const sub = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      const taxRate = 0.18;
-      const shippingFee = 99.00;
+      const taxRate = 0.0;
+      const shippingFee = 0.0;
       const totalAmount = sub === 0 ? 0 : sub + (sub * taxRate) + shippingFee;
       
       const payload = {
@@ -60,7 +66,7 @@ export default function CustomerDashboard({
       showToast('success', 'Order Placed!', 'Your order has been checked out successfully.');
       fetchOrders();
     } catch (err) {
-      showToast('error', 'Checkout Failed', 'Failed to place your order. Please check inventory stock.');
+      showToast('error', 'Checkout Failed', err.response?.data || 'Failed to place your order. Please check inventory stock.');
     }
   };
 
@@ -484,7 +490,7 @@ export default function CustomerDashboard({
                              style={{ padding: '6px 14px', fontSize: '12px' }}
                              disabled={prod.stock <= 0}
                            >
-                             Add to Cart
+                             {prod.stock <= 0 ? "Out of Stock" : "Add to Cart"}
                            </button>
                            <button 
                              type="button" 
@@ -575,21 +581,13 @@ export default function CustomerDashboard({
                         <span>Subtotal</span>
                         <strong>₹{cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)}</strong>
                       </div>
-                      <div className="flex-between">
-                        <span>GST Tax (18%)</span>
-                         <span>₹{Math.round(cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 0.18 * 100) / 100}</span>
-                       </div>
-                       <div className="flex-between">
-                         <span>Shipping</span>
-                         <span>₹99.00</span>
-                       </div>
-                       <div className="flex-between" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '8px', fontSize: '16px', color: 'var(--text-primary)' }}>
-                         <span>Total</span>
-                         <strong style={{ color: 'var(--accent-emerald)' }}>
-                           ₹{Math.round((cart.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 1.18 + 99) * 100) / 100}
-                         </strong>
-                       </div>
-                     </div>
+                      <div className="flex-between" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '8px', fontSize: '16px', color: 'var(--text-primary)' }}>
+                        <span>Total</span>
+                        <strong style={{ color: 'var(--accent-emerald)' }}>
+                          ₹{cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)}
+                        </strong>
+                      </div>
+                    </div>
 
                      <button 
                        type="button" 

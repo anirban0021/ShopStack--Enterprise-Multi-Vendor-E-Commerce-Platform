@@ -16,6 +16,7 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @jakarta.persistence.Column(length = 1000)
     private String name;
     private String category;
     private double price;
@@ -28,6 +29,7 @@ public class Product {
     private String status = "APPROVED"; // PENDING, APPROVED, REJECTED
 
     private String brand;
+    @jakarta.persistence.Column(columnDefinition = "TEXT")
     private String description;
 
     @jakarta.persistence.ElementCollection

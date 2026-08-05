@@ -159,6 +159,21 @@ public class CustomerController {
             return ResponseEntity.badRequest().body("Cart is empty");
         }
 
+        // Validate stock for all items first
+        for (Map<String, Object> itemData : itemsList) {
+            Long productId = Long.parseLong(itemData.get("id").toString());
+            int quantity = Integer.parseInt(itemData.get("quantity").toString());
+
+            Optional<Product> prodOpt = productRepository.findById(productId);
+            if (prodOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body("Product with ID " + productId + " not found.");
+            }
+            Product product = prodOpt.get();
+            if (product.getStock() < quantity) {
+                return ResponseEntity.badRequest().body("Insufficient stock for product '" + product.getName() + "'. Only " + product.getStock() + " units available.");
+            }
+        }
+
         double totalAmount = Double.parseDouble(payload.get("totalAmount").toString());
         String orderIdStr = "ORD-" + (int) (100000 + Math.random() * 900000);
         String dateStr = new java.text.SimpleDateFormat("MMM dd, yyyy").format(new java.util.Date());
@@ -174,18 +189,12 @@ public class CustomerController {
             double price = Double.parseDouble(itemData.get("price").toString());
             int quantity = Integer.parseInt(itemData.get("quantity").toString());
 
-            // Fetch product to find vendorId and reduce stock
-            Optional<Product> prodOpt = productRepository.findById(productId);
-            Long vendorId = null;
-            if (prodOpt.isPresent()) {
-                Product product = prodOpt.get();
-                vendorId = product.getVendorId();
+            Product product = productRepository.findById(productId).get();
+            Long vendorId = product.getVendorId();
 
-                // Reduce stock
-                int newStock = product.getStock() - quantity;
-                product.setStock(newStock < 0 ? 0 : newStock);
-                productRepository.save(product);
-            }
+            // Reduce stock
+            product.setStock(product.getStock() - quantity);
+            productRepository.save(product);
 
             // Create and save Order Line Item
             OrderItem orderItem = new OrderItem(orderIdStr, productId, productName, price, quantity, vendorId);

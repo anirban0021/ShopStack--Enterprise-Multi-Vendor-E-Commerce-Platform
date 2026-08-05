@@ -40,6 +40,17 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
     }
   };
 
+  const handleUpdateProductStock = async (productId, newStock) => {
+    if (newStock < 0) return;
+    try {
+      await axios.put(`http://localhost:8080/api/products/${productId}/stock`, { stock: newStock });
+      setAllProducts(prev => prev.map(p => p.id === productId ? { ...p, stock: newStock } : p));
+      showFlash('success', 'Stock updated successfully.');
+    } catch (err) {
+      showFlash('error', err.response?.data || 'Failed to update stock.');
+    }
+  };
+
   return (
     <div className="dashboard-container">
       {/* Toast Flash Alert */}
@@ -178,13 +189,42 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                       <span className="badge badge-customer">{prod.category}</span>
                     </td>
                     <td style={{ fontWeight: '700' }}>₹{prod.price}</td>
-                    <td style={{ 
-                      color: prod.stock < 5 ? 'var(--accent-rose)' : 'inherit', 
-                      fontWeight: prod.stock < 5 ? 'bold' : 'normal' 
-                    }}>
-                      {prod.stock} units
-                      {prod.stock < 5 && <span style={{ fontSize: '10px', display: 'block', color: 'var(--accent-rose)' }}>Low Stock Warning</span>}
-                    </td>
+                     <td>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                         <button 
+                           type="button"
+                           onClick={() => handleUpdateProductStock(prod.id, prod.stock - 1)}
+                           className="btn-icon-only"
+                           style={{ padding: '2px', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                           disabled={prod.stock <= 0}
+                           title="Decrease Stock"
+                         >
+                           -
+                         </button>
+                         <span style={{ 
+                           minWidth: '40px',
+                           textAlign: 'center',
+                           fontWeight: prod.stock < 5 ? 'bold' : '600',
+                           color: prod.stock < 5 ? 'var(--accent-rose)' : 'inherit'
+                         }}>
+                           {prod.stock}
+                         </span>
+                         <button 
+                           type="button"
+                           onClick={() => handleUpdateProductStock(prod.id, prod.stock + 1)}
+                           className="btn-icon-only"
+                           style={{ padding: '2px', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                           title="Increase Stock"
+                         >
+                           +
+                         </button>
+                       </div>
+                       {prod.stock < 5 && (
+                         <span style={{ fontSize: '10px', display: 'block', color: 'var(--accent-rose)', marginTop: '4px', fontWeight: 'bold' }}>
+                           {prod.stock <= 0 ? 'Out of Stock' : 'Low Stock Warning'}
+                         </span>
+                       )}
+                     </td>
                     <td>
                       <span style={{ fontFamily: 'monospace', fontSize: '13px' }}>
                         {prod.vendorId ? `Merchant #${prod.vendorId}` : 'Seeded / General'}
