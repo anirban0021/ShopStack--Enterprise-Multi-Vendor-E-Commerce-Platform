@@ -360,56 +360,124 @@ GET    | `/api/customer/orders/all`        | Warehouse staff: Retrieve all custo
 
 ---
 
-# 🚀 ShopStack — Day 4: Enhanced Input Limits, Paragraph Formatting & Price Simplification
+# 🚀 ShopStack — Day 4 & Post-Day 3 Enhancements: Advanced Inventory, Input limits & Checkout Simplification
 
-This repository contains the implementation for **Day 4 (Enhanced Input Limits, Paragraph Formatting, and Price Simplification)** of the ShopStack E-Commerce platform built with **Spring Boot** and **React (Vite)**.
+This section documents the technical enhancements, schema upgrades, API additions, and UI forms introduced in **Day 4 (and enhancements following Day 3)** of the ShopStack E-Commerce platform.
 
 ---
 
 ## 📌 Day 4 Deliverables & Features
 
-### 1. Multi-Paragraph Product Descriptions (Carriage Return / Enter Support)
-- [x] **Paragraph Formatting Preservation**: Integrated styling rules on the store catalog details layout in [HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/frontend/src/components/HomeDashboard.jsx) to display descriptions using `whiteSpace: 'pre-wrap'`. This preserves carriage returns/enters inputted by vendors.
-- [x] **PostgreSQL TEXT Column Mapping**: Updated the JPA model [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/backend/src/main/java/com/shopstack/backend/model/Product.java) to set the `description` column definition to `TEXT`. This ensures PostgreSQL supports long multi-paragraph descriptions of any size.
+### 1. Multi-Paragraph Product Descriptions (Carriage Return & Newline Support)
+- [x] **Paragraph Formatting Preservation**: Integrated custom CSS layout styling rules on the public store catalog details viewport in [HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/HomeDashboard.jsx#L755) to render descriptions using `whiteSpace: 'pre-wrap'`. This preserves line breaks, enters, and custom paragraph separation inputted by merchants.
+- [x] **PostgreSQL TEXT Column Type Mapping**: Configured the ORM mapping in [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/Product.java#L32-L33) to assign the `description` column definition type to `TEXT`. This overrides the default character limit, allowing vendors to submit rich descriptions of arbitrary length.
 
 ### 2. Expanded Field Sizes & Live Form Validation Counters
-- [x] **Extended Product Name & Description Capacities**: Increased `name` and `productName` database column lengths to `VARCHAR(1000)` in [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/backend/src/main/java/com/shopstack/backend/model/Product.java) and [OrderItem.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/backend/src/main/java/com/shopstack/backend/model/OrderItem.java) to fully support names up to 50 words without truncation.
-- [x] **Live Word Counter Widgets**: Upgraded the vendor product uploader form in [VendorDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/frontend/src/components/VendorDashboard.jsx) to render responsive, real-time counters (e.g. `X / 50 words` for name and `X / 500 words` for description).
-- [x] **Interactive Word Limit Enforcement**: Form controls dynamically highlight counts in red and strictly block save requests via toast notifications if the limits (50 words for name, 500 words for description) are exceeded.
+- [x] **Extended Product Name & Order Item Capacities**: Updated the database column configurations in [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/Product.java#L19-L20) and [OrderItem.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/OrderItem.java#L19-L20) to use `@Column(length = 1000)`. This prevents order logging crashes and supports descriptive product names (up to 50 words) without database truncation errors.
+- [x] **Live Word Counter UI Widgets**: Refined the product listing wizard form in [VendorDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/VendorDashboard.jsx#L587-L633) to render dynamic counter indicators (`X / 50 words` for product name, `X / 500 words` for description) that refresh in real time as the vendor types.
+- [x] **Interactive Word Limit Warning & Enforcement**: The word counter widget text dynamically highlights in bright red if limits are exceeded. Furthermore, the submit handler strictly blocks request dispatching, throwing interactive toast alerts if validation rules are violated.
 
-### 3. Simplified Pricing & Checkout Fees Removal
-- [x] **Zero GST Tax & Standard Shipping Fees**: Set standard `taxRate` and `shippingFee` variables to `0.0` in both customer checkout components ([HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/frontend/src/components/HomeDashboard.jsx) and [CustomerDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/frontend/src/components/CustomerDashboard.jsx)).
-- [x] **Simplified Checkout Summaries**: Cleaned up the Order Summary cards by removing all tax and shipping rows, displaying only the Items Subtotal as the final checkout Total.
+### 3. Fee-Free Checkout Simplification
+- [x] **Zero GST Tax & Standard Shipping Fees**: Setup clean checkout policies by setting standard `taxRate` and `shippingFee` variables to `0.0` in both storefront components ([HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/HomeDashboard.jsx#L85) and [CustomerDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/CustomerDashboard.jsx#L56)).
+- [x] **Simplified Checkout Summaries**: Cleaned up checkout summary cards by removing Tax (GST) and Shipping cost rows, showing only the Items Subtotal as the final checkout Total.
+
+### 4. Lightweight Stock Level Management API
+- [x] **Quick Inline Stock Updates**: Built a focused stock update API endpoint (`PUT /api/products/{id}/stock`) in [ProductController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/controller/ProductController.java#L229-L246). This allows vendors in [VendorDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/VendorDashboard.jsx#L451) and warehouse operators in [WarehouseDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/WarehouseDashboard.jsx#L46) to increment/decrement inventory count directly. Because it is a separate endpoint, it changes the stock without resetting the product's moderator state back to `PENDING` approval.
+
+### 5. Automated Startup Database Seed Cleanup
+- [x] **PostConstruct Seeding Handler**: Configured a `cleanupSeedProducts()` hook in [ProductController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/controller/ProductController.java#L37-L54) executing on backend startup. It automatically removes raw seeded mock catalog products that lack a VENDOR owner, ensuring a clean, production-ready workspace for live merchant registration.
+
+### 6. Upload Size Configuration Upgrades
+- [x] **Increased Spring Boot/Tomcat Upload Limit**: Added capacity rules inside [application.properties](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/resources/application.properties#L10-L14) to raise multipart/form limits to `50MB`. This accommodates large image payloads uploaded as Base64 Data URL strings.
 
 ---
 
 ## 📂 Project Structure Updates
 
+The following models, controllers, and properties files house the changes made after Day 3:
+
 ```text
 ShopStack/
 ├── backend/
-│   ├── src/main/java/com/shopstack/backend/model/
-│   │   ├── Product.java                # Set description definition to TEXT, and name length to 1000
-│   │   └── OrderItem.java              # Set productName length to 1000 to prevent order crashes
-│   
+│   ├── src/main/resources/
+│   │   └── application.properties       # Increased multipart and tomcat limits to 50MB
+│   └── src/main/java/com/shopstack/backend/
+│       ├── controller/
+│       │   ├── ProductController.java  # Added PUT /api/products/{id}/stock and @PostConstruct seed cleanup
+│       │   └── CustomerController.java # Wishlist persistence APIs and Order checkout APIs
+│       └── model/
+│           ├── Product.java            # Set name capacity to VARCHAR(1000), description to TEXT
+│           ├── OrderItem.java          # Set productName capacity to VARCHAR(1000)
+│           ├── Order.java              # Database persistence entity for order headers
+│           └── WishlistItem.java       # Database persistence entity for customer wishlist links
+│
 └── frontend/
-    ├── src/
-    │   ├── components/
-    │   │   ├── HomeDashboard.jsx       # Removed GST/shipping and added pre-wrap paragraph display
-    │   │   ├── CustomerDashboard.jsx   # Removed GST/shipping lines from profile checkout
-    │   │   └── VendorDashboard.jsx     # Added live word count widgets and onSubmit word limits
+    └── src/
+        └── components/
+            ├── HomeDashboard.jsx       # Applied pre-wrap CSS style and zeroed checkout fee constants
+            ├── CustomerDashboard.jsx   # Removed GST/shipping UI rows from checkout flow
+            ├── VendorDashboard.jsx     # Word count display and validations, plus/minus quick stock adjustments
+            └── WarehouseDashboard.jsx  # Warehouse-staff quick inline stock level adjustments
 ```
 
 ---
 
-## 🧪 Postman & Schema Testing Checklist
+## 📡 API Endpoints (Day 4 & System Additions)
 
-### 1. Database Column Integrity Checks
-Verify that the PostgreSQL schema matches:
-- `products.name` -> `VARCHAR(1000)`
-- `products.description` -> `TEXT`
-- `order_items.product_name` -> `VARCHAR(1000)`
+### Inventory Stock Level & Seeding Controls
+Method | Endpoint | Description
+------ | -------- | -----------
+PUT | `/api/products/{id}/stock` | Quick stock count adjustment (takes `{ "stock": integer }`, keeps status as-is)
 
-### 2. Checkout / Order Submission Without Fees
-Place an order and inspect the request payload:
-- `totalAmount` must be exactly equal to the subtotal of the cart items (i.e. zero tax, zero shipping).
+### Database-Backed Wishlist Management
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/customer/{userId}/wishlist` | Fetch database-saved wishlist products for a customer
+POST | `/api/customer/{userId}/wishlist/{productId}` | Save a new item to customer's wishlist
+DELETE | `/api/customer/{userId}/wishlist/{productId}` | Remove an item from customer's wishlist
+
+### Database-Backed Order History & Checkout
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/customer/{userId}/orders` | Fetch customer order history logs with itemized lists
+POST | `/api/customer/{userId}/orders` | Submit checkout order payload (Zero tax, Zero shipping)
+
+---
+
+## 🧪 Postman & Live UI Testing Checklist
+
+### 1. Description Paragraph Formatting
+- **Test Steps**:
+  1. Login as a `VENDOR` and open the edit wizard for a product.
+  2. In the description, type multiple distinct paragraphs separated by carriage returns (Enter key).
+  3. Save the product, make sure it is `APPROVED` by admin, and view it in the `CUSTOMER` storefront catalog details modal.
+  - **Expected Result**: Paragraph breaks are fully preserved and displayed correctly.
+
+### 2. Live Word Counter Validation
+- **Test Steps**:
+  1. Open the **List New Product** form in the Vendor Dashboard.
+  2. Paste a product name exceeding 50 words. Check if the counter reads `5X / 50 words` and changes its color to red.
+  3. Try saving. The form must reject submission and pop up an error toast: *"Product name cannot exceed 50 words."*
+  4. Repeat with a description exceeding 500 words. Assert it blocks saving and displays: *"Product description cannot exceed 500 words."*
+  - **Expected Result**: Limits are enforced reactively on the UI and securely validated on save.
+
+### 3. Zero-Fee Checkout Summary
+- **Test Steps**:
+  1. Log in as a customer, add multiple items to your cart, and click checkout.
+  2. Verify the checkout drawer: tax rate is `₹0.00` and shipping is `₹0.00`.
+  3. Check the Order History tab: confirm the total order amount matches the subtotal exactly.
+  - **Expected Result**: Customers pay only the items' subtotal, without added fees.
+
+### 4. Direct Inventory Stock Management
+- **Test Steps**:
+  - Test via Postman: `PUT http://localhost:8080/api/products/{productId}/stock` with JSON body `{"stock": 12}`.
+  - Assert status code is `200 OK` and the returned payload retains the current product status (e.g. `APPROVED`), showing updated stock.
+  - Test via UI: Click the inline `+` or `-` buttons on the Vendor Dashboard inventory table or Warehouse Dashboard master stock list.
+  - **Expected Result**: Stock levels update immediately without triggering an admin approval status reset.
+
+### 5. Startup Database Cleanup Hook
+- **Test Steps**:
+  - Start/restart the Spring Boot application server.
+  - Observe the application console logging output for execution queries of default mock entries.
+  - Verify your PostgreSQL database catalog: seeded entries without vendor associations are successfully dropped.
+  - **Expected Result**: Clean startup with no leftover orphan seed data in the marketplace.
