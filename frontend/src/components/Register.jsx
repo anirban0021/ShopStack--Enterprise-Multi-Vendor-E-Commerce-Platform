@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { User, Mail, Lock, Briefcase, Eye, EyeOff, Check, X, Sun, Moon, CheckCircle2 } from 'lucide-react';
 
@@ -124,7 +124,7 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
               <User className="input-icon" />
               <input 
                 type="text" 
-                placeholder="Tony Stark" 
+                placeholder="John Doe" 
                 value={formData.fullName}
                 onChange={(e) => setFormData({...formData, fullName: e.target.value})} 
                 required 
