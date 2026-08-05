@@ -124,7 +124,7 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
               <User className="input-icon" />
               <input 
                 type="text" 
-                placeholder="John Doe" 
+                placeholder="Tony Stark" 
                 value={formData.fullName}
                 onChange={(e) => setFormData({...formData, fullName: e.target.value})} 
                 required 
