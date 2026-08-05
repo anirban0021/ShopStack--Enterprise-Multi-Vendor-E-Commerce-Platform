@@ -357,3 +357,59 @@ GET    | `/api/customer/orders/all`        | Warehouse staff: Retrieve all custo
 - **Retrieve Reviews:** `GET http://localhost:8080/api/products/{productId}/reviews`
 - **Submit Review:** `POST http://localhost:8080/api/products/{productId}/reviews`
   Body: `{"reviewerName": "Alice Johnson", "rating": 5, "comment": "Excellent build quality!"}`
+
+---
+
+# 🚀 ShopStack — Day 4: Enhanced Input Limits, Paragraph Formatting & Price Simplification
+
+This repository contains the implementation for **Day 4 (Enhanced Input Limits, Paragraph Formatting, and Price Simplification)** of the ShopStack E-Commerce platform built with **Spring Boot** and **React (Vite)**.
+
+---
+
+## 📌 Day 4 Deliverables & Features
+
+### 1. Multi-Paragraph Product Descriptions (Carriage Return / Enter Support)
+- [x] **Paragraph Formatting Preservation**: Integrated styling rules on the store catalog details layout in [HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/frontend/src/components/HomeDashboard.jsx) to display descriptions using `whiteSpace: 'pre-wrap'`. This preserves carriage returns/enters inputted by vendors.
+- [x] **PostgreSQL TEXT Column Mapping**: Updated the JPA model [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/backend/src/main/java/com/shopstack/backend/model/Product.java) to set the `description` column definition to `TEXT`. This ensures PostgreSQL supports long multi-paragraph descriptions of any size.
+
+### 2. Expanded Field Sizes & Live Form Validation Counters
+- [x] **Extended Product Name & Description Capacities**: Increased `name` and `productName` database column lengths to `VARCHAR(1000)` in [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/backend/src/main/java/com/shopstack/backend/model/Product.java) and [OrderItem.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/backend/src/main/java/com/shopstack/backend/model/OrderItem.java) to fully support names up to 50 words without truncation.
+- [x] **Live Word Counter Widgets**: Upgraded the vendor product uploader form in [VendorDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/frontend/src/components/VendorDashboard.jsx) to render responsive, real-time counters (e.g. `X / 50 words` for name and `X / 500 words` for description).
+- [x] **Interactive Word Limit Enforcement**: Form controls dynamically highlight counts in red and strictly block save requests via toast notifications if the limits (50 words for name, 500 words for description) are exceeded.
+
+### 3. Simplified Pricing & Checkout Fees Removal
+- [x] **Zero GST Tax & Standard Shipping Fees**: Set standard `taxRate` and `shippingFee` variables to `0.0` in both customer checkout components ([HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/frontend/src/components/HomeDashboard.jsx) and [CustomerDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main%28Copy%29/frontend/src/components/CustomerDashboard.jsx)).
+- [x] **Simplified Checkout Summaries**: Cleaned up the Order Summary cards by removing all tax and shipping rows, displaying only the Items Subtotal as the final checkout Total.
+
+---
+
+## 📂 Project Structure Updates
+
+```text
+ShopStack/
+├── backend/
+│   ├── src/main/java/com/shopstack/backend/model/
+│   │   ├── Product.java                # Set description definition to TEXT, and name length to 1000
+│   │   └── OrderItem.java              # Set productName length to 1000 to prevent order crashes
+│   
+└── frontend/
+    ├── src/
+    │   ├── components/
+    │   │   ├── HomeDashboard.jsx       # Removed GST/shipping and added pre-wrap paragraph display
+    │   │   ├── CustomerDashboard.jsx   # Removed GST/shipping lines from profile checkout
+    │   │   └── VendorDashboard.jsx     # Added live word count widgets and onSubmit word limits
+```
+
+---
+
+## 🧪 Postman & Schema Testing Checklist
+
+### 1. Database Column Integrity Checks
+Verify that the PostgreSQL schema matches:
+- `products.name` -> `VARCHAR(1000)`
+- `products.description` -> `TEXT`
+- `order_items.product_name` -> `VARCHAR(1000)`
+
+### 2. Checkout / Order Submission Without Fees
+Place an order and inspect the request payload:
+- `totalAmount` must be exactly equal to the subtotal of the cart items (i.e. zero tax, zero shipping).
