@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { User, Mail, Lock, Briefcase, Eye, EyeOff, Check, X, Sun, Moon, CheckCircle2 } from 'lucide-react';
 
@@ -11,19 +11,39 @@ const passwordRules = [
 ];
 
 export default function Register({ switchToLogin, theme, onToggleTheme }) {
-  const [formData, setFormData] = useState({ 
-    fullName: '', 
-    email: '', 
-    password: '', 
-    role: 'CUSTOMER' 
+  const [formData, setFormData] = useState({
+    fullName: '',
+    email: '',
+    password: '',
+    role: 'CUSTOMER'
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [flashMessage, setFlashMessage] = useState({ type: '', title: '', text: '' });
   const [generatedVendorCode, setGeneratedVendorCode] = useState(null);
+
+  // Auto-dismiss flash messages after 3 seconds
+  useEffect(() => {
+    if (flashMessage.text) {
+      const timer = setTimeout(() => {
+        setFlashMessage({ type: '', title: '', text: '' });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [flashMessage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFlashMessage({ type: '', title: '', text: '' });
+
+    if (formData.password !== confirmPassword) {
+      setFlashMessage({
+        type: 'error',
+        title: 'Validation failed.',
+        text: 'Passwords do not match. Please re-type your password correctly.'
+      });
+      return;
+    }
 
     // Validate password rules
     const isPasswordValid = passwordRules.every(rule => rule.test(formData.password));
@@ -70,18 +90,18 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
       if (role === 'VENDOR' && res.data.vendorCode) {
         setGeneratedVendorCode(res.data.vendorCode);
       } else {
-        setFlashMessage({ 
-          type: 'success', 
-          title: 'New account added successfully.', 
-          text: 'Please wait while we set things up for you...' 
+        setFlashMessage({
+          type: 'success',
+          title: 'New account added successfully.',
+          text: 'Please wait while we set things up for you...'
         });
         setTimeout(() => switchToLogin(), 2200);
       }
     } catch (err) {
-      setFlashMessage({ 
-        type: 'error', 
-        title: 'Registration failed.', 
-        text: err.response?.data || 'Please check your inputs and try again.' 
+      setFlashMessage({
+        type: 'error',
+        title: 'Registration failed.',
+        text: err.response?.data || 'Please check your inputs and try again.'
       });
     }
   };
@@ -102,10 +122,10 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
 
       <div className="auth-card" style={{ position: 'relative' }}>
         {/* Theme Toggle Button */}
-        <button 
-          type="button" 
-          onClick={onToggleTheme} 
-          className="btn-icon-only" 
+        <button
+          type="button"
+          onClick={onToggleTheme}
+          className="btn-icon-only"
           style={{ position: 'absolute', top: '16px', right: '16px', borderRadius: '50%', padding: '6px' }}
           title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
         >
@@ -122,12 +142,12 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
             <label className="form-label">Full Name</label>
             <div className="input-icon-wrapper">
               <User className="input-icon" />
-              <input 
-                type="text" 
-                placeholder="Tony Stark" 
+              <input
+                type="text"
+                placeholder="Tony Stark"
                 value={formData.fullName}
-                onChange={(e) => setFormData({...formData, fullName: e.target.value})} 
-                required 
+                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                required
                 className="form-input"
               />
             </div>
@@ -137,36 +157,51 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
             <label className="form-label">Email Address</label>
             <div className="input-icon-wrapper">
               <Mail className="input-icon" />
-              <input 
-                type="email" 
-                placeholder="email@example.com" 
+              <input
+                type="email"
+                placeholder="email@example.com"
                 value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})} 
-                required 
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                required
                 className="form-input"
               />
             </div>
           </div>
-          
+
           <div className="form-group">
             <label className="form-label">Password</label>
             <div className="input-icon-wrapper">
               <Lock className="input-icon" />
-              <input 
-                type={showPassword ? "text" : "password"} 
-                placeholder="••••••••" 
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
                 value={formData.password}
-                onChange={(e) => setFormData({...formData, password: e.target.value})} 
-                required 
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required
                 className="form-input"
               />
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="input-action-btn"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Re-type Password</label>
+            <div className="input-icon-wrapper">
+              <Lock className="input-icon" />
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="form-input"
+              />
             </div>
 
             {/* Real-time Password Checker */}
@@ -214,9 +249,9 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
             <label className="form-label">Account Role</label>
             <div className="input-icon-wrapper">
               <Briefcase className="input-icon" />
-              <select 
+              <select
                 value={formData.role}
-                onChange={(e) => setFormData({...formData, role: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 className="form-input"
                 style={{ paddingLeft: '44px' }}
               >
@@ -226,7 +261,7 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
                 <option value="WAREHOUSE_STAFF">Warehouse Staff</option>
               </select>
             </div>
-            
+
             {/* Helper label for required special email suffix */}
             {formData.role !== 'CUSTOMER' && (
               <div style={{ fontSize: '11px', color: 'var(--accent-indigo)', marginTop: '4px', fontWeight: '500' }}>
@@ -234,7 +269,7 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
                   <span>A permanent unique <strong>6-digit Vendor ID</strong> will be generated upon registration.</span>
                 ) : (
                   <span>Note: {formData.role === 'ADMINISTRATOR' ? 'Administrator' : 'Warehouse Staff'} email must end with {' '}
-                  <strong>{formData.role === 'ADMINISTRATOR' ? '@admin' : '@staff'}</strong>.</span>
+                    <strong>{formData.role === 'ADMINISTRATOR' ? '@admin' : '@staff'}</strong>.</span>
                 )}
               </div>
             )}
@@ -264,13 +299,13 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
             <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px', lineHeight: '1.5' }}>
               Your merchant vendor account has been registered successfully! Here is your permanent, unique **6-digit Vendor ID**. You will need this code to log in or switch modes.
             </p>
-            <div style={{ 
-              background: 'var(--bg-input)', 
-              border: '2px dashed var(--accent-indigo)', 
-              borderRadius: '10px', 
-              padding: '12px', 
-              fontSize: '28px', 
-              fontWeight: '800', 
+            <div style={{
+              background: 'var(--bg-input)',
+              border: '2px dashed var(--accent-indigo)',
+              borderRadius: '10px',
+              padding: '12px',
+              fontSize: '28px',
+              fontWeight: '800',
               letterSpacing: '6px',
               color: 'var(--text-primary)',
               marginBottom: '20px',
@@ -278,12 +313,12 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
             }}>
               {generatedVendorCode}
             </div>
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={() => {
                 setGeneratedVendorCode(null);
                 switchToLogin();
-              }} 
+              }}
               className="btn btn-primary btn-block"
             >
               I have copied my Vendor ID

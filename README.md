@@ -369,26 +369,26 @@ This section documents the technical enhancements, schema upgrades, API addition
 ## 📌 Day 4 Deliverables & Features
 
 ### 1. Multi-Paragraph Product Descriptions (Carriage Return & Newline Support)
-- [x] **Paragraph Formatting Preservation**: Integrated custom CSS layout styling rules on the public store catalog details viewport in [HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/HomeDashboard.jsx#L755) to render descriptions using `whiteSpace: 'pre-wrap'`. This preserves line breaks, enters, and custom paragraph separation inputted by merchants.
-- [x] **PostgreSQL TEXT Column Type Mapping**: Configured the ORM mapping in [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/Product.java#L32-L33) to assign the `description` column definition type to `TEXT`. This overrides the default character limit, allowing vendors to submit rich descriptions of arbitrary length.
+- [x] **Paragraph Formatting Preservation**: Integrated custom CSS layout styling rules on the public store catalog details viewport in [HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/HomeDashboard.jsx#L755) to render descriptions using `whiteSpace: 'pre-wrap'`. This preserves line breaks, enters, and custom paragraph separation inputted by merchants.
+- [x] **PostgreSQL TEXT Column Type Mapping**: Configured the ORM mapping in [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Product.java#L32-L33) to assign the `description` column definition type to `TEXT`. This overrides the default character limit, allowing vendors to submit rich descriptions of arbitrary length.
 
 ### 2. Expanded Field Sizes & Live Form Validation Counters
-- [x] **Extended Product Name & Order Item Capacities**: Updated the database column configurations in [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/Product.java#L19-L20) and [OrderItem.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/OrderItem.java#L19-L20) to use `@Column(length = 1000)`. This prevents order logging crashes and supports descriptive product names (up to 50 words) without database truncation errors.
-- [x] **Live Word Counter UI Widgets**: Refined the product listing wizard form in [VendorDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/VendorDashboard.jsx#L587-L633) to render dynamic counter indicators (`X / 50 words` for product name, `X / 500 words` for description) that refresh in real time as the vendor types.
+- [x] **Extended Product Name & Order Item Capacities**: Updated the database column configurations in [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Product.java#L19-L20) and [OrderItem.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/OrderItem.java#L19-L20) to use `@Column(length = 1000)`. This prevents order logging crashes and supports descriptive product names (up to 50 words) without database truncation errors.
+- [x] **Live Word Counter UI Widgets**: Refined the product listing wizard form in [VendorDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx#L587-L633) to render dynamic counter indicators (`X / 50 words` for product name, `X / 500 words` for description) that refresh in real time as the vendor types.
 - [x] **Interactive Word Limit Warning & Enforcement**: The word counter widget text dynamically highlights in bright red if limits are exceeded. Furthermore, the submit handler strictly blocks request dispatching, throwing interactive toast alerts if validation rules are violated.
 
 ### 3. Fee-Free Checkout Simplification
-- [x] **Zero GST Tax & Standard Shipping Fees**: Setup clean checkout policies by setting standard `taxRate` and `shippingFee` variables to `0.0` in both storefront components ([HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/HomeDashboard.jsx#L85) and [CustomerDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/CustomerDashboard.jsx#L56)).
+- [x] **Zero GST Tax & Standard Shipping Fees**: Setup clean checkout policies by setting standard `taxRate` and `shippingFee` variables to `0.0` in both storefront components ([HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/HomeDashboard.jsx#L85) and [CustomerDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx#L56)).
 - [x] **Simplified Checkout Summaries**: Cleaned up checkout summary cards by removing Tax (GST) and Shipping cost rows, showing only the Items Subtotal as the final checkout Total.
 
 ### 4. Lightweight Stock Level Management API
-- [x] **Quick Inline Stock Updates**: Built a focused stock update API endpoint (`PUT /api/products/{id}/stock`) in [ProductController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/controller/ProductController.java#L229-L246). This allows vendors in [VendorDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/VendorDashboard.jsx#L451) and warehouse operators in [WarehouseDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/WarehouseDashboard.jsx#L46) to increment/decrement inventory count directly. Because it is a separate endpoint, it changes the stock without resetting the product's moderator state back to `PENDING` approval.
+- [x] **Quick Inline Stock Updates**: Built a focused stock update API endpoint (`PUT /api/products/{id}/stock`) in [ProductController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/ProductController.java#L229-L246). This allows vendors in [VendorDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx#L451) and warehouse operators in [WarehouseDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/WarehouseDashboard.jsx#L46) to increment/decrement inventory count directly. Because it is a separate endpoint, it changes the stock without resetting the product's moderator state back to `PENDING` approval.
 
 ### 5. Automated Startup Database Seed Cleanup
-- [x] **PostConstruct Seeding Handler**: Configured a `cleanupSeedProducts()` hook in [ProductController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/controller/ProductController.java#L37-L54) executing on backend startup. It automatically removes raw seeded mock catalog products that lack a VENDOR owner, ensuring a clean, production-ready workspace for live merchant registration.
+- [x] **PostConstruct Seeding Handler**: Configured a `cleanupSeedProducts()` hook in [ProductController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/ProductController.java#L37-L54) executing on backend startup. It automatically removes raw seeded mock catalog products that lack a VENDOR owner, ensuring a clean, production-ready workspace for live merchant registration.
 
 ### 6. Upload Size Configuration Upgrades
-- [x] **Increased Spring Boot/Tomcat Upload Limit**: Added capacity rules inside [application.properties](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/resources/application.properties#L10-L14) to raise multipart/form limits to `50MB`. This accommodates large image payloads uploaded as Base64 Data URL strings.
+- [x] **Increased Spring Boot/Tomcat Upload Limit**: Added capacity rules inside [application.properties](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/resources/application.properties#L10-L14) to raise multipart/form limits to `50MB`. This accommodates large image payloads uploaded as Base64 Data URL strings.
 
 ---
 
@@ -481,3 +481,91 @@ POST | `/api/customer/{userId}/orders` | Submit checkout order payload (Zero tax
   - Observe the application console logging output for execution queries of default mock entries.
   - Verify your PostgreSQL database catalog: seeded entries without vendor associations are successfully dropped.
   - **Expected Result**: Clean startup with no leftover orphan seed data in the marketplace.
+
+# 🔒 ShopStack — Day 5: Password Recovery & User Security Enhancements
+
+This section documents the implementation of the password recovery workflow, password verification handlers, interactive password checker interfaces, and associated security validation routes added in **Day 5** of the ShopStack E-Commerce platform.
+
+---
+
+## 📌 Day 5 Deliverables & Features
+
+### 1. Password Recovery Flow (Forgot & Reset Password)
+- [x] **Forgot Password API Handler**: Developed a verification endpoint (`POST /api/auth/forgot-password`) in [AuthController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AuthController.java#L197-L209) that verifies if the user email exists in the database before proceeding to the password reset.
+- [x] **Password Reset API Handler**: Added a reset endpoint (`POST /api/auth/reset-password`) in [AuthController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AuthController.java#L211-L227) that maps to the requested email, modifies the password, and updates the record in PostgreSQL.
+- [x] **Forgot Password Modal Dialog UI**: Added a step-by-step modal UI inside [Login.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/Login.jsx#L283-L415) triggered by the "Forgot Password?" anchor link on the login card:
+  - **Step 1 (Verify Email)**: Prompts user for their registered email and contacts `/api/auth/forgot-password` to confirm the account exists.
+  - **Step 2 (Set New Password)**: Prompts user to input and re-type the new password.
+
+### 2. Real-Time Password Strength Verification
+- [x] **Strength Verification Checklist**: Integrated a dynamic password checker component within the reset password step inside [Login.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/Login.jsx#L344-L382). It enforces the same system-wide complexity checklist as the sign-up form:
+  - Minimum 8 characters.
+  - At least one uppercase letter (A-Z).
+  - At least one lowercase letter (a-z).
+  - At least one numeric digit (0-9).
+  - At least one special character (e.g., `@$!%*?&#`).
+- [x] **Dynamic Visual Indicators**: Individual requirements dynamically highlight green with bullet dots when satisfied, and remain muted grey when unsatisfied.
+
+### 3. Password Confirmation Validation
+- [x] **Client-Side Confirmation Match**: Added confirmation logic checking that the re-typed password matches the newly typed password in [Login.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/Login.jsx#L85-L92) before sending the request.
+- [x] **Interactive Toast and Form Validation Alerts**: Employs interactive flash alert indicators on the login screen to warn the user if verification fails, if they enter a weak password, or if the password and confirmation re-type do not match.
+
+---
+
+## 📂 Project Structure Updates
+
+The updates for Day 5 are contained in the following authentication components and controller files:
+
+```text
+ShopStack/
+├── backend/
+│   └── src/main/java/com/shopstack/backend/
+│       └── controller/
+│           └── AuthController.java      # Added /api/auth/forgot-password and /api/auth/reset-password endpoints
+│
+└── frontend/
+    └── src/
+        └── components/
+            └── Login.jsx                # Added forgot password modal UI, strength checklist, and handlers
+```
+
+---
+
+## 📡 API Endpoints (Day 5)
+
+### Password Recovery Services
+Method | Endpoint | Description
+------ | -------- | -----------
+POST | `/api/auth/forgot-password` | Confirms registration of email and initiates password reset flow
+POST | `/api/auth/reset-password` | Replaces user's current password with the verified new password
+
+---
+
+## 🧪 Postman & Live UI Testing Checklist
+
+### 1. Forgot Password Email Verification
+- **Test Steps**:
+  1. Open Postman or direct browser tools and send a `POST http://localhost:8080/api/auth/forgot-password` with email `nonexistent@example.com`.
+  2. Verify the endpoint returns a `404 Not Found` response with message: `"Error: No account found with this email address."`.
+  3. Send the same request with a valid, registered email (e.g., `test@example.com`).
+  4. Verify the response code is `200 OK` with message: `"Email verified. You can now reset your password."`.
+- **Expected Result**: Backend verifies the presence of the account, blocking reset requests for invalid emails.
+
+### 2. Password Strength Enforcement during Reset
+- **Test Steps**:
+  1. Go to the login screen and click "Forgot Password?".
+  2. Enter a registered email and click "Next".
+  3. In the new password field, type `abc`. Check that the strength requirements are shown in red/muted grey.
+  4. Attempt to submit. The form should block submission and output a warning flash message: *"Please ensure your new password satisfies all strength requirements."*
+  5. Type a strong password: `Password123!`. Assert that all checklist items turn green.
+- **Expected Result**: User cannot submit weak passwords, and strength requirements are highlighted in real-time.
+
+### 3. Password Confirmation Match
+- **Test Steps**:
+  1. Enter `Password123!` in the new password field.
+  2. Enter `Password123` (missing exclamation mark) in the re-type field.
+  3. Attempt to click "Reset Password".
+  4. Verify that the form rejects submission and shows: *"Passwords do not match. Please re-type your new password correctly."*
+  5. Correct the re-type field to `Password123!` and submit. Verify that the modal closes and a success message appears.
+- **Expected Result**: User cannot reset password unless the confirmation matches the new password.
+

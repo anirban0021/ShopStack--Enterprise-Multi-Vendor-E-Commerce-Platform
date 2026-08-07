@@ -3,7 +3,7 @@ import axios from 'axios';
 import { 
   Search, User, ChevronDown, ShoppingCart, Heart, MapPin, 
   Package, LogOut, X, Trash2, Plus, Minus, Sun, Moon, Star, 
-  MessageSquare, ShieldAlert, Store, ShoppingBag, Send, Truck, Check 
+  MessageSquare, ShieldAlert, Store, ShoppingBag, Send, Truck, Check, Bell
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
@@ -35,10 +35,27 @@ export default function HomeDashboard({
   // Toast notifications
   const [flash, setFlash] = useState({ type: '', text: '' });
 
+  // Pending products count for Admin notification bell
+  const [pendingProductsCount, setPendingProductsCount] = useState(0);
+
+  const fetchPendingProductsCount = async () => {
+    try {
+      const res = await axios.get('http://localhost:8080/api/products/pending');
+      setPendingProductsCount(res.data.length);
+    } catch (err) {
+      console.error("Failed to load pending products count", err);
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
     fetchOrders();
-  }, []);
+    if (user && user.role === 'ADMINISTRATOR') {
+      fetchPendingProductsCount();
+      const interval = setInterval(fetchPendingProductsCount, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
 
   const showFlash = (type, text) => {
     setFlash({ type, text });
@@ -264,13 +281,46 @@ export default function HomeDashboard({
         <div className="nav-right">
           {/* Admin link */}
           {user.role === 'ADMINISTRATOR' && (
-            <button 
-              onClick={onGoToAdmin} 
-              className="btn btn-secondary" 
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-rose)' }}
-            >
-              <ShieldAlert size={16} /> Admin Panel
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button 
+                onClick={onGoToAdmin} 
+                className="btn-icon-only" 
+                style={{ position: 'relative', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}
+                title={`${pendingProductsCount} pending product submissions`}
+              >
+                <Bell size={16} />
+                {pendingProductsCount > 0 && (
+                  <span className="notification-badge" style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    right: '-4px',
+                    backgroundColor: 'var(--accent-rose)',
+                    color: '#fff',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    borderRadius: '50%',
+                    minWidth: '16px',
+                    height: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 4px',
+                    border: '2px solid var(--bg-card)',
+                    animation: 'pulse-ring 2s infinite'
+                  }}>
+                    {pendingProductsCount}
+                  </span>
+                )}
+              </button>
+              
+              <button 
+                onClick={onGoToAdmin} 
+                className="btn btn-secondary" 
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-rose)' }}
+              >
+                <ShieldAlert size={16} /> Admin Panel
+              </button>
+            </div>
           )}
 
           {/* Vendor link */}

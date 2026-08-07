@@ -100,7 +100,9 @@ public class ProductController {
             p.setBrand(updated.getBrand());
             p.setDescription(updated.getDescription());
             p.setImages(updated.getImages());
-            // If price/stock/name changes, we keep status or reset to pending (let's keep status to avoid annoying vendors, unless they change name/details significantly, let's keep status)
+            // Reset status to PENDING and clear rejectionReason upon vendor update/resubmission
+            p.setStatus("PENDING");
+            p.setRejectionReason(null);
             Product saved = productRepository.save(p);
             return ResponseEntity.ok(saved);
         }
@@ -148,13 +150,18 @@ public class ProductController {
         return ResponseEntity.notFound().build();
     }
 
-    // Admin: Reject product
+    // Admin: Reject product with optional reason
     @PutMapping("/{id}/reject")
-    public ResponseEntity<?> rejectProduct(@PathVariable Long id) {
+    public ResponseEntity<?> rejectProduct(@PathVariable Long id, @RequestBody(required = false) Map<String, String> payload) {
         Optional<Product> optional = productRepository.findById(id);
         if (optional.isPresent()) {
             Product p = optional.get();
             p.setStatus("REJECTED");
+            if (payload != null && payload.containsKey("rejectionReason")) {
+                p.setRejectionReason(payload.get("rejectionReason"));
+            } else {
+                p.setRejectionReason("Rejected by Administrator");
+            }
             productRepository.save(p);
             return ResponseEntity.ok(p);
         }

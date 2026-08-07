@@ -193,4 +193,36 @@ public class AuthController {
         userRepository.save(user);
         return ResponseEntity.ok(user);
     }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> request) {
+        String email = request.get("email");
+        if (email == null || email.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Error: Email is required.");
+        }
+        email = email.trim().toLowerCase();
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(404).body("Error: No account found with this email address.");
+        }
+        return ResponseEntity.ok(Map.of("message", "Email verified. You can now reset your password."));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> request) {
+        String email = request.get("email");
+        String newPassword = request.get("newPassword");
+        if (email == null || newPassword == null || newPassword.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Error: Email and new password are required.");
+        }
+        email = email.trim().toLowerCase();
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(404).body("Error: No account found with this email address.");
+        }
+        User user = userOpt.get();
+        user.setPassword(newPassword);
+        userRepository.save(user);
+        return ResponseEntity.ok(Map.of("message", "Password reset successfully! You can now log in with your new password."));
+    }
 }

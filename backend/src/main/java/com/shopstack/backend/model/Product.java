@@ -27,6 +27,7 @@ public class Product {
     private Long vendorId;
     private Integer stock = 10;
     private String status = "APPROVED"; // PENDING, APPROVED, REJECTED
+    private String rejectionReason;
 
     private String brand;
     @jakarta.persistence.Column(columnDefinition = "TEXT")
@@ -47,6 +48,7 @@ public class Product {
         this.vendorId = null;
         this.stock = 10;
         this.status = "APPROVED";
+        this.rejectionReason = null;
     }
 
     public Product(String name, String category, double price, String imageUrl, Long vendorId, Integer stock, String status) {
@@ -57,6 +59,7 @@ public class Product {
         this.vendorId = vendorId;
         this.stock = stock != null ? stock : 10;
         this.status = status != null ? status : "PENDING";
+        this.rejectionReason = null;
     }
 
     public Long getId() { return id; }
@@ -75,6 +78,8 @@ public class Product {
     public void setStock(Integer stock) { this.stock = stock; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public String getRejectionReason() { return rejectionReason; }
+    public void setRejectionReason(String rejectionReason) { this.rejectionReason = rejectionReason; }
     public String getBrand() { return brand; }
     public void setBrand(String brand) { this.brand = brand; }
     public String getDescription() { return description; }

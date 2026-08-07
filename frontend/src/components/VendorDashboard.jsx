@@ -39,7 +39,8 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
     imageUrl: '📦',
     images: [],
     vendorId: user.id,
-    status: 'PENDING'
+    status: 'PENDING',
+    rejectionReason: null
   });
 
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
@@ -95,7 +96,8 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       imageUrl: '📦',
       images: [],
       vendorId: user.id,
-      status: 'PENDING'
+      status: 'PENDING',
+      rejectionReason: null
     });
     setShowProductModal(true);
   };
@@ -113,7 +115,8 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       imageUrl: prod.imageUrl || '📦',
       images: prod.images || [],
       vendorId: user.id,
-      status: prod.status
+      status: prod.status,
+      rejectionReason: prod.rejectionReason || null
     });
     setShowProductModal(true);
   };
@@ -462,14 +465,19 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                               </span>
                             )}
                           </td>
-                          <td>
-                            <span className={`badge ${
-                              prod.status === 'APPROVED' ? 'badge-approved' : 
-                              prod.status === 'REJECTED' ? 'badge-rejected' : 'badge-pending'
-                            }`}>
-                              {prod.status}
-                            </span>
-                          </td>
+                           <td>
+                             <span className={`badge ${
+                               prod.status === 'APPROVED' ? 'badge-approved' : 
+                               prod.status === 'REJECTED' ? 'badge-rejected' : 'badge-pending'
+                             }`}>
+                               {prod.status}
+                             </span>
+                             {prod.status === 'REJECTED' && prod.rejectionReason && (
+                               <div style={{ fontSize: '11px', color: 'var(--accent-rose)', marginTop: '4px', maxWidth: '180px', lineBreak: 'anywhere' }}>
+                                 <strong>Reason:</strong> {prod.rejectionReason}
+                                </div>
+                             )}
+                           </td>
                           <td style={{ textAlign: 'center' }}>
                             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                               <button 
@@ -581,6 +589,17 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
             </div>
             
             <form onSubmit={handleSaveProduct} style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1, paddingRight: '6px' }}>
+              {modalMode === 'edit' && productForm.status === 'REJECTED' && (
+                <div className="rejection-warning-banner">
+                  <div className="rejection-warning-title">
+                    <AlertTriangle size={16} /> Listing Rejected
+                  </div>
+                  <div className="rejection-warning-desc">
+                    This product submission was rejected. Reason: <strong>{productForm.rejectionReason || 'No reason provided.'}</strong>.
+                    Please make the necessary adjustments and submit changes to resubmit for review.
+                  </div>
+                </div>
+              )}
               <div className="form-group">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label className="form-label">Product Name</label>
