@@ -469,9 +469,16 @@ POST | `/api/customer/{userId}/orders` | Submit checkout order payload (Zero tax
   - **Expected Result**: Customers pay only the items' subtotal, without added fees.
 
 ### 4. Direct Inventory Stock Management
-- **Test# 🏬 ShopStack — Day 5: Enterprise Multi-Vendor Workflow, Pricing & Discounts, Multiple Addresses & Selective Checkout
+- **Test Steps**:
+  1. In the Vendor or Warehouse dashboard, adjust stock counts directly using the stock control buttons.
+  2. Verify that the changes update the database in real-time and reflect on storefront product cards.
+  - **Expected Result**: Real-time stock updates are immediately visible to customers.
 
-This section documents the comprehensive enterprise features implemented in **Day 5** of the ShopStack Multi-Vendor E-Commerce platform, adhering to the Springboard Mentor Workflow requirements, multiple shipping destinations architecture, tiered delivery charge engine, cart item selective checkout, and password recovery security.
+---
+
+# 🏬 ShopStack — Day 5: Enterprise Multi-Vendor Workflow, Pricing & Discounts, Multiple Addresses, Selective Checkout & Razorpay Payment Gateway
+
+This section documents the comprehensive enterprise features implemented in **Day 5** of the ShopStack Multi-Vendor E-Commerce platform, adhering to the Springboard Mentor Workflow requirements, multiple shipping destinations architecture, tiered delivery charge engine, cart item selective checkout, password recovery security, and official **Razorpay Payment Gateway integration**.
 
 ---
 
@@ -505,22 +512,55 @@ Dynamic Calculation of Items Subtotal, Tiered Delivery & Total Savings
 Checkout with Saved Default / Custom Shipping Address
       │
       ▼
-Payment Verification & Order Creation (Purchased items cleared from cart)
+Payment Method Selection: Razorpay Online Gateway or Cash on Delivery (COD)
+      │
+      ├───────────────────────────────┬───────────────────────────────┐
+      ▼                                                               ▼
+[Razorpay Secure Checkout]                                     [Cash on Delivery]
+• Create Razorpay Server Order (/api/payment/create-order)     • Direct order placement
+• Open Razorpay Popup (UPI, Cards, NetBanking, Wallets)        • Payment Method = COD
+• Customer Completes Transaction in Sandbox                    • Status = CONFIRMED
+• Verify HMAC-SHA256 Signature (/api/payment/verify-and-order)
+      │                                                               │
+      └───────────────────────────────┬───────────────────────────────┘
+                                      ▼
+             Order Record Created, Inventory Stock Deducted,
+             Purchased Items Cleared & Order Receipt Displayed
 ```
 
 ---
 
 ## 🚀 Key Features Implemented (Day 5 Milestone)
 
-### 1. Dynamic Pricing, Discounts & Automated Calculations
+### 1. Official Razorpay Payment Gateway Integration
+- [x] **Razorpay Java SDK**: Integrated official `com.razorpay:razorpay-java:1.4.8` SDK into the Spring Boot backend with configurable properties (`razorpay.key.id`, `razorpay.key.secret`, `razorpay.currency=INR`).
+- [x] **Spring Bean Lifecycle (`RazorpayConfig.java`)**: Configured Spring Boot `@Bean` for `RazorpayClient` to manage payment gateway sessions.
+- [x] **Server-Side Razorpay Order Generation (`POST /api/payment/create-order`)**:
+  - Dynamically calculates the exact order amount in Indian Rupees.
+  - Converts to paise (1 INR = 100 paise) and securely creates an authorized order on Razorpay servers.
+  - Returns `razorpayOrderId`, `amount`, `currency`, and public `keyId` to the client.
+- [x] **Cryptographic HMAC-SHA256 Signature Verification (`POST /api/payment/verify-and-order`)**:
+  - Validates `razorpay_order_id`, `razorpay_payment_id`, and `razorpay_signature` using server-side HMAC-SHA256 hash calculation against `razorpay.key.secret`.
+  - Blocks any forged, manipulated, or unverified transactions with a 400 Bad Request error.
+- [x] **Transactional Inventory & Order Placement (`PaymentService.java`)**:
+  - Verifies live product stock before finalizing orders.
+  - Automatically decrements stock from the PostgreSQL `products` table upon successful payment.
+  - Generates platform order reference (`ORD-XXXXXX`), timestamps, payment method (`RAZORPAY` or `COD`), transaction reference IDs, and customer delivery info.
+- [x] **Frontend Razorpay Checkout SDK Integration**:
+  - Injected official Razorpay Checkout SDK (`https://checkout.razorpay.com/v1/checkout.js`) in `index.html` and dynamic runtime loader.
+  - Launches Razorpay's native popup modal supporting **UPI (Google Pay, PhonePe, Paytm)**, **Credit/Debit Cards (Visa, Mastercard, RuPay)**, **Net Banking (All Indian Banks)**, and **Wallets**.
+- [x] **Streamlined Payment UI**:
+  - Clean, modern payment selection supporting **Razorpay Online Checkout** and **Cash on Delivery (COD)** with instant visual feedback and security badges.
+
+### 2. Dynamic Pricing, Discounts & Automated Calculations
 - [x] **Vendor Discount Application**: Vendors can define a **Regular Price** (`price`) and an optional **Discount Percentage** (`discountPercentage`, 0% to 100%) when listing or editing products.
 - [x] **Automated Final Price Engine**: Backend entity (`Product.java`) computes the final price using `@PrePersist` and `@PreUpdate` JPA lifecycle hooks:
   $$\text{Final Price} = \text{Price} \times \left(1 - \frac{\text{Discount \%}}{100}\right)$$
 - [x] **Real-Time Savings & Badges**: Storefront catalog, cart drawers, and product modal displays regular strikethrough MRP, gradient discount badges (`{X}% OFF`), and final discounted prices.
 
-### 2. Product Approval & Administrative Workflow Console
+### 3. Product Approval & Administrative Workflow Console
 - [x] **Moderation Status Enforcement**: Whenever a vendor creates a product or updates pricing/discounts, the product status is automatically placed in **`PENDING`** approval.
-- [x] **Admin Approval Console**: Dedicated interactive console in [AdminDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/AdminDashboard.jsx) with real-time pending notification badges.
+- [x] **Admin Approval Console**: Dedicated interactive console in [AdminDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/AdminDashboard.jsx) with real-time pending notification badges.
 - [x] **Merchant Identity Verification**: Admin console displays full merchant details for each submission:
   - **Vendor Full Name**
   - **Vendor ID & Unique 6-Digit Vendor Code** (`VND-XXXXXX`)
@@ -528,7 +568,7 @@ Payment Verification & Order Creation (Purchased items cleared from cart)
   - **Registered Business Address**
 - [x] **Approval & Rejection Actions**: Administrators can one-click **Approve** (`APPROVED`) products into the public store or **Reject** (`REJECTED`) with mandatory administrative feedback reasons.
 
-### 3. Tiered Delivery Charges & Total Savings Engine
+### 4. Tiered Delivery Charges & Total Savings Engine
 - [x] **Delivery Fee Rules**:
   - Orders **under ₹500**: Flat delivery fee of **₹99**.
   - Orders **₹500 or above**: **FREE Delivery** (Delivery fee = ₹0).
@@ -536,8 +576,8 @@ Payment Verification & Order Creation (Purchased items cleared from cart)
   $$\text{Total Savings} = \text{Product Discounts} + \text{Free Delivery Savings (₹99)}$$
 - [x] **Free Delivery Upsell Indicator**: Real-time progress callout (`🚚 Add ₹X more for FREE Delivery!`) when order subtotal is below ₹500.
 
-### 4. Multiple Shipping Addresses Management ("Your Addresses")
-- [x] **Database Address Entity**: Created [Address.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/Address.java) and [AddressRepository.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/repository/AddressRepository.java) supporting `HOME`, `WORK`, and `OTHER` address types.
+### 5. Multiple Shipping Addresses Management ("Your Addresses")
+- [x] **Database Address Entity**: Created [Address.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Address.java) and [AddressRepository.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/repository/AddressRepository.java) supporting `HOME`, `WORK`, and `OTHER` address types.
 - [x] **Dedicated "Your Addresses" Tab**: New sidebar view in Customer Profile displaying all saved addresses with a prominent emerald **`✓ DEFAULT ADDRESS`** badge.
 - [x] **Address Controls**:
   - **Set as Default**: One-click default address switcher (`PUT /api/customer/{id}/addresses/{addressId}/default`).
@@ -546,14 +586,14 @@ Payment Verification & Order Creation (Purchased items cleared from cart)
 - [x] **Decoupled User Profile**: Removed legacy static address input from the main profile overview card.
 - [x] **Streamlined Checkout Address Picker**: 1-click address selector chips in Step 1 of checkout with collapsible custom manual entry.
 
-### 5. Selective Cart Item Checkout ("Select All" & Item Checkboxes)
+### 6. Selective Cart Item Checkout ("Select All" & Item Checkboxes)
 - [x] **"Select All" Master Checkbox**: Instant toggle bar in Cart Drawer and Customer Cart Tab to select or deselect all cart items at once.
 - [x] **Item-Level Selection**: Each cart item features a checkbox allowing customers to select specific items for purchase.
 - [x] **Dynamic Selective Pricing**: Cart subtotal, discounts, delivery charges, and final amounts calculate strictly based on the **selected items**.
 - [x] **Selective Order Execution**: Checkout only places orders for selected items. Unselected items remain safely in the customer's cart for future checkout.
 
-### 6. Password Recovery & Security Enhancements
-- [x] **Forgot Password Verification**: Endpoints in [AuthController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/controller/AuthController.java) verifying account existence before allowing password reset.
+### 7. Password Recovery & Security Enhancements
+- [x] **Forgot Password Verification**: Endpoints in [AuthController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AuthController.java) verifying account existence before allowing password reset.
 - [x] **Dynamic Password Strength Checklist**: Real-time complexity validator enforcing 8+ characters, uppercase, lowercase, numbers, and symbols during password reset.
 - [x] **Password Confirmation Match**: Client-side match validation preventing mismatched passwords.
 
@@ -564,31 +604,54 @@ Payment Verification & Order Creation (Purchased items cleared from cart)
 ```text
 ShopStack/
 ├── backend/
-│   └── src/main/java/com/shopstack/backend/
-│       ├── controller/
-│       │   ├── AuthController.java      # Added /api/auth/forgot-password & /api/auth/reset-password
-│       │   ├── CustomerController.java  # Added address CRUD (/api/customer/{id}/addresses/**)
-│       │   └── ProductController.java   # Added discount calculations, approval moderation & vendor hydration
-│       ├── model/
-│       │   ├── Address.java             # Database entity for multiple customer addresses
-│       │   ├── Product.java             # Discount %, final price calculation & transient vendor details
-│       │   └── User.java                # Vendor codes & role mappings
-│       └── repository/
-│           └── AddressRepository.java   # JPA repository for shipping addresses
+│   ├── pom.xml                                  # Added com.razorpay:razorpay-java:1.4.8 & org.json
+│   └── src/main/
+│       ├── resources/
+│       │   └── application.properties           # Added razorpay.key.id, razorpay.key.secret, razorpay.currency
+│       └── java/com/shopstack/backend/
+│           ├── config/
+│           │   ├── RazorpayConfig.java          # Spring Bean provider for RazorpayClient
+│           │   └── SecurityConfig.java          # Permitted /api/payment/** public endpoints
+│           ├── controller/
+│           │   ├── AuthController.java          # Forgot & reset password services
+│           │   ├── CustomerController.java      # Address CRUD (/api/customer/{id}/addresses/**)
+│           │   ├── PaymentController.java       # Razorpay order generation & signature verification APIs
+│           │   └── ProductController.java       # Discount calculations, approval moderation & vendor hydration
+│           ├── service/
+│           │   └── PaymentService.java          # Razorpay order creation, HMAC-SHA256 verification & checkout transactions
+│           ├── model/
+│           │   ├── Address.java                 # Database entity for multiple customer addresses
+│           │   ├── Order.java                   # Added razorpayOrderId, razorpayPaymentId, paymentMethod & shipping info
+│           │   ├── OrderItem.java               # Line item pricing, discount % and vendor ID mapping
+│           │   ├── Product.java                 # Discount %, final price calculation & transient vendor details
+│           │   └── User.java                    # Vendor codes & role mappings
+│           └── repository/
+│               ├── AddressRepository.java       # JPA repository for shipping addresses
+│               ├── OrderRepository.java         # JPA repository for customer orders
+│               ├── OrderItemRepository.java     # JPA repository for order items
+│               └── ProductRepository.java       # JPA repository for products
 │
 └── frontend/
+    ├── index.html                               # Injected https://checkout.razorpay.com/v1/checkout.js
     └── src/
         └── components/
-            ├── AdminDashboard.jsx       # Product Approval Workflow Console & Merchant details view
-            ├── CustomerDashboard.jsx    # "Your Addresses" tab, selective cart checkout & compact address picker
-            ├── HomeDashboard.jsx        # Selective cart checkout, tiered delivery charges & savings banner
-            ├── VendorDashboard.jsx      # Product discount setting, final price preview & pending state
-            └── Login.jsx                # Forgot password modal with password complexity validator
+            ├── AdminDashboard.jsx               # Product Approval Workflow Console & Merchant details view
+            ├── CustomerDashboard.jsx            # "Your Addresses" tab, selective cart checkout & Razorpay checkout integration
+            ├── HomeDashboard.jsx                # Selective cart checkout, tiered delivery charges, savings banner & Razorpay checkout
+            ├── VendorDashboard.jsx              # Product discount setting, final price preview & pending state
+            └── Login.jsx                        # Forgot password modal with password complexity validator
 ```
 
 ---
 
 ## 📡 API Endpoints (Day 5)
+
+### Razorpay Payment Gateway & Checkout
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/payment/config` | Public endpoint returning Razorpay public key ID and default currency (`INR`)
+POST | `/api/payment/create-order` | Generates a server-side order on Razorpay with amount in paise (takes `{ "amount": number, "receipt": string }`)
+POST | `/api/payment/verify-and-order` | Verifies cryptographic HMAC-SHA256 signature, validates stock, reduces inventory, and saves confirmed order
 
 ### Product Pricing & Moderation Workflow
 Method | Endpoint | Description
@@ -616,7 +679,23 @@ POST | `/api/auth/reset-password` | Update and save the verified new password
 
 ## 🧪 Testing Checklist & Verification Guide
 
-### 1. End-to-End Vendor Pricing & Admin Approval
+### 1. Razorpay Payment Gateway Flow (Sandbox Testing)
+1. Add items to the cart and proceed to Checkout.
+2. Select **Razorpay Checkout (UPI, Cards, NetBanking, Wallets)**.
+3. Click **"Pay ₹X with Razorpay"**:
+   - The official Razorpay Test Checkout modal opens.
+   - Test Card: `4111 1111 1111 1111`, any future expiry date (e.g. `12/28`), CVV: `123`, OTP: `123456`.
+   - Test UPI: enter any valid VPA (e.g. `success@razorpay`).
+4. Upon payment success, backend cryptographically verifies the signature (`HMAC-SHA256`) and confirms the order.
+5. The UI displays the **Order Confirmed** screen with the unique order ID and payment reference.
+6. The product stock is automatically decremented in the inventory database.
+
+### 2. Cash on Delivery (COD) Flow
+1. Select **Cash on Delivery (COD)** in the checkout modal.
+2. Click **"Confirm Cash on Delivery Order"**.
+3. Order is immediately confirmed with payment method recorded as `COD`.
+
+### 3. End-to-End Vendor Pricing & Admin Approval
 1. Log in as a **Vendor** (`role: VENDOR`).
 2. Add a new product with Regular Price = `₹2,499` and Discount = `8%`.
 3. Verify that the dashboard calculates the Final Price as `₹2,299.08` and flags the product as **`PENDING APPROVAL`**.
@@ -625,26 +704,26 @@ POST | `/api/auth/reset-password` | Update and save the verified new password
 6. Click **Approve**.
 7. Switch to **Customer Mode** and verify the product is visible in the marketplace catalog with the `8% OFF` badge.
 
-### 2. Tiered Delivery Charges & Total Savings
+### 4. Tiered Delivery Charges & Total Savings
 1. Add items totaling under `₹500` to the cart.
 2. Verify that Delivery Charges show **`₹99`** and the callout reads *"Add ₹X more for FREE Delivery!"*.
 3. Add items to exceed `₹500`.
 4. Verify that Delivery Charges switch to **`FREE`** and the green banner displays **`💰 Total Savings: ₹{totalSavings}`**.
 
-### 3. Multiple Addresses ("Your Addresses")
+### 5. Multiple Addresses ("Your Addresses")
 1. In the Customer Profile, click **`Your Addresses`**.
 2. Add a `HOME` address and a `WORK` address.
 3. Click **Set as Default** on the `WORK` address and verify the emerald **`✓ DEFAULT ADDRESS`** badge updates.
 4. Proceed to Checkout and verify the `WORK` address is selected by default in the compact selector.
 
-### 4. Selective Cart Item Checkout
+### 6. Selective Cart Item Checkout
 1. Add 3 distinct products to your cart.
 2. In the Cart Drawer, uncheck 1 item.
 3. Verify that the price subtotal and total savings dynamically recalculate for the 2 selected items only.
-4. Complete the checkout payment.
+4. Complete checkout payment.
 5. Verify that the 2 purchased items are removed from the cart, while the unselected item remains safely in your cart.
 
-### 5. Password Recovery & Strength Enforcement
+### 7. Password Recovery & Strength Enforcement
 1. Go to the login screen and click **"Forgot Password?"**.
 2. Enter a registered email and click "Next".
 3. In the new password field, type a weak password (e.g. `abc`). Check that strength requirements are highlighted in red/grey.

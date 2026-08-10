@@ -20,6 +20,14 @@ public class Order {
     private double totalAmount;
     private String status; // CONFIRMED, SHIPPED, DELIVERED, CANCELLED
 
+    private String paymentMethod; // RAZORPAY, COD, etc.
+    private String razorpayOrderId;
+    private String razorpayPaymentId;
+    private String recipientName;
+    private String recipientPhone;
+    @jakarta.persistence.Column(length = 1000)
+    private String deliveryAddress;
+
     public Order() {}
 
     public Order(String orderId, Long userId, String date, double totalAmount, String status) {
@@ -28,6 +36,22 @@ public class Order {
         this.date = date;
         this.totalAmount = totalAmount;
         this.status = status;
+    }
+
+    public Order(String orderId, Long userId, String date, double totalAmount, String status, 
+                 String paymentMethod, String razorpayOrderId, String razorpayPaymentId, 
+                 String recipientName, String recipientPhone, String deliveryAddress) {
+        this.orderId = orderId;
+        this.userId = userId;
+        this.date = date;
+        this.totalAmount = totalAmount;
+        this.status = status;
+        this.paymentMethod = paymentMethod;
+        this.razorpayOrderId = razorpayOrderId;
+        this.razorpayPaymentId = razorpayPaymentId;
+        this.recipientName = recipientName;
+        this.recipientPhone = recipientPhone;
+        this.deliveryAddress = deliveryAddress;
     }
 
     public Long getId() { return id; }
@@ -47,4 +71,22 @@ public class Order {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public String getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+
+    public String getRazorpayOrderId() { return razorpayOrderId; }
+    public void setRazorpayOrderId(String razorpayOrderId) { this.razorpayOrderId = razorpayOrderId; }
+
+    public String getRazorpayPaymentId() { return razorpayPaymentId; }
+    public void setRazorpayPaymentId(String razorpayPaymentId) { this.razorpayPaymentId = razorpayPaymentId; }
+
+    public String getRecipientName() { return recipientName; }
+    public void setRecipientName(String recipientName) { this.recipientName = recipientName; }
+
+    public String getRecipientPhone() { return recipientPhone; }
+    public void setRecipientPhone(String recipientPhone) { this.recipientPhone = recipientPhone; }
+
+    public String getDeliveryAddress() { return deliveryAddress; }
+    public void setDeliveryAddress(String deliveryAddress) { this.deliveryAddress = deliveryAddress; }
 }
