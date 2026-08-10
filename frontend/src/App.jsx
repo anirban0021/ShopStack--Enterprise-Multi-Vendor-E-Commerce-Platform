@@ -155,22 +155,41 @@ function App() {
   const addToCart = (product, showFlash = null) => {
     const cartItems = Array.isArray(cart) ? cart : [];
     const existing = cartItems.find(item => item.id === product.id);
+
+    const discPct = Number(product.discountPercentage) || 0;
+    const origPrice = Number(product.price) || 0;
+    const effectivePrice = product.finalPrice != null 
+      ? Number(product.finalPrice) 
+      : (discPct > 0 ? Math.round(origPrice * (1 - discPct / 100) * 100) / 100 : origPrice);
+
     if (existing) {
       if (existing.quantity >= product.stock) {
         if (showFlash) showFlash('error', `Insufficient stock. Only ${product.stock} units available.`);
         return;
       }
       setCart(cartItems.map(item => 
-        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        item.id === product.id ? { 
+          ...item, 
+          price: effectivePrice,
+          originalPrice: origPrice,
+          discountPercentage: discPct,
+          quantity: item.quantity + 1 
+        } : item
       ));
     } else {
       if (product.stock <= 0) {
         if (showFlash) showFlash('error', "This product is currently out of stock.");
         return;
       }
-      setCart([...cartItems, { ...product, quantity: 1 }]);
+      setCart([...cartItems, { 
+        ...product, 
+        price: effectivePrice,
+        originalPrice: origPrice,
+        discountPercentage: discPct,
+        quantity: 1 
+      }]);
     }
-    if (showFlash) showFlash('success', `${product.name} added to cart.`);
+    if (showFlash) showFlash('success', `${product.name} added to cart at ₹${effectivePrice.toLocaleString('en-IN')}.`);
   };
 
   // Global Orders fetcher

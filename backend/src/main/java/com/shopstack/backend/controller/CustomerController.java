@@ -20,11 +20,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.shopstack.backend.model.Address;
 import com.shopstack.backend.model.Order;
 import com.shopstack.backend.model.OrderItem;
 import com.shopstack.backend.model.Product;
 import com.shopstack.backend.model.User;
 import com.shopstack.backend.model.WishlistItem;
+import com.shopstack.backend.repository.AddressRepository;
 import com.shopstack.backend.repository.OrderItemRepository;
 import com.shopstack.backend.repository.OrderRepository;
 import com.shopstack.backend.repository.ProductRepository;
@@ -50,6 +52,9 @@ public class CustomerController {
 
     @Autowired
     private OrderItemRepository orderItemRepository;
+
+    @Autowired
+    private AddressRepository addressRepository;
 
     // Get Customer Profile Details
     @GetMapping("/{id}")
@@ -111,6 +116,116 @@ public class CustomerController {
         return ResponseEntity.ok("Removed from wishlist.");
     }
 
+    // Addresses: Get all saved shipping addresses for customer
+    @GetMapping("/{id}/addresses")
+    public ResponseEntity<?> getCustomerAddresses(@PathVariable Long id) {
+        List<Address> addresses = addressRepository.findByUserId(id);
+        // Sort: default address first, then by ID descending
+        addresses.sort((a, b) -> {
+            boolean aDef = Boolean.TRUE.equals(a.getIsDefault());
+            boolean bDef = Boolean.TRUE.equals(b.getIsDefault());
+            if (aDef != bDef) {
+                return aDef ? -1 : 1;
+            }
+            return Long.compare(b.getId() != null ? b.getId() : 0, a.getId() != null ? a.getId() : 0);
+        });
+        return ResponseEntity.ok(addresses);
+    }
+
+    // Addresses: Add a new address
+    @PostMapping("/{id}/addresses")
+    @Transactional
+    public ResponseEntity<?> addCustomerAddress(@PathVariable Long id, @RequestBody Address address) {
+        if (address.getStreetAddress() == null || address.getStreetAddress().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Street address is required.");
+        }
+        address.setUserId(id);
+        List<Address> existing = addressRepository.findByUserId(id);
+        
+        // If this is the user's first address or marked default, set isDefault = true and unset others
+        if (existing.isEmpty() || Boolean.TRUE.equals(address.getIsDefault())) {
+            address.setIsDefault(true);
+            for (Address a : existing) {
+                a.setIsDefault(false);
+                addressRepository.save(a);
+            }
+        } else {
+            address.setIsDefault(false);
+        }
+        Address saved = addressRepository.save(address);
+        return ResponseEntity.ok(saved);
+    }
+
+    // Addresses: Update an existing address
+    @PutMapping("/{id}/addresses/{addressId}")
+    @Transactional
+    public ResponseEntity<?> updateCustomerAddress(@PathVariable Long id, @PathVariable Long addressId, @RequestBody Address updated) {
+        Optional<Address> opt = addressRepository.findById(addressId);
+        if (opt.isPresent() && opt.get().getUserId().equals(id)) {
+            Address addr = opt.get();
+            addr.setFullName(updated.getFullName());
+            addr.setPhone(updated.getPhone());
+            addr.setStreetAddress(updated.getStreetAddress());
+            addr.setCity(updated.getCity());
+            addr.setState(updated.getState());
+            addr.setPostalCode(updated.getPostalCode());
+            addr.setAddressType(updated.getAddressType());
+
+            if (Boolean.TRUE.equals(updated.getIsDefault())) {
+                List<Address> all = addressRepository.findByUserId(id);
+                for (Address a : all) {
+                    if (!a.getId().equals(addressId)) {
+                        a.setIsDefault(false);
+                        addressRepository.save(a);
+                    }
+                }
+                addr.setIsDefault(true);
+            }
+            Address saved = addressRepository.save(addr);
+            return ResponseEntity.ok(saved);
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    // Addresses: Set an address as default
+    @PutMapping("/{id}/addresses/{addressId}/default")
+    @Transactional
+    public ResponseEntity<?> setDefaultAddress(@PathVariable Long id, @PathVariable Long addressId) {
+        Optional<Address> opt = addressRepository.findById(addressId);
+        if (opt.isPresent() && opt.get().getUserId().equals(id)) {
+            List<Address> all = addressRepository.findByUserId(id);
+            for (Address a : all) {
+                a.setIsDefault(a.getId().equals(addressId));
+                addressRepository.save(a);
+            }
+            return ResponseEntity.ok("Address marked as default successfully.");
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    // Addresses: Delete an address
+    @DeleteMapping("/{id}/addresses/{addressId}")
+    @Transactional
+    public ResponseEntity<?> deleteCustomerAddress(@PathVariable Long id, @PathVariable Long addressId) {
+        Optional<Address> opt = addressRepository.findById(addressId);
+        if (opt.isPresent() && opt.get().getUserId().equals(id)) {
+            boolean wasDefault = Boolean.TRUE.equals(opt.get().getIsDefault());
+            addressRepository.deleteById(addressId);
+
+            // If we deleted the default address, promote another address to default if one exists
+            if (wasDefault) {
+                List<Address> remaining = addressRepository.findByUserIdOrderByIdDesc(id);
+                if (!remaining.isEmpty()) {
+                    Address newDef = remaining.get(0);
+                    newDef.setIsDefault(true);
+                    addressRepository.save(newDef);
+                }
+            }
+            return ResponseEntity.ok("Address deleted successfully.");
+        }
+        return ResponseEntity.notFound().build();
+    }
+
     // Orders: Get order history for customer
     @GetMapping("/{id}/orders")
     public ResponseEntity<?> getCustomerOrders(@PathVariable Long id) {
@@ -160,9 +275,11 @@ public class CustomerController {
         }
 
         // Validate stock for all items first
+        double itemsSubtotal = 0.0;
         for (Map<String, Object> itemData : itemsList) {
             Long productId = Long.parseLong(itemData.get("id").toString());
             int quantity = Integer.parseInt(itemData.get("quantity").toString());
+            double price = Double.parseDouble(itemData.get("price").toString());
 
             Optional<Product> prodOpt = productRepository.findById(productId);
             if (prodOpt.isEmpty()) {
@@ -172,9 +289,14 @@ public class CustomerController {
             if (product.getStock() < quantity) {
                 return ResponseEntity.badRequest().body("Insufficient stock for product '" + product.getName() + "'. Only " + product.getStock() + " units available.");
             }
+            itemsSubtotal += price * quantity;
         }
+        itemsSubtotal = Math.round(itemsSubtotal * 100.0) / 100.0;
 
-        double totalAmount = Double.parseDouble(payload.get("totalAmount").toString());
+        // Delivery fee: under 500 = 99, 500 and above = free (0)
+        double deliveryFee = (itemsSubtotal < 500.0 && itemsSubtotal > 0) ? 99.0 : 0.0;
+        double totalAmount = Math.round((itemsSubtotal + deliveryFee) * 100.0) / 100.0;
+
         String orderIdStr = "ORD-" + (int) (100000 + Math.random() * 900000);
         String dateStr = new java.text.SimpleDateFormat("MMM dd, yyyy").format(new java.util.Date());
 
@@ -191,13 +313,23 @@ public class CustomerController {
 
             Product product = productRepository.findById(productId).get();
             Long vendorId = product.getVendorId();
+            Double originalPrice = product.getPrice();
+            Double discountPercentage = product.getDiscountPercentage();
+
+            // If itemData contains explicit originalPrice or discountPercentage, use it
+            if (itemData.containsKey("originalPrice") && itemData.get("originalPrice") != null) {
+                originalPrice = Double.parseDouble(itemData.get("originalPrice").toString());
+            }
+            if (itemData.containsKey("discountPercentage") && itemData.get("discountPercentage") != null) {
+                discountPercentage = Double.parseDouble(itemData.get("discountPercentage").toString());
+            }
 
             // Reduce stock
             product.setStock(product.getStock() - quantity);
             productRepository.save(product);
 
-            // Create and save Order Line Item
-            OrderItem orderItem = new OrderItem(orderIdStr, productId, productName, price, quantity, vendorId);
+            // Create and save Order Line Item with discounted price, original price and discount %
+            OrderItem orderItem = new OrderItem(orderIdStr, productId, productName, price, originalPrice, discountPercentage, quantity, vendorId);
             orderItemRepository.save(orderItem);
         }
 

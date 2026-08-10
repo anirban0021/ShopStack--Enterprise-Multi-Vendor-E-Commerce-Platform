@@ -469,103 +469,186 @@ POST | `/api/customer/{userId}/orders` | Submit checkout order payload (Zero tax
   - **Expected Result**: Customers pay only the items' subtotal, without added fees.
 
 ### 4. Direct Inventory Stock Management
-- **Test Steps**:
-  - Test via Postman: `PUT http://localhost:8080/api/products/{productId}/stock` with JSON body `{"stock": 12}`.
-  - Assert status code is `200 OK` and the returned payload retains the current product status (e.g. `APPROVED`), showing updated stock.
-  - Test via UI: Click the inline `+` or `-` buttons on the Vendor Dashboard inventory table or Warehouse Dashboard master stock list.
-  - **Expected Result**: Stock levels update immediately without triggering an admin approval status reset.
+- **Test# 🏬 ShopStack — Day 5: Enterprise Multi-Vendor Workflow, Pricing & Discounts, Multiple Addresses & Selective Checkout
 
-### 5. Startup Database Cleanup Hook
-- **Test Steps**:
-  - Start/restart the Spring Boot application server.
-  - Observe the application console logging output for execution queries of default mock entries.
-  - Verify your PostgreSQL database catalog: seeded entries without vendor associations are successfully dropped.
-  - **Expected Result**: Clean startup with no leftover orphan seed data in the marketplace.
-
-# 🔒 ShopStack — Day 5: Password Recovery & User Security Enhancements
-
-This section documents the implementation of the password recovery workflow, password verification handlers, interactive password checker interfaces, and associated security validation routes added in **Day 5** of the ShopStack E-Commerce platform.
+This section documents the comprehensive enterprise features implemented in **Day 5** of the ShopStack Multi-Vendor E-Commerce platform, adhering to the Springboard Mentor Workflow requirements, multiple shipping destinations architecture, tiered delivery charge engine, cart item selective checkout, and password recovery security.
 
 ---
 
-## 📌 Day 5 Deliverables & Features
+## 📌 Day 5 Deliverables & Architecture Overview
 
-### 1. Password Recovery Flow (Forgot & Reset Password)
-- [x] **Forgot Password API Handler**: Developed a verification endpoint (`POST /api/auth/forgot-password`) in [AuthController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AuthController.java#L197-L209) that verifies if the user email exists in the database before proceeding to the password reset.
-- [x] **Password Reset API Handler**: Added a reset endpoint (`POST /api/auth/reset-password`) in [AuthController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AuthController.java#L211-L227) that maps to the requested email, modifies the password, and updates the record in PostgreSQL.
-- [x] **Forgot Password Modal Dialog UI**: Added a step-by-step modal UI inside [Login.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/Login.jsx#L283-L415) triggered by the "Forgot Password?" anchor link on the login card:
-  - **Step 1 (Verify Email)**: Prompts user for their registered email and contacts `/api/auth/forgot-password` to confirm the account exists.
-  - **Step 2 (Set New Password)**: Prompts user to input and re-type the new password.
-
-### 2. Real-Time Password Strength Verification
-- [x] **Strength Verification Checklist**: Integrated a dynamic password checker component within the reset password step inside [Login.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/Login.jsx#L344-L382). It enforces the same system-wide complexity checklist as the sign-up form:
-  - Minimum 8 characters.
-  - At least one uppercase letter (A-Z).
-  - At least one lowercase letter (a-z).
-  - At least one numeric digit (0-9).
-  - At least one special character (e.g., `@$!%*?&#`).
-- [x] **Dynamic Visual Indicators**: Individual requirements dynamically highlight green with bullet dots when satisfied, and remain muted grey when unsatisfied.
-
-### 3. Password Confirmation Validation
-- [x] **Client-Side Confirmation Match**: Added confirmation logic checking that the re-typed password matches the newly typed password in [Login.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/Login.jsx#L85-L92) before sending the request.
-- [x] **Interactive Toast and Form Validation Alerts**: Employs interactive flash alert indicators on the login screen to warn the user if verification fails, if they enter a weak password, or if the password and confirmation re-type do not match.
+```text
+Vendor Login
+      │
+      ▼
+Add / Update Product (Price & Discount %)
+      │
+      ▼
+System Calculates Final Price & Sets Status to PENDING
+      │
+      ▼
+Admin Reviews Product Specifications & Merchant Identity
+      │
+      ▼
+Admin Approves / Rejects Listing
+      │
+      ▼
+Customer Views Approved Product Catalog with Discount Badges
+      │
+      ▼
+Customer Adds Items to Cart & Selects Specific Items
+      │
+      ▼
+Dynamic Calculation of Items Subtotal, Tiered Delivery & Total Savings
+      │
+      ▼
+Checkout with Saved Default / Custom Shipping Address
+      │
+      ▼
+Payment Verification & Order Creation (Purchased items cleared from cart)
+```
 
 ---
 
-## 📂 Project Structure Updates
+## 🚀 Key Features Implemented (Day 5 Milestone)
 
-The updates for Day 5 are contained in the following authentication components and controller files:
+### 1. Dynamic Pricing, Discounts & Automated Calculations
+- [x] **Vendor Discount Application**: Vendors can define a **Regular Price** (`price`) and an optional **Discount Percentage** (`discountPercentage`, 0% to 100%) when listing or editing products.
+- [x] **Automated Final Price Engine**: Backend entity (`Product.java`) computes the final price using `@PrePersist` and `@PreUpdate` JPA lifecycle hooks:
+  $$\text{Final Price} = \text{Price} \times \left(1 - \frac{\text{Discount \%}}{100}\right)$$
+- [x] **Real-Time Savings & Badges**: Storefront catalog, cart drawers, and product modal displays regular strikethrough MRP, gradient discount badges (`{X}% OFF`), and final discounted prices.
+
+### 2. Product Approval & Administrative Workflow Console
+- [x] **Moderation Status Enforcement**: Whenever a vendor creates a product or updates pricing/discounts, the product status is automatically placed in **`PENDING`** approval.
+- [x] **Admin Approval Console**: Dedicated interactive console in [AdminDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/frontend/src/components/AdminDashboard.jsx) with real-time pending notification badges.
+- [x] **Merchant Identity Verification**: Admin console displays full merchant details for each submission:
+  - **Vendor Full Name**
+  - **Vendor ID & Unique 6-Digit Vendor Code** (`VND-XXXXXX`)
+  - **Contact Email & Phone Number**
+  - **Registered Business Address**
+- [x] **Approval & Rejection Actions**: Administrators can one-click **Approve** (`APPROVED`) products into the public store or **Reject** (`REJECTED`) with mandatory administrative feedback reasons.
+
+### 3. Tiered Delivery Charges & Total Savings Engine
+- [x] **Delivery Fee Rules**:
+  - Orders **under ₹500**: Flat delivery fee of **₹99**.
+  - Orders **₹500 or above**: **FREE Delivery** (Delivery fee = ₹0).
+- [x] **Total Savings Display**: Replaced basic notifications with a high-visibility **`💰 Total Savings: ₹{totalSavings}`** banner, dynamically summing:
+  $$\text{Total Savings} = \text{Product Discounts} + \text{Free Delivery Savings (₹99)}$$
+- [x] **Free Delivery Upsell Indicator**: Real-time progress callout (`🚚 Add ₹X more for FREE Delivery!`) when order subtotal is below ₹500.
+
+### 4. Multiple Shipping Addresses Management ("Your Addresses")
+- [x] **Database Address Entity**: Created [Address.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/Address.java) and [AddressRepository.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/repository/AddressRepository.java) supporting `HOME`, `WORK`, and `OTHER` address types.
+- [x] **Dedicated "Your Addresses" Tab**: New sidebar view in Customer Profile displaying all saved addresses with a prominent emerald **`✓ DEFAULT ADDRESS`** badge.
+- [x] **Address Controls**:
+  - **Set as Default**: One-click default address switcher (`PUT /api/customer/{id}/addresses/{addressId}/default`).
+  - **Edit & Delete**: Modal editing and safe deletion with fallback default promotion.
+  - **Add Address Modal**: Clean form with recipient name, phone, street, city, state, and postal code.
+- [x] **Decoupled User Profile**: Removed legacy static address input from the main profile overview card.
+- [x] **Streamlined Checkout Address Picker**: 1-click address selector chips in Step 1 of checkout with collapsible custom manual entry.
+
+### 5. Selective Cart Item Checkout ("Select All" & Item Checkboxes)
+- [x] **"Select All" Master Checkbox**: Instant toggle bar in Cart Drawer and Customer Cart Tab to select or deselect all cart items at once.
+- [x] **Item-Level Selection**: Each cart item features a checkbox allowing customers to select specific items for purchase.
+- [x] **Dynamic Selective Pricing**: Cart subtotal, discounts, delivery charges, and final amounts calculate strictly based on the **selected items**.
+- [x] **Selective Order Execution**: Checkout only places orders for selected items. Unselected items remain safely in the customer's cart for future checkout.
+
+### 6. Password Recovery & Security Enhancements
+- [x] **Forgot Password Verification**: Endpoints in [AuthController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/controller/AuthController.java) verifying account existence before allowing password reset.
+- [x] **Dynamic Password Strength Checklist**: Real-time complexity validator enforcing 8+ characters, uppercase, lowercase, numbers, and symbols during password reset.
+- [x] **Password Confirmation Match**: Client-side match validation preventing mismatched passwords.
+
+---
+
+## 📂 Project Structure Updates (Day 5)
 
 ```text
 ShopStack/
 ├── backend/
 │   └── src/main/java/com/shopstack/backend/
-│       └── controller/
-│           └── AuthController.java      # Added /api/auth/forgot-password and /api/auth/reset-password endpoints
+│       ├── controller/
+│       │   ├── AuthController.java      # Added /api/auth/forgot-password & /api/auth/reset-password
+│       │   ├── CustomerController.java  # Added address CRUD (/api/customer/{id}/addresses/**)
+│       │   └── ProductController.java   # Added discount calculations, approval moderation & vendor hydration
+│       ├── model/
+│       │   ├── Address.java             # Database entity for multiple customer addresses
+│       │   ├── Product.java             # Discount %, final price calculation & transient vendor details
+│       │   └── User.java                # Vendor codes & role mappings
+│       └── repository/
+│           └── AddressRepository.java   # JPA repository for shipping addresses
 │
 └── frontend/
     └── src/
         └── components/
-            └── Login.jsx                # Added forgot password modal UI, strength checklist, and handlers
+            ├── AdminDashboard.jsx       # Product Approval Workflow Console & Merchant details view
+            ├── CustomerDashboard.jsx    # "Your Addresses" tab, selective cart checkout & compact address picker
+            ├── HomeDashboard.jsx        # Selective cart checkout, tiered delivery charges & savings banner
+            ├── VendorDashboard.jsx      # Product discount setting, final price preview & pending state
+            └── Login.jsx                # Forgot password modal with password complexity validator
 ```
 
 ---
 
 ## 📡 API Endpoints (Day 5)
 
+### Product Pricing & Moderation Workflow
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/products/pending` | Fetch all product listings awaiting Admin approval (with full vendor details)
+PUT | `/api/products/{id}/approve` | Approve product listing and publish it to the live marketplace
+PUT | `/api/products/{id}/reject` | Reject product listing with an administrative reason
+
+### Customer Multiple Shipping Addresses
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/customer/{userId}/addresses` | Fetch all saved shipping addresses for a customer (default first)
+POST | `/api/customer/{userId}/addresses` | Save a new shipping address
+PUT | `/api/customer/{userId}/addresses/{addressId}` | Update an existing shipping address
+PUT | `/api/customer/{userId}/addresses/{addressId}/default` | Set an address as the default delivery destination
+DELETE | `/api/customer/{userId}/addresses/{addressId}` | Delete a shipping address
+
 ### Password Recovery Services
 Method | Endpoint | Description
 ------ | -------- | -----------
-POST | `/api/auth/forgot-password` | Confirms registration of email and initiates password reset flow
-POST | `/api/auth/reset-password` | Replaces user's current password with the verified new password
+POST | `/api/auth/forgot-password` | Verify registered email address and initiate password recovery
+POST | `/api/auth/reset-password` | Update and save the verified new password
 
 ---
 
-## 🧪 Postman & Live UI Testing Checklist
+## 🧪 Testing Checklist & Verification Guide
 
-### 1. Forgot Password Email Verification
-- **Test Steps**:
-  1. Open Postman or direct browser tools and send a `POST http://localhost:8080/api/auth/forgot-password` with email `nonexistent@example.com`.
-  2. Verify the endpoint returns a `404 Not Found` response with message: `"Error: No account found with this email address."`.
-  3. Send the same request with a valid, registered email (e.g., `test@example.com`).
-  4. Verify the response code is `200 OK` with message: `"Email verified. You can now reset your password."`.
-- **Expected Result**: Backend verifies the presence of the account, blocking reset requests for invalid emails.
+### 1. End-to-End Vendor Pricing & Admin Approval
+1. Log in as a **Vendor** (`role: VENDOR`).
+2. Add a new product with Regular Price = `₹2,499` and Discount = `8%`.
+3. Verify that the dashboard calculates the Final Price as `₹2,299.08` and flags the product as **`PENDING APPROVAL`**.
+4. Log in as an **Administrator** (`role: ADMINISTRATOR`) and navigate to the **Product Approval Console**.
+5. Confirm that the table displays the product along with the **Vendor Name, ID, Vendor Code, Email, and Phone**.
+6. Click **Approve**.
+7. Switch to **Customer Mode** and verify the product is visible in the marketplace catalog with the `8% OFF` badge.
 
-### 2. Password Strength Enforcement during Reset
-- **Test Steps**:
-  1. Go to the login screen and click "Forgot Password?".
-  2. Enter a registered email and click "Next".
-  3. In the new password field, type `abc`. Check that the strength requirements are shown in red/muted grey.
-  4. Attempt to submit. The form should block submission and output a warning flash message: *"Please ensure your new password satisfies all strength requirements."*
-  5. Type a strong password: `Password123!`. Assert that all checklist items turn green.
-- **Expected Result**: User cannot submit weak passwords, and strength requirements are highlighted in real-time.
+### 2. Tiered Delivery Charges & Total Savings
+1. Add items totaling under `₹500` to the cart.
+2. Verify that Delivery Charges show **`₹99`** and the callout reads *"Add ₹X more for FREE Delivery!"*.
+3. Add items to exceed `₹500`.
+4. Verify that Delivery Charges switch to **`FREE`** and the green banner displays **`💰 Total Savings: ₹{totalSavings}`**.
 
-### 3. Password Confirmation Match
-- **Test Steps**:
-  1. Enter `Password123!` in the new password field.
-  2. Enter `Password123` (missing exclamation mark) in the re-type field.
-  3. Attempt to click "Reset Password".
-  4. Verify that the form rejects submission and shows: *"Passwords do not match. Please re-type your new password correctly."*
-  5. Correct the re-type field to `Password123!` and submit. Verify that the modal closes and a success message appears.
-- **Expected Result**: User cannot reset password unless the confirmation matches the new password.
+### 3. Multiple Addresses ("Your Addresses")
+1. In the Customer Profile, click **`Your Addresses`**.
+2. Add a `HOME` address and a `WORK` address.
+3. Click **Set as Default** on the `WORK` address and verify the emerald **`✓ DEFAULT ADDRESS`** badge updates.
+4. Proceed to Checkout and verify the `WORK` address is selected by default in the compact selector.
+
+### 4. Selective Cart Item Checkout
+1. Add 3 distinct products to your cart.
+2. In the Cart Drawer, uncheck 1 item.
+3. Verify that the price subtotal and total savings dynamically recalculate for the 2 selected items only.
+4. Complete the checkout payment.
+5. Verify that the 2 purchased items are removed from the cart, while the unselected item remains safely in your cart.
+
+### 5. Password Recovery & Strength Enforcement
+1. Go to the login screen and click **"Forgot Password?"**.
+2. Enter a registered email and click "Next".
+3. In the new password field, type a weak password (e.g. `abc`). Check that strength requirements are highlighted in red/grey.
+4. Type a strong password (`Password123!`). Assert all checklist items turn green.
+5. Verify password confirmation matching before reset completes successfully.
+
 

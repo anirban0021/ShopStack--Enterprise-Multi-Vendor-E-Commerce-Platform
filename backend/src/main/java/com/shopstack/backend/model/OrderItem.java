@@ -19,6 +19,8 @@ public class OrderItem {
     @jakarta.persistence.Column(length = 1000)
     private String productName;
     private double price;
+    private Double originalPrice;
+    private Double discountPercentage = 0.0;
     private int quantity;
     private Long vendorId;
 
@@ -29,6 +31,19 @@ public class OrderItem {
         this.productId = productId;
         this.productName = productName;
         this.price = price;
+        this.originalPrice = price;
+        this.discountPercentage = 0.0;
+        this.quantity = quantity;
+        this.vendorId = vendorId;
+    }
+
+    public OrderItem(String orderId, Long productId, String productName, double price, Double originalPrice, Double discountPercentage, int quantity, Long vendorId) {
+        this.orderId = orderId;
+        this.productId = productId;
+        this.productName = productName;
+        this.price = price;
+        this.originalPrice = originalPrice != null ? originalPrice : price;
+        this.discountPercentage = discountPercentage != null ? discountPercentage : 0.0;
         this.quantity = quantity;
         this.vendorId = vendorId;
     }
@@ -47,6 +62,12 @@ public class OrderItem {
 
     public double getPrice() { return price; }
     public void setPrice(double price) { this.price = price; }
+
+    public Double getOriginalPrice() { return originalPrice != null ? originalPrice : price; }
+    public void setOriginalPrice(Double originalPrice) { this.originalPrice = originalPrice; }
+
+    public Double getDiscountPercentage() { return discountPercentage != null ? discountPercentage : 0.0; }
+    public void setDiscountPercentage(Double discountPercentage) { this.discountPercentage = discountPercentage; }
 
     public int getQuantity() { return quantity; }
     public void setQuantity(int quantity) { this.quantity = quantity; }

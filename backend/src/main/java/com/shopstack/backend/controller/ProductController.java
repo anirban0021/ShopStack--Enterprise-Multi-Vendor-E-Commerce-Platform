@@ -34,21 +34,29 @@ public class ProductController {
     @Autowired
     private ReviewRepository reviewRepository;
 
+    @Autowired
+    private com.shopstack.backend.repository.UserRepository userRepository;
+
     @jakarta.annotation.PostConstruct
-    public void cleanupSeedProducts() {
-        List<String> defaultProducts = List.of(
-            "Luxury Vanity Box", 
-            "Wireless Headphones", 
-            "Smart Watch Series 7", 
-            "Designer Gift Set", 
-            "Silver Anklets"
-        );
-        for (String name : defaultProducts) {
-            List<Product> products = productRepository.findByNameContainingIgnoreCaseOrCategoryContainingIgnoreCase(name, name);
-            for (Product p : products) {
-                if (p.getVendorId() == null && p.getName().equalsIgnoreCase(name)) {
-                    productRepository.delete(p);
-                }
+    public void initProducts() {
+        // Ensure all existing products have discountPercentage and finalPrice populated
+        List<Product> all = productRepository.findAll();
+        for (Product p : all) {
+            boolean changed = false;
+            if (p.getDiscountPercentage() == null) {
+                p.setDiscountPercentage(0.0);
+                changed = true;
+            }
+            if (p.getFinalPrice() == null || p.getFinalPrice() == 0.0) {
+                p.setFinalPrice(p.calculateFinalPrice());
+                changed = true;
+            }
+            if (p.getStatus() == null || "PENDING".equalsIgnoreCase(p.getStatus())) {
+                p.setStatus("APPROVED");
+                changed = true;
+            }
+            if (changed) {
+                productRepository.save(p);
             }
         }
     }
@@ -62,6 +70,16 @@ public class ProductController {
                 .collect(Collectors.toList());
     }
 
+    // Get product by id
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getProductById(@PathVariable Long id) {
+        Optional<Product> optional = productRepository.findById(id);
+        if (optional.isPresent()) {
+            return ResponseEntity.ok(populateRatings(optional.get()));
+        }
+        return ResponseEntity.notFound().build();
+    }
+
     // Search approved products
     @GetMapping("/search")
     public List<Product> searchProducts(@RequestParam String query) {
@@ -72,21 +90,30 @@ public class ProductController {
                 .collect(Collectors.toList());
     }
 
-    // Vendor: Add product (defaults to PENDING)
+    // Vendor: Add product (defaults to PENDING awaiting Admin approval)
     @PostMapping
     public ResponseEntity<?> addProduct(@RequestBody Product product) {
         if (product.getName() == null || product.getName().trim().isEmpty()) {
             return ResponseEntity.badRequest().body("Product name is required.");
         }
-        // If no status is specified, default to PENDING. If added by vendor, needs admin approval.
-        if (product.getStatus() == null) {
-            product.setStatus("PENDING");
+        if (product.getPrice() < 0) {
+            return ResponseEntity.badRequest().body("Price cannot be negative.");
         }
+        if (product.getDiscountPercentage() == null || product.getDiscountPercentage() < 0) {
+            product.setDiscountPercentage(0.0);
+        } else if (product.getDiscountPercentage() > 100) {
+            return ResponseEntity.badRequest().body("Discount percentage cannot exceed 100%.");
+        }
+        product.setFinalPrice(product.calculateFinalPrice());
+
+        // Always require admin approval for new products
+        product.setStatus("PENDING");
         Product saved = productRepository.save(product);
         return ResponseEntity.ok(saved);
     }
 
-    // Vendor: Update product price, stock, category, name
+    // Vendor: Update product price, discount, stock, category, name
+    // Whenever vendor updates product price or discount, status goes back to PENDING for Admin review
     @PutMapping("/{id}")
     public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody Product updated) {
         Optional<Product> optional = productRepository.findById(id);
@@ -95,12 +122,21 @@ public class ProductController {
             p.setName(updated.getName());
             p.setCategory(updated.getCategory());
             p.setPrice(updated.getPrice());
+            if (updated.getDiscountPercentage() != null) {
+                if (updated.getDiscountPercentage() < 0 || updated.getDiscountPercentage() > 100) {
+                    return ResponseEntity.badRequest().body("Discount percentage must be between 0% and 100%.");
+                }
+                p.setDiscountPercentage(updated.getDiscountPercentage());
+            } else {
+                p.setDiscountPercentage(0.0);
+            }
+            p.setFinalPrice(p.calculateFinalPrice());
             p.setStock(updated.getStock());
             p.setImageUrl(updated.getImageUrl());
             p.setBrand(updated.getBrand());
             p.setDescription(updated.getDescription());
             p.setImages(updated.getImages());
-            // Reset status to PENDING and clear rejectionReason upon vendor update/resubmission
+            // Changes to product pricing/discount require Admin re-approval
             p.setStatus("PENDING");
             p.setRejectionReason(null);
             Product saved = productRepository.save(p);
@@ -186,6 +222,12 @@ public class ProductController {
     }
 
     private Product populateRatings(Product p) {
+        if (p.getDiscountPercentage() == null) {
+            p.setDiscountPercentage(0.0);
+        }
+        if (p.getFinalPrice() == null) {
+            p.setFinalPrice(p.calculateFinalPrice());
+        }
         List<Review> reviews = reviewRepository.findByProductIdOrderByIdDesc(p.getId());
         if (reviews.isEmpty()) {
             p.setAverageRating(0.0);
@@ -198,6 +240,20 @@ public class ProductController {
             p.setAverageRating(Math.round((sum / reviews.size()) * 10.0) / 10.0);
             p.setReviewCount(reviews.size());
         }
+
+        // Populate Vendor Details
+        if (p.getVendorId() != null) {
+            Optional<com.shopstack.backend.model.User> vendorOpt = userRepository.findById(p.getVendorId());
+            if (vendorOpt.isPresent()) {
+                com.shopstack.backend.model.User v = vendorOpt.get();
+                p.setVendorName(v.getFullName());
+                p.setVendorEmail(v.getEmail());
+                p.setVendorPhone(v.getPhone());
+                p.setVendorCode(v.getVendorCode());
+                p.setVendorAddress(v.getAddress());
+            }
+        }
+
         return p;
     }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Check, X, ShieldAlert, AlertCircle, Bell } from 'lucide-react';
+import { Check, X, ShieldAlert, AlertCircle, Bell, Store, Mail, Phone, MapPin, User } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
 export default function AdminDashboard({ user, onGoToHome }) {
@@ -160,7 +160,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                             {prod.name}
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                            by Merchant (Vendor #{prod.vendorId || 'SYSTEM'})
+                            by <strong>{prod.vendorName || `Vendor #${prod.vendorId || 'SYSTEM'}`}</strong> {prod.vendorCode ? `(${prod.vendorCode})` : ''}
                           </div>
                         </div>
                       </div>
@@ -204,55 +204,103 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     <th style={{ width: '48px' }}>Icon</th>
                     <th>Product Name</th>
                     <th>Category</th>
-                    <th>Price</th>
-                    <th>Requested Stock</th>
-                    <th>Merchant (Vendor ID)</th>
+                    <th>Regular Price</th>
+                    <th>Discount</th>
+                    <th>Final Price</th>
+                    <th>Stock</th>
+                    <th>Merchant (Vendor Details)</th>
                     <th style={{ textAlign: 'center', width: '220px' }}>Approval Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingProducts.map((prod) => (
-                    <tr key={prod.id}>
-                      <td style={{ fontSize: '20px' }}>
-                        <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', overflow: 'hidden' }}>
-                          {prod.imageUrl && prod.imageUrl.length > 4 ? (
-                            <img src={prod.imageUrl} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {pendingProducts.map((prod) => {
+                    const disc = Number(prod.discountPercentage) || 0;
+                    const finalP = prod.finalPrice != null ? prod.finalPrice : (disc > 0 ? Math.round(prod.price * (1 - disc / 100) * 100) / 100 : prod.price);
+                    return (
+                      <tr key={prod.id}>
+                        <td style={{ fontSize: '20px' }}>
+                          <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', overflow: 'hidden' }}>
+                            {prod.imageUrl && prod.imageUrl.length > 4 ? (
+                              <img src={prod.imageUrl} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <ProductIcon name={prod.name} category={prod.category} size={16} />
+                            )}
+                          </div>
+                        </td>
+                        <td 
+                          className="clickable-product-name"
+                          style={{ fontWeight: '600' }}
+                          onClick={() => {
+                            setSelectedProduct(prod);
+                            setShowRejectionInput(false);
+                            setRejectionReason('');
+                            setShowReviewModal(true);
+                          }}
+                        >
+                          {prod.name}
+                        </td>
+                        <td>
+                          <span className="badge badge-customer">{prod.category}</span>
+                        </td>
+                        <td style={{ color: disc > 0 ? '#94a3b8' : 'inherit', textDecoration: disc > 0 ? 'line-through' : 'none' }}>
+                          ₹{Number(prod.price).toLocaleString('en-IN')}
+                        </td>
+                        <td>
+                          {disc > 0 ? (
+                            <span style={{ 
+                              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', 
+                              color: '#ffffff', 
+                              fontWeight: '800', 
+                              fontSize: '11px', 
+                              padding: '3px 8px', 
+                              borderRadius: '4px', 
+                              display: 'inline-block'
+                            }}>
+                              {disc}% OFF
+                            </span>
                           ) : (
-                            <ProductIcon name={prod.name} category={prod.category} size={16} />
+                            <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>None</span>
                           )}
-                        </div>
-                      </td>
-                      <td 
-                        className="clickable-product-name"
-                        style={{ fontWeight: '600' }}
-                        onClick={() => {
-                          setSelectedProduct(prod);
-                          setShowRejectionInput(false);
-                          setRejectionReason('');
-                          setShowReviewModal(true);
-                        }}
-                      >
-                        {prod.name}
-                      </td>
-                      <td>
-                        <span className="badge badge-customer">{prod.category}</span>
-                      </td>
-                      <td style={{ fontWeight: '700', color: 'var(--accent-blue)' }}>₹{prod.price}</td>
-                      <td>{prod.stock} units</td>
-                      <td>
-                        <span style={{ fontFamily: 'monospace', fontSize: '13px' }}>
-                          Vendor #{prod.vendorId || 'SYSTEM'}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                          <button 
-                            onClick={() => handleApprove(prod.id, prod.name)} 
-                            className="btn btn-success" 
-                            style={{ padding: '6px 14px', fontSize: '12px' }}
-                          >
-                            <Check size={14} /> Approve
-                          </button>
+                        </td>
+                        <td style={{ fontWeight: '800', color: 'var(--accent-teal)' }}>
+                          ₹{Number(finalP).toLocaleString('en-IN')}
+                        </td>
+                        <td>{prod.stock} units</td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <div style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Store size={14} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
+                              <span>{prod.vendorName || `Vendor #${prod.vendorId || 'SYSTEM'}`}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                              <span>ID: #{prod.vendorId || 'N/A'}</span>
+                              {prod.vendorCode && (
+                                <span className="badge badge-vendor" style={{ fontSize: '9px', padding: '1px 5px' }}>
+                                  Code: {prod.vendorCode}
+                                </span>
+                              )}
+                            </div>
+                            {prod.vendorEmail && (
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Mail size={11} style={{ opacity: 0.7 }} /> {prod.vendorEmail}
+                              </div>
+                            )}
+                            {prod.vendorPhone && (
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Phone size={11} style={{ opacity: 0.7 }} /> {prod.vendorPhone}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                            <button 
+                              onClick={() => handleApprove(prod.id, prod.name)} 
+                              className="btn btn-success" 
+                              style={{ padding: '6px 14px', fontSize: '12px' }}
+                            >
+                              <Check size={14} /> Approve
+                            </button>
                           <button 
                             onClick={() => {
                               setSelectedProduct(prod);
@@ -268,7 +316,8 @@ export default function AdminDashboard({ user, onGoToHome }) {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -303,16 +352,83 @@ export default function AdminDashboard({ user, onGoToHome }) {
                   <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>Brand: <strong style={{ color: 'var(--text-primary)' }}>{selectedProduct.brand || 'N/A'}</strong></p>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <span className="badge badge-customer">{selectedProduct.category}</span>
-                    <span className="badge badge-vendor" style={{ textTransform: 'none' }}>Vendor #{selectedProduct.vendorId || 'SYSTEM'}</span>
+                    <span className="badge badge-vendor" style={{ textTransform: 'none' }}>
+                      Vendor #{selectedProduct.vendorId || 'SYSTEM'} {selectedProduct.vendorName ? `(${selectedProduct.vendorName})` : ''}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Price and Stock */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', background: 'var(--bg-input)', padding: '12px 16px', borderRadius: '8px' }}>
+              {/* Vendor / Merchant Details Section */}
+              <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <Store size={18} style={{ color: 'var(--accent-blue)' }} />
+                  <h4 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-primary)', margin: 0 }}>
+                    Merchant / Vendor Details
+                  </h4>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Vendor Name</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{selectedProduct.vendorName || `Vendor #${selectedProduct.vendorId || 'SYSTEM'}`}</strong>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Vendor ID & Code</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>#{selectedProduct.vendorId || 'N/A'}</span>
+                      {selectedProduct.vendorCode && (
+                        <span className="badge badge-vendor" style={{ fontSize: '10px', padding: '1px 6px' }}>
+                          Code: {selectedProduct.vendorCode}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Email Address</span>
+                    <span style={{ color: selectedProduct.vendorEmail ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      {selectedProduct.vendorEmail || 'Not available'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Phone Number</span>
+                    <span style={{ color: selectedProduct.vendorPhone ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      {selectedProduct.vendorPhone || 'Not available'}
+                    </span>
+                  </div>
+
+                  {selectedProduct.vendorAddress && (
+                    <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border-light)', paddingTop: '8px', marginTop: '4px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Registered Business Address</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>{selectedProduct.vendorAddress}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Price, Discount and Stock */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', background: 'var(--bg-input)', padding: '12px 16px', borderRadius: '8px' }}>
                 <div>
-                  <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Proposed Price</span>
-                  <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--accent-blue)' }}>₹{selectedProduct.price}</span>
+                  <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Regular Price</span>
+                  <span style={{ fontSize: '16px', fontWeight: '700', color: selectedProduct.discountPercentage > 0 ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: selectedProduct.discountPercentage > 0 ? 'line-through' : 'none' }}>
+                    ₹{Number(selectedProduct.price).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Discount & Final</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--accent-teal)' }}>
+                      ₹{Number(selectedProduct.finalPrice || (selectedProduct.discountPercentage > 0 ? Math.round(selectedProduct.price * (1 - selectedProduct.discountPercentage/100)*100)/100 : selectedProduct.price)).toLocaleString('en-IN')}
+                    </span>
+                    {selectedProduct.discountPercentage > 0 && (
+                      <span className="badge badge-approved" style={{ fontSize: '10px', padding: '2px 4px' }}>
+                        {selectedProduct.discountPercentage}% OFF
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Initial Stock</span>

@@ -35,6 +35,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
     brand: '',
     description: '',
     price: '',
+    discountPercentage: 0,
     stock: '',
     imageUrl: '📦',
     images: [],
@@ -92,6 +93,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       brand: '',
       description: '',
       price: '',
+      discountPercentage: 0,
       stock: '10',
       imageUrl: '📦',
       images: [],
@@ -111,6 +113,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       brand: prod.brand || '',
       description: prod.description || '',
       price: prod.price,
+      discountPercentage: prod.discountPercentage != null ? prod.discountPercentage : 0,
       stock: prod.stock,
       imageUrl: prod.imageUrl || '📦',
       images: prod.images || [],
@@ -197,18 +200,18 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
     const payload = {
       ...productForm,
       price: parseFloat(productForm.price),
+      discountPercentage: Math.max(0, Math.min(100, parseFloat(productForm.discountPercentage) || 0)),
       stock: parseInt(productForm.stock),
-      // Automatically pend approval for edits or new entries to make workflow functional
-      status: 'PENDING' 
+      status: 'PENDING'
     };
 
     try {
       if (modalMode === 'add') {
         await axios.post('http://localhost:8080/api/products', payload);
-        showFlash('success', 'Product listed successfully! Awaiting Admin Approval.');
+        showFlash('success', 'Product listed! Status is PENDING awaiting Admin Approval.');
       } else {
         await axios.put(`http://localhost:8080/api/products/${productForm.id}`, payload);
-        showFlash('success', 'Product details updated! Resubmitted for Admin Approval.');
+        showFlash('success', 'Product & discount updated! Status is now PENDING awaiting Admin Approval.');
       }
       setShowProductModal(false);
       fetchProducts();
@@ -406,14 +409,20 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                         <th style={{ width: '48px' }}>Icon</th>
                         <th>Name</th>
                         <th>Category</th>
-                        <th>Price</th>
+                        <th>Regular Price</th>
+                        <th>Discount</th>
+                        <th>Final Price</th>
                         <th>Stock</th>
                         <th>Approval Status</th>
                         <th style={{ textAlign: 'center', width: '120px' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {products.map((prod) => (
+                      {products.map((prod) => {
+                        const disc = Number(prod.discountPercentage) || 0;
+                        const finalP = prod.finalPrice != null ? prod.finalPrice : (disc > 0 ? Math.round(prod.price * (1 - disc / 100) * 100) / 100 : prod.price);
+                        const savings = Math.max(0, Math.round((prod.price - finalP) * 100) / 100);
+                        return (
                         <tr key={prod.id}>
                           <td style={{ fontSize: '20px' }}>
                             <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', overflow: 'hidden' }}>
@@ -428,7 +437,47 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                           <td>
                             <span className="badge badge-customer">{prod.category}</span>
                           </td>
-                          <td style={{ fontWeight: '700' }}>₹{prod.price}</td>
+                          <td>
+                            {disc > 0 ? (
+                              <span style={{ fontSize: '13px', fontWeight: '600', textDecoration: 'line-through', color: '#94a3b8', textDecorationColor: '#ef4444', textDecorationThickness: '1.5px' }}>
+                                ₹{Number(prod.price).toLocaleString('en-IN')}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '14px', fontWeight: '700' }}>
+                                ₹{Number(prod.price).toLocaleString('en-IN')}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {disc > 0 ? (
+                              <span style={{ 
+                                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', 
+                                color: '#ffffff', 
+                                fontWeight: '800', 
+                                fontSize: '11px', 
+                                padding: '3px 8px', 
+                                borderRadius: '4px',
+                                boxShadow: '0 2px 6px rgba(239, 68, 68, 0.4)',
+                                display: 'inline-block'
+                              }}>
+                                {disc}% OFF
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>0% (No discount)</span>
+                            )}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontWeight: '900', fontSize: '15px', color: 'var(--text-primary)' }}>
+                                ₹{Number(finalP).toLocaleString('en-IN')}
+                              </span>
+                              {disc > 0 && (
+                                <span style={{ fontSize: '11px', color: '#10b981', fontWeight: '700' }}>
+                                  Save ₹{Number(savings).toLocaleString('en-IN')}
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <button 
@@ -469,9 +518,15 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                              <span className={`badge ${
                                prod.status === 'APPROVED' ? 'badge-approved' : 
                                prod.status === 'REJECTED' ? 'badge-rejected' : 'badge-pending'
-                             }`}>
-                               {prod.status}
+                             }`} style={{ fontWeight: '700' }}>
+                               {prod.status === 'APPROVED' ? 'APPROVED' : 
+                                prod.status === 'REJECTED' ? 'REJECTED' : 'PENDING APPROVAL'}
                              </span>
+                             {prod.status === 'PENDING' && (
+                               <div style={{ fontSize: '10px', color: 'var(--accent-amber)', marginTop: '4px', fontWeight: '600' }}>
+                                 Awaiting Admin Approval
+                               </div>
+                             )}
                              {prod.status === 'REJECTED' && prod.rejectionReason && (
                                <div style={{ fontSize: '11px', color: 'var(--accent-rose)', marginTop: '4px', maxWidth: '180px', lineBreak: 'anywhere' }}>
                                  <strong>Reason:</strong> {prod.rejectionReason}
@@ -499,7 +554,8 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -661,9 +717,9 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '16px' }}>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Price (₹)</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div className="form-group">
+                  <label className="form-label">Price (MRP ₹)</label>
                   <input 
                     type="number" 
                     value={productForm.price} 
@@ -675,7 +731,20 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                     required
                   />
                 </div>
-                <div className="form-group" style={{ flex: 1 }}>
+                <div className="form-group">
+                  <label className="form-label">Discount (%)</label>
+                  <input 
+                    type="number" 
+                    value={productForm.discountPercentage} 
+                    onChange={(e) => setProductForm({...productForm, discountPercentage: e.target.value})} 
+                    placeholder="0"
+                    className="form-input" 
+                    min="0"
+                    max="99"
+                    step="1"
+                  />
+                </div>
+                <div className="form-group">
                   <label className="form-label">Initial Stock</label>
                   <input 
                     type="number" 
@@ -688,6 +757,70 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                   />
                 </div>
               </div>
+
+              {/* Real-time System Calculates Final Price Preview */}
+              {(() => {
+                const p = parseFloat(productForm.price) || 0;
+                const d = Math.max(0, Math.min(99, parseFloat(productForm.discountPercentage) || 0));
+                const finalCalculated = d > 0 ? Math.round(p * (1 - d / 100) * 100) / 100 : p;
+                const savings = Math.max(0, Math.round((p - finalCalculated) * 100) / 100);
+
+                return (
+                  <div style={{
+                    background: 'rgba(20, 184, 166, 0.08)',
+                    border: '1.5px solid rgba(20, 184, 166, 0.35)',
+                    borderRadius: '10px',
+                    padding: '14px 18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '10px'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', fontWeight: '800' }}>
+                        ⚡ System Calculated Final Selling Price
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginTop: '4px' }}>
+                        <span style={{ fontSize: '24px', fontWeight: '900', color: 'var(--text-primary)' }}>
+                          ₹{finalCalculated.toLocaleString('en-IN')}
+                        </span>
+                        {d > 0 && p > 0 && (
+                          <>
+                            <span style={{ fontSize: '14px', fontWeight: '600', textDecoration: 'line-through', color: '#94a3b8', textDecorationColor: '#ef4444', textDecorationThickness: '1.5px' }}>
+                              ₹{p.toLocaleString('en-IN')}
+                            </span>
+                            <span style={{ 
+                              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', 
+                              color: '#ffffff', 
+                              fontWeight: '800', 
+                              fontSize: '11px', 
+                              padding: '2px 8px', 
+                              borderRadius: '4px',
+                              boxShadow: '0 2px 6px rgba(239, 68, 68, 0.4)'
+                            }}>
+                              {d}% OFF
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {d > 0 && p > 0 && (
+                      <div style={{ 
+                        background: 'rgba(16, 185, 129, 0.16)', 
+                        border: '1px solid rgba(16, 185, 129, 0.4)', 
+                        padding: '6px 12px', 
+                        borderRadius: '6px', 
+                        fontSize: '13px', 
+                        fontWeight: '700',
+                        color: '#10b981' 
+                      }}>
+                        Customer Saves: <strong>₹{savings.toLocaleString('en-IN')}</strong>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="form-group" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
                 <label className="form-label" style={{ fontWeight: '700' }}>Product Images & Gallery</label>

@@ -33,6 +33,9 @@ public class Product {
     @jakarta.persistence.Column(columnDefinition = "TEXT")
     private String description;
 
+    private Double discountPercentage = 0.0;
+    private Double finalPrice;
+
     @jakarta.persistence.ElementCollection
     @jakarta.persistence.CollectionTable(name = "product_images", joinColumns = @jakarta.persistence.JoinColumn(name = "product_id"))
     @jakarta.persistence.Column(name = "image_url", columnDefinition = "TEXT")
@@ -49,6 +52,8 @@ public class Product {
         this.stock = 10;
         this.status = "APPROVED";
         this.rejectionReason = null;
+        this.discountPercentage = 0.0;
+        this.finalPrice = calculateFinalPrice();
     }
 
     public Product(String name, String category, double price, String imageUrl, Long vendorId, Integer stock, String status) {
@@ -60,6 +65,25 @@ public class Product {
         this.stock = stock != null ? stock : 10;
         this.status = status != null ? status : "PENDING";
         this.rejectionReason = null;
+        this.discountPercentage = 0.0;
+        this.finalPrice = calculateFinalPrice();
+    }
+
+    public double calculateFinalPrice() {
+        if (discountPercentage != null && discountPercentage > 0) {
+            double discounted = price * (1.0 - (discountPercentage / 100.0));
+            return Math.round(discounted * 100.0) / 100.0;
+        }
+        return Math.round(price * 100.0) / 100.0;
+    }
+
+    @jakarta.persistence.PrePersist
+    @jakarta.persistence.PreUpdate
+    public void prePersistOrUpdate() {
+        if (discountPercentage == null || discountPercentage < 0) {
+            discountPercentage = 0.0;
+        }
+        this.finalPrice = calculateFinalPrice();
     }
 
     public Long getId() { return id; }
@@ -69,7 +93,10 @@ public class Product {
     public String getCategory() { return category; }
     public void setCategory(String category) { this.category = category; }
     public double getPrice() { return price; }
-    public void setPrice(double price) { this.price = price; }
+    public void setPrice(double price) { 
+        this.price = price; 
+        this.finalPrice = calculateFinalPrice();
+    }
     public String getImageUrl() { return imageUrl; }
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
     public Long getVendorId() { return vendorId; }
@@ -84,6 +111,18 @@ public class Product {
     public void setBrand(String brand) { this.brand = brand; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public Double getDiscountPercentage() { return discountPercentage != null ? discountPercentage : 0.0; }
+    public void setDiscountPercentage(Double discountPercentage) { 
+        this.discountPercentage = discountPercentage != null ? discountPercentage : 0.0;
+        this.finalPrice = calculateFinalPrice();
+    }
+    public Double getFinalPrice() { 
+        if (finalPrice == null) {
+            return calculateFinalPrice();
+        }
+        return finalPrice; 
+    }
+    public void setFinalPrice(Double finalPrice) { this.finalPrice = finalPrice; }
     public List<String> getImages() { return images; }
     public void setImages(List<String> images) { this.images = images; }
 
@@ -93,8 +132,34 @@ public class Product {
     @jakarta.persistence.Transient
     private Integer reviewCount;
 
+    @jakarta.persistence.Transient
+    private String vendorName;
+
+    @jakarta.persistence.Transient
+    private String vendorEmail;
+
+    @jakarta.persistence.Transient
+    private String vendorPhone;
+
+    @jakarta.persistence.Transient
+    private String vendorCode;
+
+    @jakarta.persistence.Transient
+    private String vendorAddress;
+
     public Double getAverageRating() { return averageRating; }
     public void setAverageRating(Double averageRating) { this.averageRating = averageRating; }
     public Integer getReviewCount() { return reviewCount; }
     public void setReviewCount(Integer reviewCount) { this.reviewCount = reviewCount; }
+
+    public String getVendorName() { return vendorName; }
+    public void setVendorName(String vendorName) { this.vendorName = vendorName; }
+    public String getVendorEmail() { return vendorEmail; }
+    public void setVendorEmail(String vendorEmail) { this.vendorEmail = vendorEmail; }
+    public String getVendorPhone() { return vendorPhone; }
+    public void setVendorPhone(String vendorPhone) { this.vendorPhone = vendorPhone; }
+    public String getVendorCode() { return vendorCode; }
+    public void setVendorCode(String vendorCode) { this.vendorCode = vendorCode; }
+    public String getVendorAddress() { return vendorAddress; }
+    public void setVendorAddress(String vendorAddress) { this.vendorAddress = vendorAddress; }
 }
