@@ -48,32 +48,68 @@ export default function CustomerDashboard({
   const [addressModalMode, setAddressModalMode] = useState('add'); // 'add' | 'edit'
   const [showCustomAddressInput, setShowCustomAddressInput] = useState(false);
   const [selectedCartItemIds, setSelectedCartItemIds] = useState([]);
+  const [products, setProducts] = useState([]);
 
-  // Auto-select all items in cart initially or when items are added
+  const fetchProducts = async () => {
+    try {
+      const res = await axios.get('http://localhost:8080/api/products');
+      if (Array.isArray(res.data)) {
+        setProducts(res.data);
+      }
+    } catch (err) {
+      console.error("Failed to load products in CustomerDashboard", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  // Auto-select valid in-stock items in cart initially or when items/products change
   useEffect(() => {
     if (Array.isArray(cart)) {
+      const inStockIds = cart.filter(item => {
+        const liveProd = products.find(p => p.id === item.id);
+        const stock = liveProd != null ? liveProd.stock : (item.stock ?? 0);
+        return stock > 0;
+      }).map(i => i.id);
+
       setSelectedCartItemIds(prev => {
-        const cartIds = cart.map(i => i.id);
-        if (prev.length === 0 && cartIds.length > 0) return cartIds;
-        const validPrev = prev.filter(id => cartIds.includes(id));
-        const newIds = cartIds.filter(id => !prev.includes(id));
+        if (prev.length === 0 && inStockIds.length > 0) return inStockIds;
+        const validPrev = prev.filter(id => inStockIds.includes(id));
+        const newIds = inStockIds.filter(id => !prev.includes(id));
         const merged = Array.from(new Set([...validPrev, ...newIds]));
-        return merged.length > 0 ? merged : cartIds;
+        return merged;
       });
     }
-  }, [cart]);
+  }, [cart, products]);
 
-  const isAllSelected = Array.isArray(cart) && cart.length > 0 && selectedCartItemIds.length === cart.length;
+  const inStockCartItems = (Array.isArray(cart) ? cart : []).filter(item => {
+    const liveProd = products.find(p => p.id === item.id);
+    const stock = liveProd != null ? liveProd.stock : (item.stock ?? 0);
+    return stock > 0;
+  });
+
+  const isAllSelected = inStockCartItems.length > 0 && inStockCartItems.every(i => selectedCartItemIds.includes(i.id));
 
   const toggleSelectAll = () => {
     if (isAllSelected) {
       setSelectedCartItemIds([]);
     } else {
-      setSelectedCartItemIds((Array.isArray(cart) ? cart : []).map(i => i.id));
+      setSelectedCartItemIds(inStockCartItems.map(i => i.id));
     }
   };
 
   const toggleSelectItem = (productId) => {
+    const liveProd = products.find(p => p.id === productId);
+    const itemInCart = (Array.isArray(cart) ? cart : []).find(i => i.id === productId);
+    const stock = liveProd != null ? liveProd.stock : (itemInCart?.stock ?? 0);
+    
+    if (stock <= 0) {
+      showToast('error', 'Item Out of Stock', "This product is currently out of stock and cannot be selected for purchase.");
+      return;
+    }
+
     setSelectedCartItemIds(prev => 
       prev.includes(productId) 
         ? prev.filter(id => id !== productId)
@@ -248,7 +284,25 @@ export default function CustomerDashboard({
 
   const handleStartCheckout = () => {
     if (selectedCartItems.length === 0) {
-      showToast('error', 'Cart Selection', 'Please select at least 1 item from your cart to proceed to checkout.');
+      showToast('error', 'Cart Selection', 'Please select at least 1 in-stock item from your cart to proceed to checkout.');
+      return;
+    }
+
+    // Check if any selected item is out of stock or exceeds inventory
+    const outOfStockItem = selectedCartItems.find(item => {
+      const liveProd = products.find(p => p.id === item.id);
+      const stock = liveProd != null ? liveProd.stock : (item.stock ?? 0);
+      return stock <= 0 || item.quantity > stock;
+    });
+
+    if (outOfStockItem) {
+      const liveProd = products.find(p => p.id === outOfStockItem.id);
+      const stock = liveProd != null ? liveProd.stock : (outOfStockItem.stock ?? 0);
+      if (stock <= 0) {
+        showToast('error', 'Out of Stock', `Cannot proceed to checkout: "${outOfStockItem.name}" is currently out of stock. Please remove it from your selection.`);
+      } else {
+        showToast('error', 'Insufficient Stock', `Cannot proceed to checkout: "${outOfStockItem.name}" only has ${stock} units available.`);
+      }
       return;
     }
     
@@ -987,14 +1041,15 @@ export default function CustomerDashboard({
                       borderRadius: '10px',
                       border: '1px solid var(--border-light)'
                     }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: '600', fontSize: '13px', userSelect: 'none' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: inStockCartItems.length > 0 ? 'pointer' : 'not-allowed', fontWeight: '600', fontSize: '13px', userSelect: 'none', opacity: inStockCartItems.length > 0 ? 1 : 0.6 }}>
                         <input 
                           type="checkbox" 
                           checked={isAllSelected} 
+                          disabled={inStockCartItems.length === 0}
                           onChange={toggleSelectAll} 
-                          style={{ width: '18px', height: '18px', accentColor: 'var(--accent-teal)', cursor: 'pointer' }}
+                          style={{ width: '18px', height: '18px', accentColor: 'var(--accent-teal)', cursor: inStockCartItems.length > 0 ? 'pointer' : 'not-allowed' }}
                         />
-                        <span>Select All ({cart.length} items)</span>
+                        <span>Select All In-Stock ({inStockCartItems.length}/{cart.length})</span>
                       </label>
                       <span style={{ fontSize: '12px', color: selectedCartItems.length > 0 ? 'var(--accent-teal)' : 'var(--text-muted)', fontWeight: '700' }}>
                         {selectedCartItems.length} selected for checkout
@@ -1002,21 +1057,26 @@ export default function CustomerDashboard({
                     </div>
 
                     {cart.map((item) => {
+                      const liveProduct = products.find(p => p.id === item.id);
+                      const currentStock = liveProduct != null ? liveProduct.stock : (item.stock ?? 0);
+                      const isOutOfStock = currentStock <= 0;
+                      const isExceedingStock = !isOutOfStock && item.quantity > currentStock;
                       const hasDiscount = item.originalPrice && item.originalPrice > item.price;
-                      const isItemSelected = selectedCartItemIds.includes(item.id);
+                      const isItemSelected = selectedCartItemIds.includes(item.id) && !isOutOfStock;
+
                       return (
                         <div 
                           key={item.id} 
                           className="cart-item" 
                           style={{ 
-                            background: 'var(--bg-input)', 
+                            background: isOutOfStock ? 'rgba(239, 68, 68, 0.04)' : 'var(--bg-input)', 
                             padding: '16px', 
                             borderRadius: '10px', 
                             display: 'flex', 
                             justifyContent: 'space-between', 
                             alignItems: 'center',
-                            opacity: isItemSelected ? 1 : 0.65,
-                            border: isItemSelected ? '1px solid var(--border-light)' : '1px dashed var(--border-light)',
+                            opacity: isOutOfStock ? 0.65 : (isItemSelected ? 1 : 0.65),
+                            border: isOutOfStock ? '1px dashed rgba(239, 68, 68, 0.35)' : (isItemSelected ? '1px solid var(--border-light)' : '1px dashed var(--border-light)'),
                             transition: 'all 0.2s ease'
                           }}
                         >
@@ -1025,23 +1085,49 @@ export default function CustomerDashboard({
                             <input 
                               type="checkbox" 
                               checked={isItemSelected} 
+                              disabled={isOutOfStock}
                               onChange={() => toggleSelectItem(item.id)}
-                              style={{ width: '18px', height: '18px', accentColor: 'var(--accent-teal)', cursor: 'pointer', flexShrink: 0 }}
-                              title={isItemSelected ? "Deselect item" : "Select item for purchase"}
+                              style={{ width: '18px', height: '18px', accentColor: 'var(--accent-teal)', cursor: isOutOfStock ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+                              title={isOutOfStock ? "Out of stock - cannot be selected" : (isItemSelected ? "Deselect item" : "Select item for purchase")}
                             />
 
-                            <div style={{ width: '44px', height: '44px', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <div style={{ width: '48px', height: '48px', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               {item.imageUrl && item.imageUrl.length > 4 ? (
-                                <img src={item.imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                <img src={item.imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: isOutOfStock ? 'grayscale(0.7)' : 'none' }} />
                               ) : (
                                 <ProductIcon name={item.name} category={item.category} size={20} />
                               )}
                             </div>
                             <div>
-                              <h4 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: '600' }}>{item.name}</h4>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <h4 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: '700', color: isOutOfStock ? 'var(--text-muted)' : 'var(--text-primary)' }}>{item.name}</h4>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <span className="badge badge-customer" style={{ fontSize: '11px' }}>{item.category}</span>
-                                {hasDiscount && (
+                                
+                                {isOutOfStock ? (
+                                  <span style={{ 
+                                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.25))', 
+                                    color: '#ef4444', 
+                                    fontWeight: '800', 
+                                    fontSize: '11px', 
+                                    padding: '2px 8px', 
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(239, 68, 68, 0.35)'
+                                  }}>
+                                    🚫 OUT OF STOCK
+                                  </span>
+                                ) : isExceedingStock ? (
+                                  <span style={{ 
+                                    background: 'rgba(245, 158, 11, 0.15)', 
+                                    color: '#f59e0b', 
+                                    fontWeight: '700', 
+                                    fontSize: '11px', 
+                                    padding: '2px 7px', 
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(245, 158, 11, 0.35)'
+                                  }}>
+                                    ⚠️ Only {currentStock} in stock (in cart: {item.quantity})
+                                  </span>
+                                ) : hasDiscount ? (
                                   <span style={{ 
                                     background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', 
                                     color: '#ffffff', 
@@ -1053,7 +1139,7 @@ export default function CustomerDashboard({
                                   }}>
                                     {item.discountPercentage}% OFF
                                   </span>
-                                )}
+                                ) : null}
                               </div>
                             </div>
                           </div>
@@ -1063,25 +1149,32 @@ export default function CustomerDashboard({
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <button 
                                 type="button" 
-                                onClick={() => updateCartQuantity(item.id, -1, item.stock)} 
+                                onClick={() => updateCartQuantity(item.id, -1, currentStock)} 
                                 className="btn-icon-only"
                                 style={{ padding: '3px' }}
+                                title="Decrease quantity"
                               >
                                 <Minus size={12} />
                               </button>
-                              <strong style={{ fontSize: '13px', minWidth: '16px', textAlign: 'center' }}>{item.quantity}</strong>
+                              <strong style={{ fontSize: '13px', minWidth: '16px', textAlign: 'center', color: isOutOfStock ? 'var(--accent-rose)' : 'inherit' }}>{item.quantity}</strong>
                               <button 
                                 type="button" 
-                                onClick={() => updateCartQuantity(item.id, 1, item.stock)} 
+                                onClick={() => updateCartQuantity(item.id, 1, currentStock)} 
+                                disabled={isOutOfStock || item.quantity >= currentStock}
                                 className="btn-icon-only"
-                                style={{ padding: '3px' }}
+                                style={{ 
+                                  padding: '3px',
+                                  opacity: (isOutOfStock || item.quantity >= currentStock) ? 0.35 : 1,
+                                  cursor: (isOutOfStock || item.quantity >= currentStock) ? 'not-allowed' : 'pointer'
+                                }}
+                                title={isOutOfStock ? "Product is out of stock" : (item.quantity >= currentStock ? "Reached maximum available stock" : "Increase quantity")}
                               >
                                 <Plus size={12} />
                               </button>
                             </div>
 
                             <div style={{ textAlign: 'right', minWidth: '95px' }}>
-                              <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)' }}>
+                              <div style={{ fontSize: '16px', fontWeight: '800', color: isOutOfStock ? 'var(--text-muted)' : 'var(--text-primary)' }}>
                                 ₹{(item.price * item.quantity).toLocaleString('en-IN')}
                               </div>
                               {hasDiscount && (
@@ -1096,6 +1189,7 @@ export default function CustomerDashboard({
                               onClick={() => removeFromCart(item.id)} 
                               className="btn-icon-only" 
                               style={{ color: 'var(--accent-rose)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                              title="Remove item from cart"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -1105,105 +1199,148 @@ export default function CustomerDashboard({
                     })}
                   </div>
 
-                  <div style={{ flex: 1, background: 'var(--bg-input)', padding: '24px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <h3 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 8px 0' }}>Order Price Summary</h3>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                      <div className="flex-between">
-                        <span>Total MRP ({selectedCartItems.length} selected)</span>
-                        <span>₹{calculateOriginalSubtotal().toLocaleString('en-IN')}</span>
-                      </div>
-                      {calculateDiscountSavings() > 0 && (
-                        <div className="flex-between" style={{ color: 'var(--accent-teal)' }}>
-                          <span style={{ fontWeight: '600' }}>Discount Savings</span>
-                          <strong style={{ fontWeight: '700' }}>-₹{calculateDiscountSavings().toLocaleString('en-IN')}</strong>
+                  {(() => {
+                    const hasOutOfStockInCart = cart.some(item => {
+                      const liveProd = products.find(p => p.id === item.id);
+                      const stock = liveProd != null ? liveProd.stock : (item.stock ?? 0);
+                      return stock <= 0;
+                    });
+
+                    const selectedOutOfStockItems = selectedCartItems.filter(item => {
+                      const liveProd = products.find(p => p.id === item.id);
+                      const stock = liveProd != null ? liveProd.stock : (item.stock ?? 0);
+                      return stock <= 0 || item.quantity > stock;
+                    });
+
+                    const hasInvalidSelection = selectedOutOfStockItems.length > 0;
+                    const canProceed = selectedCartItems.length > 0 && !hasInvalidSelection;
+
+                    return (
+                      <div style={{ flex: 1, background: 'var(--bg-input)', padding: '24px', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 8px 0' }}>Order Price Summary</h3>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                          <div className="flex-between">
+                            <span>Total MRP ({selectedCartItems.length} selected)</span>
+                            <span>₹{calculateOriginalSubtotal().toLocaleString('en-IN')}</span>
+                          </div>
+                          {calculateDiscountSavings() > 0 && (
+                            <div className="flex-between" style={{ color: 'var(--accent-teal)' }}>
+                              <span style={{ fontWeight: '600' }}>Discount Savings</span>
+                              <strong style={{ fontWeight: '700' }}>-₹{calculateDiscountSavings().toLocaleString('en-IN')}</strong>
+                            </div>
+                          )}
+                          <div className="flex-between">
+                            <span>Items Subtotal</span>
+                            <span>₹{calculateSubtotal().toLocaleString('en-IN')}</span>
+                          </div>
+                          <div className="flex-between">
+                            <span>Delivery Charges</span>
+                            {calculateDeliveryFee() === 0 ? (
+                              <span style={{ color: '#10b981', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span>FREE</span>
+                                <span style={{ fontSize: '11px', textDecoration: 'line-through', color: 'var(--text-muted)' }}>₹99</span>
+                              </span>
+                            ) : (
+                              <strong style={{ color: 'var(--text-primary)' }}>₹99</strong>
+                            )}
+                          </div>
+
+                          {/* Delivery notification indicator */}
+                          {calculateSubtotal() > 0 && calculateSubtotal() < 500 && (
+                            <div style={{ 
+                              background: 'rgba(245, 158, 11, 0.12)', 
+                              border: '1px solid rgba(245, 158, 11, 0.3)', 
+                              borderRadius: '6px', 
+                              padding: '6px 10px', 
+                              fontSize: '11px', 
+                              color: '#f59e0b', 
+                              fontWeight: '600',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}>
+                              <span>🚚</span> Add ₹{(500 - calculateSubtotal()).toLocaleString('en-IN')} more for <strong>FREE Delivery</strong>!
+                            </div>
+                          )}
+                          {/* Total Savings banner */}
+                          {calculateTotalSavings() > 0 && (
+                            <div style={{ 
+                              background: 'rgba(16, 185, 129, 0.12)', 
+                              border: '1px solid rgba(16, 185, 129, 0.35)', 
+                              borderRadius: '8px', 
+                              padding: '10px 14px', 
+                              fontSize: '13px', 
+                              color: '#10b981', 
+                              fontWeight: '700', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'space-between'
+                            }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span>💰</span> Total Savings
+                              </span>
+                              <strong style={{ fontSize: '15px', color: '#10b981', fontWeight: '800' }}>
+                                ₹{calculateTotalSavings().toLocaleString('en-IN')}
+                              </strong>
+                            </div>
+                          )}
+
+                          <div className="flex-between" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '10px', fontSize: '17px', color: 'var(--text-primary)' }}>
+                            <span style={{ fontWeight: '700' }}>Total Amount</span>
+                            <strong style={{ color: 'var(--accent-teal)', fontSize: '18px', fontWeight: '800' }}>
+                              ₹{calculateTotal().toLocaleString('en-IN')}
+                            </strong>
+                          </div>
                         </div>
-                      )}
-                      <div className="flex-between">
-                        <span>Items Subtotal</span>
-                        <span>₹{calculateSubtotal().toLocaleString('en-IN')}</span>
-                      </div>
-                      <div className="flex-between">
-                        <span>Delivery Charges</span>
-                        {calculateDeliveryFee() === 0 ? (
-                          <span style={{ color: '#10b981', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span>FREE</span>
-                            <span style={{ fontSize: '11px', textDecoration: 'line-through', color: 'var(--text-muted)' }}>₹99</span>
-                          </span>
-                        ) : (
-                          <strong style={{ color: 'var(--text-primary)' }}>₹99</strong>
+
+                        {/* Out of Stock Notice */}
+                        {hasOutOfStockInCart && (
+                          <div style={{
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.35)',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
+                            color: '#ef4444',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}>
+                            <span>🚫</span>
+                            <span>Out-of-stock items in cart cannot be checked out. Please remove or uncheck them.</span>
+                          </div>
                         )}
+
+                        <button 
+                          type="button" 
+                          onClick={handleStartCheckout} 
+                          disabled={!canProceed}
+                          className="btn btn-success btn-block" 
+                          style={{ 
+                            marginTop: '12px', 
+                            padding: '12px', 
+                            fontSize: '15px', 
+                            fontWeight: '700', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            gap: '8px',
+                            opacity: !canProceed ? 0.5 : 1,
+                            cursor: !canProceed ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {selectedCartItems.length === 0 
+                            ? "Select items to checkout" 
+                            : hasInvalidSelection
+                              ? "Cannot Checkout (Out of Stock items selected)"
+                              : `Proceed to Checkout (${selectedCartItems.length} item${selectedCartItems.length === 1 ? '' : 's'})`} 
+                          <ArrowRight size={18} />
+                        </button>
                       </div>
-
-                      {/* Delivery notification indicator */}
-                      {calculateSubtotal() > 0 && calculateSubtotal() < 500 && (
-                        <div style={{ 
-                          background: 'rgba(245, 158, 11, 0.12)', 
-                          border: '1px solid rgba(245, 158, 11, 0.3)', 
-                          borderRadius: '6px', 
-                          padding: '6px 10px', 
-                          fontSize: '11px', 
-                          color: '#f59e0b', 
-                          fontWeight: '600',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}>
-                          <span>🚚</span> Add ₹{(500 - calculateSubtotal()).toLocaleString('en-IN')} more for <strong>FREE Delivery</strong>!
-                        </div>
-                      )}
-                      {/* Total Savings banner */}
-                      {calculateTotalSavings() > 0 && (
-                        <div style={{ 
-                          background: 'rgba(16, 185, 129, 0.12)', 
-                          border: '1px solid rgba(16, 185, 129, 0.35)', 
-                          borderRadius: '8px', 
-                          padding: '10px 14px', 
-                          fontSize: '13px', 
-                          color: '#10b981', 
-                          fontWeight: '700',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between'
-                        }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span>💰</span> Total Savings
-                          </span>
-                          <strong style={{ fontSize: '15px', color: '#10b981', fontWeight: '800' }}>
-                            ₹{calculateTotalSavings().toLocaleString('en-IN')}
-                          </strong>
-                        </div>
-                      )}
-
-                      <div className="flex-between" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '10px', fontSize: '17px', color: 'var(--text-primary)' }}>
-                        <span style={{ fontWeight: '700' }}>Total Amount</span>
-                        <strong style={{ color: 'var(--accent-teal)', fontSize: '18px', fontWeight: '800' }}>
-                          ₹{calculateTotal().toLocaleString('en-IN')}
-                        </strong>
-                      </div>
-                    </div>
-
-                    <button 
-                      type="button" 
-                      onClick={handleStartCheckout} 
-                      disabled={selectedCartItems.length === 0}
-                      className="btn btn-success btn-block" 
-                      style={{ 
-                        marginTop: '12px', 
-                        padding: '12px', 
-                        fontSize: '15px', 
-                        fontWeight: '700', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        gap: '8px',
-                        opacity: selectedCartItems.length === 0 ? 0.5 : 1,
-                        cursor: selectedCartItems.length === 0 ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {selectedCartItems.length === 0 ? "Select items to checkout" : `Proceed to Checkout (${selectedCartItems.length} item${selectedCartItems.length === 1 ? '' : 's'})`} <ArrowRight size={18} />
-                    </button>
-                  </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   TrendingUp, Package, AlertTriangle, IndianRupee, Plus, Edit2, 
-  Trash2, X, Check, Save, Truck, Calendar, ShoppingBag, Eye 
+  Trash2, X, Check, Save, Truck, Calendar, ShoppingBag, Eye, Layers
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
@@ -28,6 +28,11 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
   const [showProductModal, setShowProductModal] = useState(false);
   const [modalMode, setModalMode] = useState('add'); // 'add' or 'edit'
   
+  // Dedicated Stock Management state (Zero Admin Approval Required)
+  const [stockModalProduct, setStockModalProduct] = useState(null);
+  const [quickStockValue, setQuickStockValue] = useState(0);
+  const [isUpdatingStock, setIsUpdatingStock] = useState(false);
+  
   const [productForm, setProductForm] = useState({
     id: null,
     name: '',
@@ -44,6 +49,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
     rejectionReason: null
   });
 
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
@@ -124,25 +130,40 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
     setShowProductModal(true);
   };
 
-  const handleImageUpload = (e) => {
+  const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    const formData = new FormData();
     files.forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
+      formData.append('files', file);
+    });
+
+    setIsUploadingImage(true);
+    try {
+      const res = await axios.post('http://localhost:8080/api/products/upload-images', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const uploadedUrls = res.data.imageUrls || [];
+      if (uploadedUrls.length > 0) {
         setProductForm(prev => {
-          const newImages = [...prev.images, reader.result];
+          const newImages = [...prev.images, ...uploadedUrls];
           return {
             ...prev,
             images: newImages,
-            // If imageUrl is default, set this as primary cover
-            imageUrl: prev.imageUrl === '📦' ? reader.result : prev.imageUrl
+            // If imageUrl is default or empty, set the first uploaded image as cover
+            imageUrl: (!prev.imageUrl || prev.imageUrl === '📦') ? uploadedUrls[0] : prev.imageUrl
           };
         });
-      };
-      reader.readAsDataURL(file);
-    });
-    // Clear input
-    e.target.value = null;
+        showFlash('success', `Successfully uploaded ${uploadedUrls.length} image(s) to server storage.`);
+      }
+    } catch (err) {
+      console.error("Image upload failed:", err);
+      showFlash('danger', 'Failed to upload image(s). Please make sure the backend is running.');
+    } finally {
+      setIsUploadingImage(false);
+      e.target.value = null;
+    }
   };
 
   const handleAddImageUrl = (url) => {
@@ -182,7 +203,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
 
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    if (!productForm.name.trim() || !productForm.price || !productForm.stock) {
+    if (!productForm.name.trim() || !productForm.price || (modalMode === 'add' && productForm.stock === '')) {
       showFlash('error', 'Please fill in all required fields.');
       return;
     }
@@ -201,7 +222,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       ...productForm,
       price: parseFloat(productForm.price),
       discountPercentage: Math.max(0, Math.min(100, parseFloat(productForm.discountPercentage) || 0)),
-      stock: parseInt(productForm.stock),
+      stock: modalMode === 'add' ? parseInt(productForm.stock || 0) : (productForm.stock ?? 0),
       status: 'PENDING'
     };
 
@@ -211,7 +232,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
         showFlash('success', 'Product listed! Status is PENDING awaiting Admin Approval.');
       } else {
         await axios.put(`http://localhost:8080/api/products/${productForm.id}`, payload);
-        showFlash('success', 'Product & discount updated! Status is now PENDING awaiting Admin Approval.');
+        showFlash('success', 'Product & details updated! Status is now PENDING awaiting Admin Approval.');
       }
       setShowProductModal(false);
       fetchProducts();
@@ -221,13 +242,40 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
     }
   };
 
+  const handleOpenStockModal = (prod) => {
+    setStockModalProduct(prod);
+    setQuickStockValue(prod.stock || 0);
+  };
+
+  const handleSaveStockModal = async (e) => {
+    if (e) e.preventDefault();
+    if (!stockModalProduct) return;
+    const newStock = parseInt(quickStockValue);
+    if (isNaN(newStock) || newStock < 0) {
+      showFlash('error', 'Stock quantity must be a non-negative number.');
+      return;
+    }
+    setIsUpdatingStock(true);
+    try {
+      await axios.put(`http://localhost:8080/api/products/${stockModalProduct.id}/stock`, { stock: newStock });
+      setProducts(prev => prev.map(p => p.id === stockModalProduct.id ? { ...p, stock: newStock } : p));
+      fetchAnalytics();
+      showFlash('success', `Stock inventory updated to ${newStock} units for "${stockModalProduct.name}". (No approval needed)`);
+      setStockModalProduct(null);
+    } catch (err) {
+      showFlash('error', err.response?.data || 'Failed to update stock.');
+    } finally {
+      setIsUpdatingStock(false);
+    }
+  };
+
   const handleUpdateProductStock = async (productId, newStock) => {
     if (newStock < 0) return;
     try {
       await axios.put(`http://localhost:8080/api/products/${productId}/stock`, { stock: newStock });
       setProducts(prev => prev.map(p => p.id === productId ? { ...p, stock: newStock } : p));
       fetchAnalytics();
-      showFlash('success', 'Stock updated successfully.');
+      showFlash('success', 'Stock updated instantly (no approval needed).');
     } catch (err) {
       showFlash('error', err.response?.data || 'Failed to update stock.');
     }
@@ -486,12 +534,12 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                                 className="btn-icon-only"
                                 style={{ padding: '2px', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                 disabled={prod.stock <= 0}
-                                title="Decrease Stock"
+                                title="Quick decrease stock by 1 (Instant update)"
                               >
                                 -
                               </button>
                               <span style={{ 
-                                minWidth: '40px',
+                                minWidth: '36px',
                                 textAlign: 'center',
                                 fontWeight: prod.stock < 5 ? 'bold' : '600',
                                 color: prod.stock < 5 ? 'var(--accent-rose)' : 'inherit'
@@ -503,16 +551,20 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                                 onClick={() => handleUpdateProductStock(prod.id, prod.stock + 1)}
                                 className="btn-icon-only"
                                 style={{ padding: '2px', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                title="Increase Stock"
+                                title="Quick increase stock by 1 (Instant update)"
                               >
                                 +
                               </button>
                             </div>
-                            {prod.stock < 5 && (
-                              <span style={{ fontSize: '10px', display: 'block', color: 'var(--accent-rose)', marginTop: '4px', fontWeight: 'bold' }}>
-                                {prod.stock <= 0 ? 'Out of Stock' : 'Low Stock'}
-                              </span>
-                            )}
+                            <div style={{ marginTop: '4px' }}>
+                              {prod.stock <= 0 ? (
+                                <span className="badge badge-rejected" style={{ fontSize: '10px', padding: '1px 6px' }}>Out of Stock</span>
+                              ) : prod.stock < 5 ? (
+                                <span className="badge badge-pending" style={{ fontSize: '10px', padding: '1px 6px' }}>Only {prod.stock} left</span>
+                              ) : (
+                                <span className="badge badge-approved" style={{ fontSize: '10px', padding: '1px 6px' }}>In Stock</span>
+                              )}
+                            </div>
                           </td>
                            <td>
                              <span className={`badge ${
@@ -534,11 +586,19 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                              )}
                            </td>
                           <td style={{ textAlign: 'center' }}>
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                              <button 
+                                onClick={() => handleOpenStockModal(prod)} 
+                                className="btn btn-secondary" 
+                                title="Manage Stock (Instant - No Admin Approval Required)"
+                                style={{ padding: '4px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-teal)', borderColor: 'rgba(20, 184, 166, 0.3)' }}
+                              >
+                                <Layers size={13} /> Stock
+                              </button>
                               <button 
                                 onClick={() => handleOpenEditModal(prod)} 
                                 className="btn-icon-only" 
-                                title="Edit Product"
+                                title="Edit Product Details"
                                 style={{ padding: '6px' }}
                               >
                                 <Edit2 size={14} />
@@ -717,7 +777,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: modalMode === 'add' ? '1fr 1fr 1fr' : '1fr 1fr', gap: '12px' }}>
                 <div className="form-group">
                   <label className="form-label">Price (MRP ₹)</label>
                   <input 
@@ -744,19 +804,38 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                     step="1"
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Initial Stock</label>
-                  <input 
-                    type="number" 
-                    value={productForm.stock} 
-                    onChange={(e) => setProductForm({...productForm, stock: e.target.value})} 
-                    placeholder="10"
-                    className="form-input" 
-                    min="0"
-                    required
-                  />
-                </div>
+                {modalMode === 'add' && (
+                  <div className="form-group">
+                    <label className="form-label">Initial Stock</label>
+                    <input 
+                      type="number" 
+                      value={productForm.stock} 
+                      onChange={(e) => setProductForm({...productForm, stock: e.target.value})} 
+                      placeholder="10"
+                      className="form-input" 
+                      min="0"
+                      required
+                    />
+                  </div>
+                )}
               </div>
+
+              {modalMode === 'edit' && (
+                <div style={{
+                  background: 'rgba(20, 184, 166, 0.08)',
+                  border: '1px solid rgba(20, 184, 166, 0.3)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span>⚡</span>
+                  <span><strong>Tip:</strong> Need to change inventory quantity? Use the <strong>"Stock"</strong> button on your product list to adjust inventory immediately without admin re-approval.</span>
+                </div>
+              )}
 
               {/* Real-time System Calculates Final Price Preview */}
               {(() => {
@@ -829,12 +908,25 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
                   {/* File Upload Row */}
                   <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <label className="btn btn-secondary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', margin: 0, padding: '8px 12px', fontSize: '13px' }}>
-                      <Plus size={16} /> Upload Image File
+                    <label 
+                      className={`btn ${isUploadingImage ? 'btn-secondary disabled' : 'btn-secondary'}`} 
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: isUploadingImage ? 'not-allowed' : 'pointer', margin: 0, padding: '8px 12px', fontSize: '13px', opacity: isUploadingImage ? 0.7 : 1 }}
+                    >
+                      {isUploadingImage ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm" style={{ width: '14px', height: '14px', border: '2px solid currentColor', borderRightColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.75s linear infinite' }} />
+                          Uploading to folder...
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={16} /> Upload Image File (Stores on Disk)
+                        </>
+                      )}
                       <input 
                         type="file" 
                         accept="image/*" 
                         multiple 
+                        disabled={isUploadingImage}
                         onChange={handleImageUpload} 
                         style={{ display: 'none' }} 
                       />
@@ -958,6 +1050,117 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 </button>
                 <button type="submit" className="btn btn-primary">
                   <Save size={16} /> {modalMode === 'add' ? 'Submit Listing' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Dedicated Stock Management Modal (Instant Update - No Admin Approval Required) */}
+      {stockModalProduct && (
+        <div className="modal-overlay" onClick={() => setStockModalProduct(null)}>
+          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header">
+              <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Layers size={20} style={{ color: 'var(--accent-teal)' }} />
+                Manage Stock & Inventory
+              </h2>
+              <button onClick={() => setStockModalProduct(null)} className="btn-icon-only">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveStockModal} style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '8px 0' }}>
+              <div style={{ background: 'var(--bg-input)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '2px' }}>Product</div>
+                <strong style={{ fontSize: '15px', color: 'var(--text-primary)' }}>{stockModalProduct.name}</strong>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Current Live Inventory: <strong style={{ color: stockModalProduct.stock > 0 ? 'var(--accent-teal)' : 'var(--accent-rose)' }}>{stockModalProduct.stock} units</strong>
+                </div>
+              </div>
+
+              <div style={{
+                background: 'rgba(20, 184, 166, 0.08)',
+                border: '1px solid rgba(20, 184, 166, 0.3)',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                fontSize: '12px',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span style={{ fontSize: '16px' }}>⚡</span>
+                <span>Stock updates take effect <strong>instantly</strong> in the store without requiring administrator re-approval.</span>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: '700' }}>Available Stock Units</label>
+                <input 
+                  type="number"
+                  value={quickStockValue}
+                  onChange={(e) => setQuickStockValue(Math.max(0, parseInt(e.target.value) || 0))}
+                  min="0"
+                  className="form-input"
+                  style={{ fontSize: '20px', fontWeight: '800', textAlign: 'center', padding: '10px' }}
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  style={{ flex: 1, padding: '6px 8px', fontSize: '12px' }}
+                  onClick={() => setQuickStockValue(0)}
+                >
+                  Set 0 (Out of Stock)
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  style={{ flex: 1, padding: '6px 8px', fontSize: '12px' }}
+                  onClick={() => setQuickStockValue(prev => (parseInt(prev) || 0) + 10)}
+                >
+                  +10
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  style={{ flex: 1, padding: '6px 8px', fontSize: '12px' }}
+                  onClick={() => setQuickStockValue(prev => (parseInt(prev) || 0) + 50)}
+                >
+                  +50
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  style={{ flex: 1, padding: '6px 8px', fontSize: '12px' }}
+                  onClick={() => setQuickStockValue(prev => (parseInt(prev) || 0) + 100)}
+                >
+                  +100
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setStockModalProduct(null)} 
+                  className="btn btn-secondary"
+                  style={{ flex: 1 }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isUpdatingStock} 
+                  className="btn btn-primary"
+                  style={{ flex: 2 }}
+                >
+                  {isUpdatingStock ? 'Updating Stock...' : 'Save Stock (Instant Update)'}
                 </button>
               </div>
             </form>

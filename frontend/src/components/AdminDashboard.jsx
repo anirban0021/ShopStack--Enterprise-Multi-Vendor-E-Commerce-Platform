@@ -339,7 +339,15 @@ export default function AdminDashboard({ user, onGoToHome }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1, paddingRight: '6px' }}>
               {/* Product Info Section */}
               <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
-                <div style={{ width: '120px', height: '120px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)', flexShrink: 0 }}>
+                <div 
+                  style={{ width: '120px', height: '120px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)', flexShrink: 0, cursor: selectedProduct.imageUrl && selectedProduct.imageUrl.length > 4 ? 'pointer' : 'default' }}
+                  onClick={() => {
+                    if (selectedProduct.imageUrl && selectedProduct.imageUrl.length > 4) {
+                      window.open(selectedProduct.imageUrl, '_blank');
+                    }
+                  }}
+                  title={selectedProduct.imageUrl && selectedProduct.imageUrl.length > 4 ? "Click to view full image in a new tab ↗" : ""}
+                >
                   {selectedProduct.imageUrl && selectedProduct.imageUrl.length > 4 ? (
                     <img src={selectedProduct.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
@@ -446,21 +454,56 @@ export default function AdminDashboard({ user, onGoToHome }) {
 
               {/* Product Gallery Images (if any) */}
               {selectedProduct.images && selectedProduct.images.length > 0 && (
-                <div>
+                <div style={{ minWidth: 0, maxWidth: '100%' }}>
                   <h4 style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '8px', letterSpacing: '0.5px' }}>Image Gallery ({selectedProduct.images.length})</h4>
-                  <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '8px' }}>
-                    {selectedProduct.images.map((img, idx) => {
-                      const isEmoji = img.length <= 4;
-                      return (
-                        <div key={idx} style={{ width: '60px', height: '60px', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)', flexShrink: 0 }}>
-                          {isEmoji ? (
-                            <span style={{ fontSize: '24px' }}>{img}</span>
-                          ) : (
-                            <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          )}
-                        </div>
-                      );
-                    })}
+                  <div className="thumbnail-slider-container">
+                    {selectedProduct.images.length > 5 && (
+                      <button 
+                        type="button" 
+                        className="thumbnail-slider-btn" 
+                        title="Scroll left"
+                        onClick={() => {
+                          const track = document.getElementById('admin-thumb-track');
+                          if (track) track.scrollBy({ left: -100, behavior: 'smooth' });
+                        }}
+                      >
+                        ‹
+                      </button>
+                    )}
+                    <div id="admin-thumb-track" className="thumbnail-slider-track" style={{ gap: '10px' }}>
+                      {selectedProduct.images.map((img, idx) => {
+                        const isEmoji = img.length <= 4;
+                        return (
+                          <div 
+                            key={idx} 
+                            style={{ width: '56px', height: '56px', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)', flexShrink: 0, cursor: isEmoji ? 'default' : 'pointer' }}
+                            onClick={() => {
+                              if (!isEmoji) window.open(img, '_blank');
+                            }}
+                            title={isEmoji ? img : "Click to view full image in a new tab ↗"}
+                          >
+                            {isEmoji ? (
+                              <span style={{ fontSize: '24px' }}>{img}</span>
+                            ) : (
+                              <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {selectedProduct.images.length > 5 && (
+                      <button 
+                        type="button" 
+                        className="thumbnail-slider-btn" 
+                        title="Scroll right"
+                        onClick={() => {
+                          const track = document.getElementById('admin-thumb-track');
+                          if (track) track.scrollBy({ left: 100, behavior: 'smooth' });
+                        }}
+                      >
+                        ›
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

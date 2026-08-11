@@ -36,7 +36,7 @@ public class Product {
     private Double discountPercentage = 0.0;
     private Double finalPrice;
 
-    @jakarta.persistence.ElementCollection
+    @jakarta.persistence.ElementCollection(fetch = jakarta.persistence.FetchType.EAGER)
     @jakarta.persistence.CollectionTable(name = "product_images", joinColumns = @jakarta.persistence.JoinColumn(name = "product_id"))
     @jakarta.persistence.Column(name = "image_url", columnDefinition = "TEXT")
     private List<String> images = new ArrayList<>();

@@ -1,0 +1,2 @@
+# Product images uploaded by vendors are saved here.
+# Files in this directory are served statically at http://localhost:8080/uploads/products/<filename>

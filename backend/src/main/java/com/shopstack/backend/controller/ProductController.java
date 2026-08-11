@@ -37,7 +37,44 @@ public class ProductController {
     @Autowired
     private com.shopstack.backend.repository.UserRepository userRepository;
 
+    @Autowired
+    private com.shopstack.backend.service.FileStorageService fileStorageService;
+
+    // Upload single product image to disk
+    @PostMapping("/upload-image")
+    public ResponseEntity<?> uploadImage(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        try {
+            if (file == null || file.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Please select a valid image file."));
+            }
+            String imageUrl = fileStorageService.storeFile(file);
+            return ResponseEntity.ok(Map.of("imageUrl", imageUrl));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", "Image upload failed: " + e.getMessage()));
+        }
+    }
+
+    // Upload multiple product images to disk
+    @PostMapping("/upload-images")
+    public ResponseEntity<?> uploadMultipleImages(@RequestParam("files") org.springframework.web.multipart.MultipartFile[] files) {
+        try {
+            if (files == null || files.length == 0) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Please select at least one image file."));
+            }
+            List<String> imageUrls = new java.util.ArrayList<>();
+            for (org.springframework.web.multipart.MultipartFile file : files) {
+                if (!file.isEmpty()) {
+                    imageUrls.add(fileStorageService.storeFile(file));
+                }
+            }
+            return ResponseEntity.ok(Map.of("imageUrls", imageUrls));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", "Image uploads failed: " + e.getMessage()));
+        }
+    }
+
     @jakarta.annotation.PostConstruct
+    @org.springframework.transaction.annotation.Transactional
     public void initProducts() {
         // Ensure all existing products have discountPercentage and finalPrice populated
         List<Product> all = productRepository.findAll();
@@ -54,6 +91,27 @@ public class ProductController {
             if (p.getStatus() == null || "PENDING".equalsIgnoreCase(p.getStatus())) {
                 p.setStatus("APPROVED");
                 changed = true;
+            }
+            // Check if any existing product has base64 data and migrate it to disk
+            if (p.getImageUrl() != null && p.getImageUrl().startsWith("data:image/")) {
+                p.setImageUrl(fileStorageService.processAndSaveIfBase64(p.getImageUrl()));
+                changed = true;
+            }
+            if (p.getImages() != null && !p.getImages().isEmpty()) {
+                List<String> updatedImages = new java.util.ArrayList<>();
+                boolean imgChanged = false;
+                for (String img : p.getImages()) {
+                    if (img != null && img.startsWith("data:image/")) {
+                        updatedImages.add(fileStorageService.processAndSaveIfBase64(img));
+                        imgChanged = true;
+                    } else {
+                        updatedImages.add(img);
+                    }
+                }
+                if (imgChanged) {
+                    p.setImages(updatedImages);
+                    changed = true;
+                }
             }
             if (changed) {
                 productRepository.save(p);
@@ -106,6 +164,9 @@ public class ProductController {
         }
         product.setFinalPrice(product.calculateFinalPrice());
 
+        // Sanitize any base64 images into disk files to prevent DB 5MB limit bloat
+        product = fileStorageService.sanitizeProductImages(product);
+
         // Always require admin approval for new products
         product.setStatus("PENDING");
         Product saved = productRepository.save(product);
@@ -136,11 +197,36 @@ public class ProductController {
             p.setBrand(updated.getBrand());
             p.setDescription(updated.getDescription());
             p.setImages(updated.getImages());
+
+            // Sanitize any base64 images into disk files before persisting
+            p = fileStorageService.sanitizeProductImages(p);
+
             // Changes to product pricing/discount require Admin re-approval
             p.setStatus("PENDING");
             p.setRejectionReason(null);
             Product saved = productRepository.save(p);
             return ResponseEntity.ok(saved);
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    // Vendor: Directly update product stock inventory without triggering re-approval
+    @PutMapping("/{id}/stock")
+    public ResponseEntity<?> updateProductStock(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+        Optional<Product> optional = productRepository.findById(id);
+        if (optional.isPresent()) {
+            Product p = optional.get();
+            if (!payload.containsKey("stock") || payload.get("stock") == null) {
+                return ResponseEntity.badRequest().body("Stock quantity is required.");
+            }
+            int newStock = Integer.parseInt(payload.get("stock").toString());
+            if (newStock < 0) {
+                return ResponseEntity.badRequest().body("Stock cannot be negative.");
+            }
+            p.setStock(newStock);
+            // Stock changes apply immediately with zero approval needed, maintaining current status
+            Product saved = productRepository.save(p);
+            return ResponseEntity.ok(populateRatings(saved));
         }
         return ResponseEntity.notFound().build();
     }
@@ -284,26 +370,6 @@ public class ProductController {
             }
             reviewRepository.deleteById(reviewId);
             return ResponseEntity.ok("Review deleted successfully");
-        }
-        return ResponseEntity.notFound().build();
-    }
-
-    // Quick stock update (does not reset status to PENDING)
-    @PutMapping("/{id}/stock")
-    public ResponseEntity<?> updateProductStock(@PathVariable Long id, @RequestBody Map<String, Integer> payload) {
-        if (!payload.containsKey("stock")) {
-            return ResponseEntity.badRequest().body("Stock value is required.");
-        }
-        Integer newStock = payload.get("stock");
-        if (newStock < 0) {
-            return ResponseEntity.badRequest().body("Stock cannot be negative.");
-        }
-        Optional<Product> optional = productRepository.findById(id);
-        if (optional.isPresent()) {
-            Product p = optional.get();
-            p.setStock(newStock);
-            Product saved = productRepository.save(p);
-            return ResponseEntity.ok(saved);
         }
         return ResponseEntity.notFound().build();
     }

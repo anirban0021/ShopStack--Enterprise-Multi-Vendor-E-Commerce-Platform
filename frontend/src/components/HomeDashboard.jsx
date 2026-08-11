@@ -4,7 +4,8 @@ import {
   Search, User, ChevronDown, ShoppingCart, Heart, MapPin, 
   Package, LogOut, X, Trash2, Plus, Minus, Sun, Moon, Star, 
   MessageSquare, ShieldAlert, Store, ShoppingBag, Send, Truck, Check, Bell,
-  CreditCard, QrCode, Smartphone, CheckCircle2, ArrowRight, ShieldCheck, Lock
+  CreditCard, QrCode, Smartphone, CheckCircle2, ArrowRight, ShieldCheck, Lock,
+  ExternalLink, Maximize2
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
@@ -33,31 +34,51 @@ export default function HomeDashboard({
   const [showCustomAddressInput, setShowCustomAddressInput] = useState(false);
   const [selectedCartItemIds, setSelectedCartItemIds] = useState([]);
 
-  // Auto-select all items in cart initially or when items are added
+  // Auto-select valid in-stock items in cart initially or when items/products change
   useEffect(() => {
     if (Array.isArray(cart)) {
+      const inStockIds = cart.filter(item => {
+        const liveProd = products.find(p => p.id === item.id);
+        const stock = liveProd != null ? liveProd.stock : (item.stock ?? 0);
+        return stock > 0;
+      }).map(i => i.id);
+
       setSelectedCartItemIds(prev => {
-        const cartIds = cart.map(i => i.id);
-        if (prev.length === 0 && cartIds.length > 0) return cartIds;
-        const validPrev = prev.filter(id => cartIds.includes(id));
-        const newIds = cartIds.filter(id => !prev.includes(id));
+        if (prev.length === 0 && inStockIds.length > 0) return inStockIds;
+        const validPrev = prev.filter(id => inStockIds.includes(id));
+        const newIds = inStockIds.filter(id => !prev.includes(id));
         const merged = Array.from(new Set([...validPrev, ...newIds]));
-        return merged.length > 0 ? merged : cartIds;
+        return merged;
       });
     }
-  }, [cart]);
+  }, [cart, products]);
 
-  const isAllSelected = Array.isArray(cart) && cart.length > 0 && selectedCartItemIds.length === cart.length;
+  const inStockCartItems = (Array.isArray(cart) ? cart : []).filter(item => {
+    const liveProd = products.find(p => p.id === item.id);
+    const stock = liveProd != null ? liveProd.stock : (item.stock ?? 0);
+    return stock > 0;
+  });
+
+  const isAllSelected = inStockCartItems.length > 0 && inStockCartItems.every(i => selectedCartItemIds.includes(i.id));
 
   const toggleSelectAll = () => {
     if (isAllSelected) {
       setSelectedCartItemIds([]);
     } else {
-      setSelectedCartItemIds((Array.isArray(cart) ? cart : []).map(i => i.id));
+      setSelectedCartItemIds(inStockCartItems.map(i => i.id));
     }
   };
 
   const toggleSelectItem = (productId) => {
+    const liveProd = products.find(p => p.id === productId);
+    const itemInCart = (Array.isArray(cart) ? cart : []).find(i => i.id === productId);
+    const stock = liveProd != null ? liveProd.stock : (itemInCart?.stock ?? 0);
+    
+    if (stock <= 0) {
+      showFlash('error', "This product is currently out of stock and cannot be selected for purchase.");
+      return;
+    }
+
     setSelectedCartItemIds(prev => 
       prev.includes(productId) 
         ? prev.filter(id => id !== productId)
@@ -95,9 +116,42 @@ export default function HomeDashboard({
   const [productReviews, setProductReviews] = useState([]);
   const [vendorDetails, setVendorDetails] = useState(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [showLightbox, setShowLightbox] = useState(false);
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
   const [editingReviewId, setEditingReviewId] = useState(null);
   const [editReviewForm, setEditReviewForm] = useState({ rating: 5, comment: '' });
+
+  // Lightbox keyboard navigation (Left/Right arrow keys & Escape)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!showLightbox || !selectedProduct) return;
+      
+      const allImgs = [];
+      if (selectedProduct.imageUrl && selectedProduct.imageUrl !== '📦') {
+        allImgs.push(selectedProduct.imageUrl);
+      }
+      if (selectedProduct.images && selectedProduct.images.length > 0) {
+        selectedProduct.images.forEach(img => {
+          if (!allImgs.includes(img)) allImgs.push(img);
+        });
+      }
+      if (allImgs.length === 0) allImgs.push(selectedProduct.imageUrl || '📦');
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setActiveImageIndex(prev => (prev - 1 + allImgs.length) % allImgs.length);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setActiveImageIndex(prev => (prev + 1) % allImgs.length);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowLightbox(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showLightbox, selectedProduct]);
   
   // Toast notifications
   const [flash, setFlash] = useState({ type: '', text: '' });
@@ -203,9 +257,28 @@ export default function HomeDashboard({
 
   const handleStartCheckout = () => {
     if (selectedCartItems.length === 0) {
-      showFlash('error', 'Please select at least 1 item from your cart to proceed to checkout.');
+      showFlash('error', 'Please select at least 1 in-stock item from your cart to proceed to checkout.');
       return;
     }
+
+    // Check if any selected item is out of stock or exceeds inventory
+    const outOfStockItem = selectedCartItems.find(item => {
+      const liveProd = products.find(p => p.id === item.id);
+      const stock = liveProd != null ? liveProd.stock : (item.stock ?? 0);
+      return stock <= 0 || item.quantity > stock;
+    });
+
+    if (outOfStockItem) {
+      const liveProd = products.find(p => p.id === outOfStockItem.id);
+      const stock = liveProd != null ? liveProd.stock : (outOfStockItem.stock ?? 0);
+      if (stock <= 0) {
+        showFlash('error', `Cannot proceed to checkout: "${outOfStockItem.name}" is currently out of stock. Please remove it from your selection.`);
+      } else {
+        showFlash('error', `Cannot proceed to checkout: "${outOfStockItem.name}" only has ${stock} units available.`);
+      }
+      return;
+    }
+
     const defaultAddr = savedAddresses.find(a => a.isDefault) || savedAddresses[0];
     if (defaultAddr) {
       setDeliveryInfo({
@@ -873,47 +946,107 @@ export default function HomeDashboard({
                     marginBottom: '12px',
                     border: '1px solid var(--border-light)'
                   }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: '600', fontSize: '13px', userSelect: 'none' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: inStockCartItems.length > 0 ? 'pointer' : 'not-allowed', fontWeight: '600', fontSize: '13px', userSelect: 'none', opacity: inStockCartItems.length > 0 ? 1 : 0.6 }}>
                       <input 
                         type="checkbox" 
                         checked={isAllSelected} 
+                        disabled={inStockCartItems.length === 0}
                         onChange={toggleSelectAll} 
-                        style={{ width: '17px', height: '17px', accentColor: 'var(--accent-teal)', cursor: 'pointer' }}
+                        style={{ width: '17px', height: '17px', accentColor: 'var(--accent-teal)', cursor: inStockCartItems.length > 0 ? 'pointer' : 'not-allowed' }}
                       />
-                      <span>Select All ({cart.length} items)</span>
+                      <span>Select All In-Stock ({inStockCartItems.length}/{cart.length})</span>
                     </label>
                     <span style={{ fontSize: '12px', color: selectedCartItems.length > 0 ? 'var(--accent-teal)' : 'var(--text-muted)', fontWeight: '700' }}>
                       {selectedCartItems.length} selected
                     </span>
                   </div>
 
-                  {cart.map((item, idx) => {
+                  {cart.map((item) => {
+                    const liveProduct = products.find(p => p.id === item.id);
+                    const currentStock = liveProduct != null ? liveProduct.stock : (item.stock ?? 0);
+                    const isOutOfStock = currentStock <= 0;
+                    const isExceedingStock = !isOutOfStock && item.quantity > currentStock;
                     const hasDiscount = item.originalPrice && item.originalPrice > item.price;
-                    const isItemSelected = selectedCartItemIds.includes(item.id);
+                    const isItemSelected = selectedCartItemIds.includes(item.id) && !isOutOfStock;
+
                     return (
-                      <div key={item.id} className="cart-item" style={{ alignItems: 'flex-start', gap: '10px', opacity: isItemSelected ? 1 : 0.65, transition: 'opacity 0.2s' }}>
+                      <div 
+                        key={item.id} 
+                        className="cart-item" 
+                        style={{ 
+                          alignItems: 'flex-start', 
+                          gap: '10px', 
+                          opacity: isOutOfStock ? 0.65 : (isItemSelected ? 1 : 0.65), 
+                          background: isOutOfStock ? 'rgba(239, 68, 68, 0.04)' : undefined,
+                          border: isOutOfStock ? '1px dashed rgba(239, 68, 68, 0.35)' : (isItemSelected ? '1px solid var(--border-light)' : '1px solid transparent'),
+                          borderRadius: '8px',
+                          padding: '12px 10px',
+                          marginBottom: '10px',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
                         {/* Item Selection Box */}
-                        <div style={{ paddingTop: '12px' }}>
+                        <div style={{ paddingTop: '10px' }}>
                           <input 
                             type="checkbox" 
                             checked={isItemSelected} 
+                            disabled={isOutOfStock}
                             onChange={() => toggleSelectItem(item.id)}
-                            style={{ width: '18px', height: '18px', accentColor: 'var(--accent-teal)', cursor: 'pointer' }}
-                            title={isItemSelected ? "Deselect item" : "Select item for purchase"}
+                            style={{ width: '18px', height: '18px', accentColor: 'var(--accent-teal)', cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}
+                            title={isOutOfStock ? "Out of Stock - Cannot be selected" : (isItemSelected ? "Deselect item" : "Select item for purchase")}
                           />
                         </div>
 
-                        <div style={{ width: '44px', height: '44px', flexShrink: 0, borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)' }}>
+                        <div style={{ width: '48px', height: '48px', flexShrink: 0, borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)', position: 'relative' }}>
                           {item.imageUrl && item.imageUrl.length > 4 ? (
-                            <img src={item.imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={item.imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: isOutOfStock ? 'grayscale(0.7)' : 'none' }} />
                           ) : (
-                            <ProductIcon name={item.name} category={item.category} size={18} />
+                            <ProductIcon name={item.name} category={item.category} size={20} />
                           )}
                         </div>
                         <div className="cart-item-info" style={{ flex: 1 }}>
-                          <div className="cart-item-name">{item.name}</div>
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '2px' }}>
-                            <span className="cart-item-price" style={{ fontWeight: '800', color: 'var(--text-primary)' }}>
+                          <div className="cart-item-name" style={{ fontWeight: '700', fontSize: '14px', color: isOutOfStock ? 'var(--text-muted)' : 'var(--text-primary)' }}>
+                            {item.name}
+                          </div>
+
+                          {/* Out of Stock & Inventory Warnings */}
+                          {isOutOfStock ? (
+                            <div style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '5px', 
+                              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.25))',
+                              color: '#ef4444', 
+                              border: '1px solid rgba(239, 68, 68, 0.4)',
+                              fontSize: '11px', 
+                              fontWeight: '800', 
+                              padding: '2px 8px', 
+                              borderRadius: '4px',
+                              marginTop: '4px',
+                              letterSpacing: '0.3px'
+                            }}>
+                              <span>🚫</span> OUT OF STOCK
+                            </div>
+                          ) : isExceedingStock ? (
+                            <div style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '4px', 
+                              background: 'rgba(245, 158, 11, 0.15)', 
+                              color: '#f59e0b', 
+                              border: '1px solid rgba(245, 158, 11, 0.35)',
+                              fontSize: '11px', 
+                              fontWeight: '700', 
+                              padding: '2px 7px', 
+                              borderRadius: '4px',
+                              marginTop: '4px'
+                            }}>
+                              ⚠️ Only {currentStock} in stock (in cart: {item.quantity})
+                            </div>
+                          ) : null}
+
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '4px' }}>
+                            <span className="cart-item-price" style={{ fontWeight: '800', color: isOutOfStock ? 'var(--text-muted)' : 'var(--text-primary)' }}>
                               ₹{Number(item.price).toLocaleString('en-IN')}
                             </span>
                             {hasDiscount && (
@@ -938,21 +1071,35 @@ export default function HomeDashboard({
                           {/* Quantity Toggles */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
                             <button 
-                              onClick={() => updateCartQuantity(item.id, -1, item.stock)} 
+                              onClick={() => updateCartQuantity(item.id, -1, currentStock)} 
                               className="btn-icon-only"
-                              style={{ padding: '3px', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              style={{ padding: '3px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              title="Decrease quantity"
                             >
                               <Minus size={12} />
                             </button>
-                            <strong style={{ fontSize: '13px', minWidth: '16px', textAlign: 'center' }}>{item.quantity}</strong>
+                            <strong style={{ fontSize: '13px', minWidth: '16px', textAlign: 'center', color: isOutOfStock ? 'var(--accent-rose)' : 'inherit' }}>
+                              {item.quantity}
+                            </strong>
                             <button 
-                              onClick={() => updateCartQuantity(item.id, 1, item.stock)} 
+                              onClick={() => updateCartQuantity(item.id, 1, currentStock)} 
+                              disabled={isOutOfStock || item.quantity >= currentStock}
                               className="btn-icon-only"
-                              style={{ padding: '3px', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              style={{ 
+                                padding: '3px', 
+                                width: '24px', 
+                                height: '24px', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                opacity: (isOutOfStock || item.quantity >= currentStock) ? 0.35 : 1,
+                                cursor: (isOutOfStock || item.quantity >= currentStock) ? 'not-allowed' : 'pointer'
+                              }}
+                              title={isOutOfStock ? "Product is out of stock" : (item.quantity >= currentStock ? "Reached maximum available stock" : "Increase quantity")}
                             >
                               <Plus size={12} />
                             </button>
-                            <span style={{ marginLeft: 'auto', fontSize: '13px', fontWeight: '700', color: 'var(--accent-teal)' }}>
+                            <span style={{ marginLeft: 'auto', fontSize: '13px', fontWeight: '700', color: isOutOfStock ? 'var(--text-muted)' : 'var(--accent-teal)' }}>
                               ₹{(item.price * item.quantity).toLocaleString('en-IN')}
                             </span>
                           </div>
@@ -962,6 +1109,7 @@ export default function HomeDashboard({
                           onClick={() => removeFromCart(item.id)} 
                           className="btn-icon-only" 
                           style={{ color: 'var(--accent-rose)', borderColor: 'rgba(239, 68, 68, 0.2)', marginLeft: '4px' }}
+                          title="Remove item from cart"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -972,102 +1120,126 @@ export default function HomeDashboard({
               )}
             </div>
 
-            {cart.length > 0 && (
-              <div className="modal-footer" style={{ flexDirection: 'column', gap: '14px', alignItems: 'stretch', background: 'var(--bg-input)', padding: '16px 20px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  <div className="flex-between">
-                    <span>Total MRP ({selectedCartItems.length} selected)</span>
-                    <span>₹{calculateOriginalSubtotal().toLocaleString('en-IN')}</span>
-                  </div>
-                  {calculateDiscountSavings() > 0 && (
-                    <div className="flex-between" style={{ color: 'var(--accent-teal)' }}>
-                      <span style={{ fontWeight: '600' }}>Applied Discount Savings</span>
-                      <strong style={{ fontWeight: '700' }}>-₹{calculateDiscountSavings().toLocaleString('en-IN')}</strong>
+            {cart.length > 0 && (() => {
+              const hasOutOfStockInCart = cart.some(item => {
+                const liveProd = products.find(p => p.id === item.id);
+                const stock = liveProd != null ? liveProd.stock : (item.stock ?? 0);
+                return stock <= 0;
+              });
+
+              const selectedOutOfStockItems = selectedCartItems.filter(item => {
+                const liveProd = products.find(p => p.id === item.id);
+                const stock = liveProd != null ? liveProd.stock : (item.stock ?? 0);
+                return stock <= 0 || item.quantity > stock;
+              });
+
+              const hasInvalidSelection = selectedOutOfStockItems.length > 0;
+              const canProceed = selectedCartItems.length > 0 && !hasInvalidSelection;
+
+              return (
+                <div className="modal-footer" style={{ flexDirection: 'column', gap: '14px', alignItems: 'stretch', background: 'var(--bg-input)', padding: '16px 20px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    <div className="flex-between">
+                      <span>Total MRP ({selectedCartItems.length} selected)</span>
+                      <span>₹{calculateOriginalSubtotal().toLocaleString('en-IN')}</span>
                     </div>
-                  )}
-                  <div className="flex-between">
-                    <span>Items Subtotal</span>
-                    <span>₹{calculateSubtotal().toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="flex-between">
-                    <span>Delivery Charges</span>
-                    {calculateDeliveryFee() === 0 ? (
-                      <span style={{ color: '#10b981', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span>FREE</span>
-                        <span style={{ fontSize: '11px', textDecoration: 'line-through', color: 'var(--text-muted)' }}>₹99</span>
-                      </span>
-                    ) : (
-                      <strong style={{ color: 'var(--text-primary)' }}>₹99</strong>
+                    {calculateDiscountSavings() > 0 && (
+                      <div className="flex-between" style={{ color: 'var(--accent-teal)' }}>
+                        <span style={{ fontWeight: '600' }}>Applied Discount Savings</span>
+                        <strong style={{ fontWeight: '700' }}>-₹{calculateDiscountSavings().toLocaleString('en-IN')}</strong>
+                      </div>
                     )}
+                    <div className="flex-between">
+                      <span>Items Subtotal</span>
+                      <span>₹{calculateSubtotal().toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex-between">
+                      <span>Delivery Charges</span>
+                      {calculateDeliveryFee() === 0 ? (
+                        <span style={{ color: '#10b981', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>FREE</span>
+                          <span style={{ fontSize: '11px', textDecoration: 'line-through', color: 'var(--text-muted)' }}>₹99</span>
+                        </span>
+                      ) : (
+                        <strong style={{ color: 'var(--text-primary)' }}>₹99</strong>
+                      )}
+                    </div>
+
+                    {/* Total Savings banner */}
+                    {calculateTotalSavings() > 0 && (
+                      <div style={{ 
+                        background: 'rgba(16, 185, 129, 0.12)', 
+                        border: '1px solid rgba(16, 185, 129, 0.35)', 
+                        borderRadius: '8px', 
+                        padding: '10px 14px', 
+                        fontSize: '13px', 
+                        color: '#10b981', 
+                        fontWeight: '700', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between'
+                      }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span>💰</span> Total Savings
+                        </span>
+                        <strong style={{ fontSize: '15px', color: '#10b981', fontWeight: '800' }}>
+                          ₹{calculateTotalSavings().toLocaleString('en-IN')}
+                        </strong>
+                      </div>
+                    )}
+
+                    <div className="flex-between" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '10px', fontSize: '17px', color: 'var(--text-primary)' }}>
+                      <span style={{ fontWeight: '700' }}>Final Amount</span>
+                      <strong style={{ color: 'var(--accent-teal)', fontWeight: '800' }}>₹{calculateTotal().toLocaleString('en-IN')}</strong>
+                    </div>
                   </div>
 
-                  {/* Delivery notification indicator */}
-                  {calculateSubtotal() > 0 && calculateSubtotal() < 500 && (
-                    <div style={{ 
-                      background: 'rgba(245, 158, 11, 0.12)', 
-                      border: '1px solid rgba(245, 158, 11, 0.3)', 
-                      borderRadius: '6px', 
-                      padding: '6px 10px', 
-                      fontSize: '11px', 
-                      color: '#f59e0b', 
+                  {/* Out of Stock Notice */}
+                  {hasOutOfStockInCart && (
+                    <div style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      color: '#ef4444',
+                      fontSize: '12px',
                       fontWeight: '600',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '6px'
+                      gap: '8px'
                     }}>
-                      <span>🚚</span> Add ₹{(500 - calculateSubtotal()).toLocaleString('en-IN')} more for <strong>FREE Delivery</strong>!
-                    </div>
-                  )}
-                  {/* Total Savings banner */}
-                  {calculateTotalSavings() > 0 && (
-                    <div style={{ 
-                      background: 'rgba(16, 185, 129, 0.12)', 
-                      border: '1px solid rgba(16, 185, 129, 0.35)', 
-                      borderRadius: '8px', 
-                      padding: '10px 14px', 
-                      fontSize: '13px', 
-                      color: '#10b981', 
-                      fontWeight: '700',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between'
-                    }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span>💰</span> Total Savings
-                      </span>
-                      <strong style={{ fontSize: '15px', color: '#10b981', fontWeight: '800' }}>
-                        ₹{calculateTotalSavings().toLocaleString('en-IN')}
-                      </strong>
+                      <span>🚫</span>
+                      <span>Out-of-stock items in cart cannot be checked out. Please remove or uncheck them.</span>
                     </div>
                   )}
 
-                  <div className="flex-between" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '10px', fontSize: '17px', color: 'var(--text-primary)' }}>
-                    <span style={{ fontWeight: '700' }}>Final Amount</span>
-                    <strong style={{ color: 'var(--accent-teal)', fontWeight: '800' }}>₹{calculateTotal().toLocaleString('en-IN')}</strong>
-                  </div>
+                  <button 
+                    onClick={handleStartCheckout} 
+                    disabled={!canProceed}
+                    className="btn btn-success btn-block" 
+                    style={{ 
+                      marginTop: '4px', 
+                      padding: '12px', 
+                      fontSize: '15px', 
+                      fontWeight: '700', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      gap: '8px',
+                      opacity: !canProceed ? 0.5 : 1,
+                      cursor: !canProceed ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {selectedCartItems.length === 0 
+                      ? "Select items to checkout" 
+                      : hasInvalidSelection
+                        ? "Cannot Checkout (Out of Stock items selected)"
+                        : `Proceed to Checkout (${selectedCartItems.length} item${selectedCartItems.length === 1 ? '' : 's'})`} 
+                    <ArrowRight size={18} />
+                  </button>
                 </div>
-
-                <button 
-                  onClick={handleStartCheckout} 
-                  disabled={selectedCartItems.length === 0}
-                  className="btn btn-success btn-block" 
-                  style={{ 
-                    marginTop: '4px', 
-                    padding: '12px', 
-                    fontSize: '15px', 
-                    fontWeight: '700', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    gap: '8px',
-                    opacity: selectedCartItems.length === 0 ? 0.5 : 1,
-                    cursor: selectedCartItems.length === 0 ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {selectedCartItems.length === 0 ? "Select items to checkout" : `Proceed to Checkout (${selectedCartItems.length} item${selectedCartItems.length === 1 ? '' : 's'})`} <ArrowRight size={18} />
-                </button>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </div>
       )}
@@ -1145,7 +1317,7 @@ export default function HomeDashboard({
 
         return (
           <div className="modal-overlay" onClick={() => setSelectedProduct(null)}>
-            <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', width: '100%', overflowX: 'hidden' }}>
               <div className="modal-header">
                 <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <ProductIcon name={selectedProduct.name} category={selectedProduct.category} size={20} />
@@ -1156,34 +1328,91 @@ export default function HomeDashboard({
                 </button>
               </div>
 
-              <div className="modal-body" style={{ overflowY: 'auto' }}>
+              <div className="modal-body" style={{ overflowY: 'auto', overflowX: 'hidden' }}>
                 {/* Product Gallery & Info Header Split */}
-                <div style={{ display: 'flex', gap: '24px', marginBottom: '24px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '24px', marginBottom: '24px', flexWrap: 'wrap', width: '100%', minWidth: 0 }}>
                   {/* Left Column: Image Gallery */}
-                  <div style={{ flex: '1 1 240px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ flex: '1 1 240px', minWidth: 0, maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {/* Main Preview Box */}
-                    <div style={{ position: 'relative', width: '100%', height: '220px', borderRadius: '12px', background: 'var(--bg-input)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    <div 
+                      style={{ 
+                        position: 'relative', 
+                        width: '100%', 
+                        height: '220px', 
+                        borderRadius: '12px', 
+                        background: 'var(--bg-input)', 
+                        border: '1px solid var(--border-light)', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        overflow: 'hidden',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => setShowLightbox(true)}
+                      title="Click to open in-app image viewer slideshow"
+                    >
                       {activeImg.length <= 4 ? (
                         <span style={{ fontSize: '72px', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.05))' }}>{activeImg}</span>
                       ) : (
-                        <img src={activeImg} alt={selectedProduct.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        <img 
+                          src={activeImg} 
+                          alt={selectedProduct.name} 
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                        />
                       )}
+
+                      {/* Open In-App Gallery Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowLightbox(true);
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          background: 'rgba(15, 23, 42, 0.78)',
+                          color: '#ffffff',
+                          border: '1px solid rgba(255, 255, 255, 0.25)',
+                          borderRadius: '6px',
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          cursor: 'pointer',
+                          backdropFilter: 'blur(4px)',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                          zIndex: 3
+                        }}
+                        title="Open interactive slideshow gallery"
+                      >
+                        <Maximize2 size={12} /> View Gallery ({allImages.length})
+                      </button>
 
                       {/* Navigation Arrows */}
                       {allImages.length > 1 && (
                         <>
                           <button 
                             type="button"
-                            onClick={() => setActiveImageIndex((prev) => (prev - 1 + allImages.length) % allImages.length)}
-                            style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', fontSize: '16px', fontWeight: 'bold' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveImageIndex((prev) => (prev - 1 + allImages.length) % allImages.length);
+                            }}
+                            style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', fontSize: '16px', fontWeight: 'bold', zIndex: 2 }}
                             title="Previous Image"
                           >
                             ‹
                           </button>
                           <button 
                             type="button"
-                            onClick={() => setActiveImageIndex((prev) => (prev + 1) % allImages.length)}
-                            style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', fontSize: '16px', fontWeight: 'bold' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveImageIndex((prev) => (prev + 1) % allImages.length);
+                            }}
+                            style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', fontSize: '16px', fontWeight: 'bold', zIndex: 2 }}
                             title="Next Image"
                           >
                             ›
@@ -1192,26 +1421,74 @@ export default function HomeDashboard({
                       )}
                     </div>
 
-                    {/* Thumbnail Row */}
+                    {/* Thumbnail Carousel Slider (Moves images only, no modal scrollbar) */}
                     {allImages.length > 1 && (
-                      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0', scrollbarWidth: 'thin' }}>
-                        {allImages.map((img, idx) => {
-                          const isActive = idx === activeImageIndex;
-                          const isEmoji = img.length <= 4;
-                          return (
-                            <div 
-                              key={idx}
-                              onClick={() => setActiveImageIndex(idx)}
-                              style={{ width: '48px', height: '48px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', border: isActive ? '2px solid var(--accent-indigo)' : '1px solid var(--border-light)', cursor: 'pointer', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            >
-                              {isEmoji ? (
-                                <span style={{ fontSize: '20px' }}>{img}</span>
-                              ) : (
-                                <img src={img} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              )}
-                            </div>
-                          );
-                        })}
+                      <div className="thumbnail-slider-container">
+                        {allImages.length > 4 && (
+                          <button 
+                            type="button"
+                            className="thumbnail-slider-btn"
+                            title="Scroll left"
+                            onClick={() => {
+                              const track = document.getElementById('product-thumb-track');
+                              if (track) track.scrollBy({ left: -100, behavior: 'smooth' });
+                            }}
+                          >
+                            ‹
+                          </button>
+                        )}
+                        <div 
+                          id="product-thumb-track"
+                          className="thumbnail-slider-track"
+                        >
+                          {allImages.map((img, idx) => {
+                            const isActive = idx === activeImageIndex;
+                            const isEmoji = img.length <= 4;
+                            return (
+                              <div 
+                                key={idx}
+                                onClick={() => setActiveImageIndex(idx)}
+                                onDoubleClick={() => {
+                                  if (!isEmoji) window.open(img, '_blank');
+                                }}
+                                style={{ 
+                                  width: '46px', 
+                                  height: '46px', 
+                                  flexShrink: 0, 
+                                  borderRadius: '6px', 
+                                  overflow: 'hidden', 
+                                  border: isActive ? '2px solid var(--accent-indigo)' : '1px solid var(--border-light)', 
+                                  cursor: 'pointer', 
+                                  background: 'var(--bg-card)', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center',
+                                  transition: 'transform 0.15s ease, border-color 0.15s ease'
+                                }}
+                                title={isEmoji ? img : "Click to preview (Double-click to open in new tab)"}
+                              >
+                                {isEmoji ? (
+                                  <span style={{ fontSize: '20px' }}>{img}</span>
+                                ) : (
+                                  <img src={img} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {allImages.length > 4 && (
+                          <button 
+                            type="button"
+                            className="thumbnail-slider-btn"
+                            title="Scroll right"
+                            onClick={() => {
+                              const track = document.getElementById('product-thumb-track');
+                              if (track) track.scrollBy({ left: 100, behavior: 'smooth' });
+                            }}
+                          >
+                            ›
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1471,6 +1748,111 @@ export default function HomeDashboard({
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* In-App Fullscreen Image Gallery Lightbox (Slides images one by one with arrows/touch) */}
+      {showLightbox && selectedProduct && (() => {
+        const allImages = [];
+        if (selectedProduct.imageUrl && selectedProduct.imageUrl !== '📦') {
+          allImages.push(selectedProduct.imageUrl);
+        }
+        if (selectedProduct.images && selectedProduct.images.length > 0) {
+          selectedProduct.images.forEach(img => {
+            if (!allImages.includes(img)) allImages.push(img);
+          });
+        }
+        if (allImages.length === 0) {
+          allImages.push(selectedProduct.imageUrl || '📦');
+        }
+        const currentImg = allImages[activeImageIndex] || allImages[0] || '📦';
+        const isEmoji = currentImg.length <= 4;
+
+        return (
+          <div className="image-lightbox-overlay" onClick={() => setShowLightbox(false)}>
+            {/* Top Bar */}
+            <div className="lightbox-header" onClick={(e) => e.stopPropagation()}>
+              <div className="lightbox-title">
+                <ProductIcon name={selectedProduct.name} category={selectedProduct.category} size={22} />
+                <span>{selectedProduct.name}</span>
+                <span className="badge badge-customer" style={{ marginLeft: '6px', fontSize: '11px' }}>{selectedProduct.category}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <span className="lightbox-counter">
+                  Image {activeImageIndex + 1} of {allImages.length}
+                </span>
+                <button 
+                  type="button"
+                  className="lightbox-close-btn"
+                  onClick={() => setShowLightbox(false)}
+                  title="Close Gallery (Esc)"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Main Stage with Big Image and Nav Buttons */}
+            <div className="lightbox-main-stage" onClick={(e) => e.stopPropagation()}>
+              {allImages.length > 1 && (
+                <button 
+                  type="button"
+                  className="lightbox-nav-btn prev"
+                  onClick={() => setActiveImageIndex(prev => (prev - 1 + allImages.length) % allImages.length)}
+                  title="Previous Image (Left Arrow)"
+                >
+                  ‹
+                </button>
+              )}
+
+              <div className="lightbox-img-wrapper">
+                {isEmoji ? (
+                  <span style={{ fontSize: '140px', filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.5))' }}>
+                    {currentImg}
+                  </span>
+                ) : (
+                  <img 
+                    key={activeImageIndex}
+                    src={currentImg} 
+                    alt={`${selectedProduct.name} - slide ${activeImageIndex + 1}`} 
+                  />
+                )}
+              </div>
+
+              {allImages.length > 1 && (
+                <button 
+                  type="button"
+                  className="lightbox-nav-btn next"
+                  onClick={() => setActiveImageIndex(prev => (prev + 1) % allImages.length)}
+                  title="Next Image (Right Arrow)"
+                >
+                  ›
+                </button>
+              )}
+            </div>
+
+            {/* Bottom Thumbnail Strip */}
+            <div className="lightbox-thumbnails" onClick={(e) => e.stopPropagation()}>
+              {allImages.map((img, idx) => {
+                const isActive = idx === activeImageIndex;
+                const thumbIsEmoji = img.length <= 4;
+                return (
+                  <div 
+                    key={idx}
+                    className={`lightbox-thumb-item ${isActive ? 'active' : ''}`}
+                    onClick={() => setActiveImageIndex(idx)}
+                    title={`Slide to Image ${idx + 1}`}
+                  >
+                    {thumbIsEmoji ? (
+                      <span style={{ fontSize: '24px' }}>{img}</span>
+                    ) : (
+                      <img src={img} alt={`thumb ${idx + 1}`} />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );

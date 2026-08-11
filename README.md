@@ -730,4 +730,128 @@ POST | `/api/auth/reset-password` | Update and save the verified new password
 4. Type a strong password (`Password123!`). Assert all checklist items turn green.
 5. Verify password confirmation matching before reset completes successfully.
 
+---
+
+# 📦 ShopStack — Day 6: Image Disk Storage, In-App Slideshow Lightbox, Out-of-Stock Cart Controls & Instant Inventory Management
+
+This repository contains the implementation for **Day 6** of the ShopStack Enterprise E-Commerce Platform.
+
+---
+
+## 📌 Day 6 Deliverables & Major Enhancements
+
+### 1. Product Images Server Disk Storage & Base64 Migration
+- [x] **File Storage Service (`FileStorageService.java`):** Saved uploaded product images to server filesystem (`backend/uploads/products/`) with unique UUID-based filenames rather than storing heavy Base64 strings in PostgreSQL, permanently resolving the PostgreSQL row-size bloat and 5MB payload limit.
+- [x] **Static Resource Handler (`WebConfig.java`):** Configured Spring `WebMvcConfigurer` to serve `/uploads/**` statically over HTTP (`http://localhost:8080/uploads/...`).
+- [x] **Spring Security Public Access:** Allowed unauthenticated static access to `/uploads/**` in `SecurityConfig.java`.
+- [x] **Single & Batch Multipart Upload Endpoints:** Added `POST /api/products/upload-image` and `POST /api/products/upload-images` with `multipart/form-data` support.
+- [x] **Automated Base64 Migration on Startup:** `initProducts()` automatically scans existing products on server boot, converts legacy Base64 images to physical disk files, and updates the database with lightweight URL paths.
+- [x] **Hibernate LazyInitializationException Resolution:** Configured `fetch = FetchType.EAGER` on `Product.images` and added `@Transactional` to `initProducts()`.
+
+### 2. Gallery UI & No-Page-Scroll Thumbnail Slider
+- [x] **Contained Horizontal Overflow:** Added strict `overflow-x: hidden` and `min-width: 0` constraints to modals and flex layouts to eliminate unwanted bottom scrollbars across the page and modals.
+- [x] **Dedicated Thumbnail Carousel Track:** Created `.thumbnail-slider-container` with smooth `‹` / `›` track scroll buttons so thumbnail galleries scroll seamlessly inside their container without shifting layout.
+
+### 3. In-App Fullscreen Gallery Slideshow / Lightbox
+- [x] **In-App Slideshow Lightbox:** Clicking product images opens an interactive fullscreen slideshow overlay with a blurred backdrop without navigating away or opening external browser tabs.
+- [x] **Smooth Previous / Next Navigation:** Floating navigation buttons (`‹` / `›`) allow users to cycle through all product images one by one.
+- [x] **Keyboard Controls:** Full keyboard support with **`←` (Left Arrow)** for previous image, **`→` (Right Arrow)** for next image, and **`Esc`** to close the gallery.
+- [x] **Active Position Counter & Bottom Strip:** Displays current slide status (`Image X of Y`) and a bottom interactive thumbnail strip for fast jumps.
+
+### 4. Out-of-Stock Display in Cart & Checkout Prevention
+- [x] **Live Real-time Stock Sync:** Cart evaluates items against current live product inventory from the database.
+- [x] **Prominent Out-of-Stock Badges:** Items with 0 inventory display a high-visibility **`🚫 OUT OF STOCK`** badge with dimmed styling.
+- [x] **Automatic Selection Filtering:** Checkboxes for out-of-stock items are disabled and excluded from checkout selection.
+- [x] **Select All In-Stock:** "Select All" toggle only selects items that are currently in stock.
+- [x] **Checkout Guard:** "Proceed to Checkout" button is disabled if any out-of-stock item is selected, and `handleStartCheckout` along with `PaymentService.placeVerifiedOrder` validate inventory on both client and server sides to prevent overselling.
+
+### 5. Dedicated Vendor Stock Management (Decoupled from Admin Approval)
+- [x] **Decoupled Stock Updates:** Removed the stock input from the "Edit Product Details" modal so vendors don't trigger Admin re-approval when adjusting inventory quantities.
+- [x] **Dedicated Stock Endpoint:** Added `PUT /api/products/{id}/stock` to directly update product inventory in the database while retaining its active `APPROVED` status.
+- [x] **Quick Stock Management Modal:** Added a dedicated **"Stock"** action button in the vendor product table that opens a fast inventory modal with direct inputs and presets (`Set 0 / Out of Stock`, `+10`, `+50`, `+100`).
+- [x] **Inline Quick Step Buttons:** Quick `+` and `-` buttons in the vendor product table for one-click adjustments.
+
+---
+
+## 📂 Project Structure Updates (Day 6)
+
+```text
+ShopStack/
+├── backend/
+│   ├── uploads/
+│   │   └── products/                            # Server disk directory for uploaded product images
+│   └── src/main/
+│       ├── resources/
+│       │   └── application.properties           # Added app.upload.dir and app.backend.base-url
+│       └── java/com/shopstack/backend/
+│           ├── config/
+│           │   ├── SecurityConfig.java          # Added /uploads/** to permitAll()
+│           │   └── WebConfig.java               # Static resource mapping for /uploads/** -> filesystem
+│           ├── controller/
+│           │   └── ProductController.java       # Added upload endpoints & dedicated PUT /api/products/{id}/stock
+│           ├── service/
+│           │   ├── FileStorageService.java      # Multipart & Base64 disk storage service
+│           │   └── PaymentService.java          # Server-side stock verification
+│           └── model/
+│               └── Product.java                 # fetch = FetchType.EAGER on images collection
+│
+└── frontend/
+    └── src/
+        ├── index.css                            # Overflow prevention, thumbnail slider & Lightbox styles
+        └── components/
+            ├── HomeDashboard.jsx                # In-app Lightbox slideshow, out-of-stock cart badges & checkout block
+            ├── CustomerDashboard.jsx            # Out-of-stock cart badges, auto-unselect & checkout guard
+            └── VendorDashboard.jsx              # FormData image uploads & dedicated "Manage Stock" modal
+```
+
+---
+
+## 📡 API Endpoints (Day 6)
+
+### Product Image Storage & Uploads
+Method | Endpoint | Description
+------ | -------- | -----------
+POST | `/api/products/upload-image` | Upload a single multipart image file to server disk (`uploads/products/`) and return accessible HTTP URL
+POST | `/api/products/upload-images` | Batch upload multiple multipart image files and return array of URLs
+GET | `/uploads/products/{fileName}` | Public static file serving for saved product images
+
+### Dedicated Inventory & Stock Management
+Method | Endpoint | Description
+------ | -------- | -----------
+PUT | `/api/products/{id}/stock` | Directly updates product stock quantity without changing approval status to `PENDING`
+
+---
+
+## 🧪 Testing Checklist & Verification Guide (Day 6)
+
+### 1. Product Image Upload to Disk
+1. Log in as a **Vendor**.
+2. Click **"+ Add Product"** or edit an existing product.
+3. Select image files to upload.
+4. Verify images are saved to `backend/uploads/products/` and assigned clean URLs (`http://localhost:8080/uploads/products/...`).
+5. Verify no Base64 strings are stored in PostgreSQL.
+
+### 2. In-App Fullscreen Gallery Slideshow (Lightbox)
+1. Open any product details modal on the Home dashboard.
+2. Click the product image or click **"View Gallery"**.
+3. Verify that the in-app lightbox opens smoothly without opening a new browser tab.
+4. Click the **`‹` / `›`** arrows or press **`←` / `→`** arrow keys on your keyboard to slide through photos.
+5. Press **`Esc`** or click the close button to return to the product details.
+
+### 3. Out-of-Stock Cart Controls
+1. Set a product's stock to `0` in the vendor dashboard.
+2. View the product in the shopping cart:
+   - Verify the red **`🚫 OUT OF STOCK`** badge is displayed.
+   - Verify the selection checkbox is disabled.
+   - Verify the quantity increase (`+`) button is disabled.
+3. Verify the **"Proceed to Checkout"** button is disabled with warning text when out-of-stock items are selected.
+4. Uncheck or remove the out-of-stock item and verify checkout becomes enabled for remaining in-stock items.
+
+### 4. Instant Vendor Stock Management (No Admin Approval Required)
+1. Log in as a **Vendor** and go to **Products**.
+2. Click the **"Stock"** button next to any approved product.
+3. Use the modal to change the stock (e.g. click `+50` or set a new number) and click **"Save Stock (Instant Update)"**.
+4. Verify the stock is updated immediately in the catalog without the product status changing to `PENDING APPROVAL`.
+
+
 
