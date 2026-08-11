@@ -1,8 +1,9 @@
-/* Unified Modern-Dark Theme Design System for ShopStack */
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
+/* Unified Modern-Dark Theme Design System for ShopStack */
 :root {
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   /* Shared Visual Accents */
   --accent-blue: #38bdf8;
@@ -165,6 +166,18 @@ body {
   }
 }
 
+@keyframes zoomIn {
+  from {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
@@ -218,6 +231,7 @@ body {
   font-weight: 800;
   background: var(--gradient-primary);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 8px;
 }
@@ -432,6 +446,7 @@ body {
   font-weight: 800;
   background: var(--gradient-primary);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   text-decoration: none;
   letter-spacing: -0.5px;
@@ -708,6 +723,9 @@ body {
   padding: 20px 24px;
   animation: fadeIn 0.2s ease-out;
   box-sizing: border-box;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
   user-select: none;
 }
 
