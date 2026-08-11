@@ -73,6 +73,20 @@ public class ProductController {
         }
     }
 
+    // Delete a single product image from disk storage
+    @DeleteMapping("/delete-image")
+    public ResponseEntity<?> deleteImage(@RequestParam("imageUrl") String imageUrl) {
+        try {
+            if (imageUrl == null || imageUrl.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Image URL is required."));
+            }
+            boolean deleted = fileStorageService.deleteFile(imageUrl);
+            return ResponseEntity.ok(Map.of("success", true, "deleted", deleted));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to delete image: " + e.getMessage()));
+        }
+    }
+
     @jakarta.annotation.PostConstruct
     @org.springframework.transaction.annotation.Transactional
     public void initProducts() {
@@ -180,6 +194,20 @@ public class ProductController {
         Optional<Product> optional = productRepository.findById(id);
         if (optional.isPresent()) {
             Product p = optional.get();
+
+            // Track old images to clean up any removed images from disk
+            java.util.Set<String> oldImages = new java.util.HashSet<>();
+            if (p.getImageUrl() != null && !p.getImageUrl().trim().isEmpty()) {
+                oldImages.add(p.getImageUrl().trim());
+            }
+            if (p.getImages() != null) {
+                for (String img : p.getImages()) {
+                    if (img != null && !img.trim().isEmpty()) {
+                        oldImages.add(img.trim());
+                    }
+                }
+            }
+
             p.setName(updated.getName());
             p.setCategory(updated.getCategory());
             p.setPrice(updated.getPrice());
@@ -200,6 +228,26 @@ public class ProductController {
 
             // Sanitize any base64 images into disk files before persisting
             p = fileStorageService.sanitizeProductImages(p);
+
+            // Track new images
+            java.util.Set<String> newImages = new java.util.HashSet<>();
+            if (p.getImageUrl() != null && !p.getImageUrl().trim().isEmpty()) {
+                newImages.add(p.getImageUrl().trim());
+            }
+            if (p.getImages() != null) {
+                for (String img : p.getImages()) {
+                    if (img != null && !img.trim().isEmpty()) {
+                        newImages.add(img.trim());
+                    }
+                }
+            }
+
+            // Automatically delete removed images from disk storage
+            for (String oldImg : oldImages) {
+                if (!newImages.contains(oldImg)) {
+                    fileStorageService.deleteFile(oldImg);
+                }
+            }
 
             // Changes to product pricing/discount require Admin re-approval
             p.setStatus("PENDING");
@@ -231,10 +279,21 @@ public class ProductController {
         return ResponseEntity.notFound().build();
     }
 
-    // Vendor: Delete product
+    // Vendor: Delete product and automatically remove stored image files from disk
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
-        if (productRepository.existsById(id)) {
+        Optional<Product> optional = productRepository.findById(id);
+        if (optional.isPresent()) {
+            Product p = optional.get();
+            // Automatically delete cover image and gallery images from disk
+            if (p.getImageUrl() != null) {
+                fileStorageService.deleteFile(p.getImageUrl());
+            }
+            if (p.getImages() != null) {
+                for (String img : p.getImages()) {
+                    fileStorageService.deleteFile(img);
+                }
+            }
             productRepository.deleteById(id);
             return ResponseEntity.ok("Product deleted successfully");
         }

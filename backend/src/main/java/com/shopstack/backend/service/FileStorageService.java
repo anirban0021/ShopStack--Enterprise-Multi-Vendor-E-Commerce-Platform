@@ -140,4 +140,67 @@ public class FileStorageService {
 
         return product;
     }
+
+    /**
+     * Deletes a stored product image file from the disk based on its URL or filename.
+     * Safely ignores external URLs or emojis.
+     */
+    public boolean deleteFile(String imageUrlOrName) {
+        if (imageUrlOrName == null || imageUrlOrName.trim().isEmpty()) {
+            return false;
+        }
+
+        String target = imageUrlOrName.trim();
+        String filename = target;
+
+        // Extract filename if it contains the uploads path
+        if (target.contains("/uploads/products/")) {
+            int idx = target.indexOf("/uploads/products/");
+            filename = target.substring(idx + "/uploads/products/".length());
+        } else if (target.startsWith("http://") || target.startsWith("https://") || target.startsWith("data:")) {
+            // External URL or raw data that is not stored on local disk
+            return false;
+        }
+
+        // Clean query parameters or anchors if any
+        int queryIdx = filename.indexOf('?');
+        if (queryIdx != -1) {
+            filename = filename.substring(0, queryIdx);
+        }
+        int hashIdx = filename.indexOf('#');
+        if (hashIdx != -1) {
+            filename = filename.substring(0, hashIdx);
+        }
+
+        try {
+            Path filePath = this.fileStorageLocation.resolve(filename).normalize();
+            // Path traversal security check
+            if (!filePath.startsWith(this.fileStorageLocation)) {
+                System.err.println("[FileStorageService] Security violation: Attempted access outside upload directory: " + filename);
+                return false;
+            }
+
+            boolean deleted = Files.deleteIfExists(filePath);
+            if (deleted) {
+                System.out.println("[FileStorageService] Successfully deleted image file from disk: " + filePath.getFileName());
+            } else {
+                System.out.println("[FileStorageService] Image file did not exist or was already deleted: " + filePath.getFileName());
+            }
+            return deleted;
+        } catch (Exception e) {
+            System.err.println("[FileStorageService] Error deleting file " + filename + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Deletes multiple files from disk.
+     */
+    public void deleteFiles(List<String> imageUrls) {
+        if (imageUrls == null || imageUrls.isEmpty()) return;
+        for (String url : imageUrls) {
+            deleteFile(url);
+        }
+    }
 }
+

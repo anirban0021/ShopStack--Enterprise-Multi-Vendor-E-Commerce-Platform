@@ -748,24 +748,30 @@ This repository contains the implementation for **Day 6** of the ShopStack Enter
 - [x] **Automated Base64 Migration on Startup:** `initProducts()` automatically scans existing products on server boot, converts legacy Base64 images to physical disk files, and updates the database with lightweight URL paths.
 - [x] **Hibernate LazyInitializationException Resolution:** Configured `fetch = FetchType.EAGER` on `Product.images` and added `@Transactional` to `initProducts()`.
 
-### 2. Gallery UI & No-Page-Scroll Thumbnail Slider
+### 2. Automated Image File Deletion & Disk Storage Cleanup
+- [x] **Instant Single Image Deletion (`DELETE /api/products/delete-image`):** Added a dedicated endpoint and connected the red **`×`** button in the product edit modal so clicking it immediately sends an API request to delete the physical image file from the `uploads/products/` folder.
+- [x] **Automated Cleanup on Product Update (`PUT /api/products/{id}`):** When a vendor updates a product, the backend automatically compares the existing image list with the updated images and deletes any removed images from disk storage.
+- [x] **Automated Cleanup on Product Deletion (`DELETE /api/products/{id}`):** When a product is removed by a vendor, the system automatically deletes its cover image and all gallery images stored on disk to avoid orphaned files.
+- [x] **Path Traversal Security Protection:** Built strict path sanitization into `FileStorageService.deleteFile(...)` verifying that target paths resolve safely within the designated upload directory.
+
+### 3. Gallery UI & No-Page-Scroll Thumbnail Slider
 - [x] **Contained Horizontal Overflow:** Added strict `overflow-x: hidden` and `min-width: 0` constraints to modals and flex layouts to eliminate unwanted bottom scrollbars across the page and modals.
 - [x] **Dedicated Thumbnail Carousel Track:** Created `.thumbnail-slider-container` with smooth `‹` / `›` track scroll buttons so thumbnail galleries scroll seamlessly inside their container without shifting layout.
 
-### 3. In-App Fullscreen Gallery Slideshow / Lightbox
+### 4. In-App Fullscreen Gallery Slideshow / Lightbox
 - [x] **In-App Slideshow Lightbox:** Clicking product images opens an interactive fullscreen slideshow overlay with a blurred backdrop without navigating away or opening external browser tabs.
 - [x] **Smooth Previous / Next Navigation:** Floating navigation buttons (`‹` / `›`) allow users to cycle through all product images one by one.
 - [x] **Keyboard Controls:** Full keyboard support with **`←` (Left Arrow)** for previous image, **`→` (Right Arrow)** for next image, and **`Esc`** to close the gallery.
 - [x] **Active Position Counter & Bottom Strip:** Displays current slide status (`Image X of Y`) and a bottom interactive thumbnail strip for fast jumps.
 
-### 4. Out-of-Stock Display in Cart & Checkout Prevention
+### 5. Out-of-Stock Display in Cart & Checkout Prevention
 - [x] **Live Real-time Stock Sync:** Cart evaluates items against current live product inventory from the database.
 - [x] **Prominent Out-of-Stock Badges:** Items with 0 inventory display a high-visibility **`🚫 OUT OF STOCK`** badge with dimmed styling.
 - [x] **Automatic Selection Filtering:** Checkboxes for out-of-stock items are disabled and excluded from checkout selection.
 - [x] **Select All In-Stock:** "Select All" toggle only selects items that are currently in stock.
 - [x] **Checkout Guard:** "Proceed to Checkout" button is disabled if any out-of-stock item is selected, and `handleStartCheckout` along with `PaymentService.placeVerifiedOrder` validate inventory on both client and server sides to prevent overselling.
 
-### 5. Dedicated Vendor Stock Management (Decoupled from Admin Approval)
+### 6. Dedicated Vendor Stock Management (Decoupled from Admin Approval)
 - [x] **Decoupled Stock Updates:** Removed the stock input from the "Edit Product Details" modal so vendors don't trigger Admin re-approval when adjusting inventory quantities.
 - [x] **Dedicated Stock Endpoint:** Added `PUT /api/products/{id}/stock` to directly update product inventory in the database while retaining its active `APPROVED` status.
 - [x] **Quick Stock Management Modal:** Added a dedicated **"Stock"** action button in the vendor product table that opens a fast inventory modal with direct inputs and presets (`Set 0 / Out of Stock`, `+10`, `+50`, `+100`).
@@ -788,9 +794,9 @@ ShopStack/
 │           │   ├── SecurityConfig.java          # Added /uploads/** to permitAll()
 │           │   └── WebConfig.java               # Static resource mapping for /uploads/** -> filesystem
 │           ├── controller/
-│           │   └── ProductController.java       # Added upload endpoints & dedicated PUT /api/products/{id}/stock
+│           │   └── ProductController.java       # Added upload/delete-image endpoints & dedicated PUT /api/products/{id}/stock
 │           ├── service/
-│           │   ├── FileStorageService.java      # Multipart & Base64 disk storage service
+│           │   ├── FileStorageService.java      # Multipart/Base64 disk storage & safe file deletion
 │           │   └── PaymentService.java          # Server-side stock verification
 │           └── model/
 │               └── Product.java                 # fetch = FetchType.EAGER on images collection
@@ -801,18 +807,19 @@ ShopStack/
         └── components/
             ├── HomeDashboard.jsx                # In-app Lightbox slideshow, out-of-stock cart badges & checkout block
             ├── CustomerDashboard.jsx            # Out-of-stock cart badges, auto-unselect & checkout guard
-            └── VendorDashboard.jsx              # FormData image uploads & dedicated "Manage Stock" modal
+            └── VendorDashboard.jsx              # FormData uploads, instant file deletion & dedicated "Manage Stock" modal
 ```
 
 ---
 
 ## 📡 API Endpoints (Day 6)
 
-### Product Image Storage & Uploads
+### Product Image Storage, Uploads & Deletions
 Method | Endpoint | Description
 ------ | -------- | -----------
 POST | `/api/products/upload-image` | Upload a single multipart image file to server disk (`uploads/products/`) and return accessible HTTP URL
 POST | `/api/products/upload-images` | Batch upload multiple multipart image files and return array of URLs
+DELETE | `/api/products/delete-image?imageUrl={url}` | Delete a specific image file from server disk storage
 GET | `/uploads/products/{fileName}` | Public static file serving for saved product images
 
 ### Dedicated Inventory & Stock Management
@@ -824,12 +831,15 @@ PUT | `/api/products/{id}/stock` | Directly updates product stock quantity witho
 
 ## 🧪 Testing Checklist & Verification Guide (Day 6)
 
-### 1. Product Image Upload to Disk
+### 1. Product Image Upload & Automatic Deletion from Disk
 1. Log in as a **Vendor**.
-2. Click **"+ Add Product"** or edit an existing product.
-3. Select image files to upload.
-4. Verify images are saved to `backend/uploads/products/` and assigned clean URLs (`http://localhost:8080/uploads/products/...`).
-5. Verify no Base64 strings are stored in PostgreSQL.
+2. Click **"+ Add Product"** or edit an existing product and upload images.
+3. Verify files appear in `backend/uploads/products/`.
+4. Click the red **`×`** button on an uploaded image thumbnail:
+   - Verify the thumbnail disappears from the modal.
+   - Verify the physical file is immediately removed from the `backend/uploads/products/` folder on disk.
+5. Save or update the product with fewer images and confirm unreferenced files are deleted from the disk folder.
+6. Delete a product and verify all of its stored images are automatically removed from disk.
 
 ### 2. In-App Fullscreen Gallery Slideshow (Lightbox)
 1. Open any product details modal on the Home dashboard.
@@ -852,6 +862,7 @@ PUT | `/api/products/{id}/stock` | Directly updates product stock quantity witho
 2. Click the **"Stock"** button next to any approved product.
 3. Use the modal to change the stock (e.g. click `+50` or set a new number) and click **"Save Stock (Instant Update)"**.
 4. Verify the stock is updated immediately in the catalog without the product status changing to `PENDING APPROVAL`.
+
 
 
 

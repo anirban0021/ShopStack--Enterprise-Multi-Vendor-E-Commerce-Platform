@@ -178,7 +178,10 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
     });
   };
 
-  const handleRemoveImage = (indexToRemove) => {
+  const handleRemoveImage = async (indexToRemove) => {
+    const imageToRemove = productForm.images[indexToRemove];
+
+    // Optimistically update form state
     setProductForm(prev => {
       const newImages = prev.images.filter((_, idx) => idx !== indexToRemove);
       let newImageUrl = prev.imageUrl;
@@ -192,6 +195,18 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
         imageUrl: newImageUrl
       };
     });
+
+    // If the image was stored on the server disk, delete the physical file immediately
+    if (imageToRemove && imageToRemove.includes('/uploads/products/')) {
+      try {
+        await axios.delete('http://localhost:8080/api/products/delete-image', {
+          params: { imageUrl: imageToRemove }
+        });
+        showFlash('success', 'Image removed and deleted from folder storage.');
+      } catch (err) {
+        console.error("Failed to delete image file from server:", err);
+      }
+    }
   };
 
   const handleSetPrimaryImage = (img) => {
