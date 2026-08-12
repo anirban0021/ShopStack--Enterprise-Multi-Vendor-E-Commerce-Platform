@@ -863,6 +863,148 @@ PUT | `/api/products/{id}/stock` | Directly updates product stock quantity witho
 3. Use the modal to change the stock (e.g. click `+50` or set a new number) and click **"Save Stock (Instant Update)"**.
 4. Verify the stock is updated immediately in the catalog without the product status changing to `PENDING APPROVAL`.
 
+---
 
+# 📦 ShopStack — Day 7: Automated Inventory Restocking on Returns/Refunds, End-to-End Return Lifecycle Governance, Warehouse Operations & Marketplace Settlement Engine
 
+This milestone establishes automated inventory restocking upon returns and refunds, an enterprise return governance workflow, a dedicated warehouse operations dashboard, and automated vendor payout settlement calculations.
 
+---
+
+## 📌 Day 7 Deliverables & Major Enhancements
+
+### 1. Automated Stock Replenishment on Return & Refund
+- [x] **Restock on Return Approval & Refund Execution (`approveAndExecuteRefund`):** When an Administrator or Warehouse Officer approves a customer return after physical quality inspection and disburses the refund, the backend automatically retrieves all line items for that order and increases the product stock inventory (`currentStock + item.getQuantity()`).
+- [x] **Restock on Direct Admin Override Refund (`processRefund`):** When an Admin issues an immediate direct refund for an order, the system automatically replenishes the respective products' inventory.
+- [x] **Restock on Order Status Cancellation & Refund (`VendorController.updateOrderStatus`):** When an order's status transitions to `CANCELLED` or `REFUNDED` through the vendor or warehouse operations portal, line item stock quantities are automatically restored to active inventory.
+- [x] **Safe Product Line Item Resolution:** Implemented `restockOrderItems(String orderId)` in `PaymentService.java` which iterates across `OrderItemRepository` entries, fetches each referenced `Product` by ID, increments available stock, and safely saves updates to PostgreSQL.
+
+### 2. Enterprise End-to-End Return & Refund Lifecycle Governance
+- [x] **Multi-Stage Return Pipeline:** Structured complete lifecycle tracking across stages:
+  - `REQUESTED` — Customer initiates return request specifying reason category and notes.
+  - `ITEM_RETURNED` — Physical package arrives at warehouse.
+  - `QC_PASSED` / `QC_FAILED` — Warehouse inspection validates product authenticity and condition.
+  - `REFUNDED` / `REJECTED` — Final administrative decision and disbursement.
+- [x] **Categorized Return Reasons:** Support for standardized return reasons:
+  - `DEFECTIVE_DAMAGED` (Defective / Damaged Item)
+  - `WRONG_ITEM` (Wrong Item Delivered)
+  - `SIZE_FIT_ISSUE` (Size or Fit Issue)
+  - `CHANGED_MIND` (Changed Mind / No Longer Needed)
+  - `NOT_AS_DESCRIBED` (Product Does Not Match Listing)
+- [x] **Flexible Resolution Types:** Supports `REFUND`, `REPLACEMENT`, and `EXCHANGE` tracking.
+- [x] **Integrated Razorpay Refund API:** Executes real-time refund requests against Razorpay API in Test Mode (`razorpayClient.payments.refund(...)`) with test-mode mock fallback and auto-generated transaction references (`rfnd_test_*` / `rfnd_offline_*`).
+- [x] **Partial & Full Refund Tracking:** Automatic balance calculations ensuring refund disbursements do not exceed the remaining refundable order amount.
+
+### 3. Warehouse Operations & Fulfillment Console (`WarehouseDashboard.jsx`)
+- [x] **Dispatch & Fulfillment Queue:** Warehouse staff can monitor all confirmed marketplace orders and transition status across `CONFIRMED` → `SHIPPED` → `DELIVERED`.
+- [x] **Returns Quality Inspection Hub:** Dedicated view for reviewing customer return reasons, verifying items, and signaling QC inspection status for administrative clearance.
+- [x] **Live Warehouse Stock Auditing:** Interactive inventory table allowing warehouse personnel to audit and make direct stock count adjustments.
+
+### 4. Marketplace Commission Ledger & Vendor Settlement Engine
+- [x] **Platform Commission Automation (`shopstack.commission.percentage=10.0`):** Configurable marketplace commission deducted automatically from vendor gross sales.
+- [x] **Settlement Entity & Ledger (`Settlement.java`, `SettlementRepository.java`):** Persists vendor payouts tracking `grossAmount`, `commissionPercentage`, `commissionAmount`, `netPayoutAmount`, and settlement status (`PENDING` / `SETTLED`).
+- [x] **Admin Payout Management Console (`AdminController.java`):** Overview of total platform gross volume, total commission revenue, pending vendor payouts, settled amounts, and one-click payout clearance (`PUT /api/admin/settlements/{id}/mark-settled`).
+- [x] **Vendor Settlement History:** Dedicated ledger in Vendor Dashboard showing individual order payouts, commission fees, and net earnings.
+
+### 5. Payment Health Monitoring & Metrics Dashboard
+- [x] **Live Metrics Overview (`GET /api/admin/payment-monitoring`):** Real-time aggregation of total orders, paid count, pending count, failed/cancelled count, refunded count, and total paid transaction volume.
+- [x] **Transaction Audit Trail (`GET /api/payment/transactions`):** Multi-filter transaction search by user ID, vendor ID, order status, and payment status.
+
+---
+
+## 📂 Project Structure Updates (Day 7)
+
+```text
+ShopStack/
+├── backend/
+│   └── src/main/java/com/shopstack/backend/
+│       ├── model/
+│       │   ├── Refund.java                      # Return & Refund entity with returnStage, resolutionType, reasonCategory
+│       │   ├── Settlement.java                  # Vendor settlement ledger model with commission & net payout
+│       │   └── OrderItem.java                   # Order line items with productId & quantity mapping
+│       ├── repository/
+│       │   ├── RefundRepository.java            # JPA repository for refund records
+│       │   └── SettlementRepository.java        # JPA repository for vendor settlements
+│       ├── controller/
+│       │   ├── AdminController.java             # Admin returns review, approval/rejection & settlement payouts
+│       │   ├── PaymentController.java           # Payment verification, return requests & transaction logs
+│       │   └── VendorController.java            # Order status updates with automated stock replenishment
+│       └── service/
+│           └── PaymentService.java              # restockOrderItems(), approveAndExecuteRefund() & processRefund()
+│
+└── frontend/
+    └── src/
+        └── components/
+            ├── AdminDashboard.jsx               # Returns & Refunds Tab, Settlement Ledger & Payment Monitoring
+            ├── WarehouseDashboard.jsx           # Order Dispatch, Returns Inspection & Stock Management
+            ├── CustomerDashboard.jsx            # Return Request Submission & Refund Status Tracking
+            └── VendorDashboard.jsx              # Vendor Settlement Earnings & Order Fulfillment
+```
+
+---
+
+## 📡 API Endpoints (Day 7)
+
+### Returns & Refunds Lifecycle
+Method | Endpoint | Description
+------ | -------- | -----------
+POST | `/api/payment/refund/request` | Customer submits a return & refund request with reason category and notes
+GET | `/api/payment/refund/{orderId}` | Fetch return & refund history for a specific order
+GET | `/api/admin/refunds` | Admin/Warehouse retrieves all marketplace return requests with optional status filter
+POST | `/api/admin/refunds/{refundId}/approve` | Admin approves return after QC inspection, disburses refund & **automatically restocks product inventory**
+POST | `/api/admin/refunds/{refundId}/reject` | Admin rejects return request with specific rejection reason notes
+POST | `/api/payment/refund` | Admin direct override refund execution & **automatic product restocking**
+
+### Vendor Settlement & Payout Engine
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/admin/settlements` | Retrieve platform-wide settlement summary (gross, commission, net payout) and list
+PUT | `/api/admin/settlements/{id}/mark-settled` | Mark a vendor payout as `SETTLED` with timestamp
+GET | `/api/vendor/{vendorId}/settlements` | Retrieve settlement ledger for a specific vendor
+
+### Payment Health & Monitoring
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/admin/payment-monitoring` | Overview metrics for paid, pending, failed, refunded orders and total volume
+GET | `/api/payment/transactions` | Filterable transaction audit records
+GET | `/api/payment/status/{orderId}` | Live payment and fulfillment status for an order
+
+---
+
+## 🧪 Testing Checklist & Verification Guide (Day 7)
+
+### 1. Automatic Inventory Restocking on Return & Refund Approval
+1. Note the current stock of a product (e.g. `Stock: 10`).
+2. Place an order for **2 units** of this product as a customer.
+3. Verify that product stock decreases to **`8`**.
+4. As the customer, go to **Order History** and click **"Request Return / Refund"** on the order.
+5. Select a return reason (e.g. *Defective / Damaged*) and submit.
+6. Log in as an **Administrator** and navigate to the **Returns & Refunds** tab.
+7. Click **"Approve & Disburse Refund"** on the pending request.
+8. Verify that the return status changes to **`REFUNDED`** and **`QC Passed`**.
+9. Check the product stock in the catalog or vendor dashboard:
+   - ✅ **Assert product stock has automatically increased back by 2 units (from `8` to `10`)**.
+
+### 2. Automatic Restocking on Direct Admin Refund
+1. Place an order for a product.
+2. In the Admin Dashboard, click **"Direct Refund"** on the order and enter the refund amount.
+3. Confirm the refund.
+4. ✅ **Assert that product inventory is immediately restored by the purchased quantity**.
+
+### 3. Automatic Restocking on Order Cancellation
+1. Place an order for a product.
+2. In the Vendor or Warehouse dashboard, change the order status to **`CANCELLED`**.
+3. ✅ **Assert that product stock is automatically restored in the database**.
+
+### 4. Warehouse Returns Inspection & Dispatch Flow
+1. Log in as **Warehouse Staff**.
+2. Go to **Dispatch Management** and update an order from `CONFIRMED` to `SHIPPED` and `DELIVERED`.
+3. Switch to the **Returns & Quality Inspection** tab to review submitted customer return claims.
+4. Verify warehouse staff can review item condition and customer-reported notes.
+
+### 5. Vendor Settlement & Commission Payout Ledger
+1. Log in as an **Administrator** and navigate to **Vendor Settlements**.
+2. Verify total gross, platform commission (10%), and net vendor payout calculations match order totals.
+3. Click **"Mark Settled"** on a pending settlement.
+4. Verify status updates to emerald **`SETTLED`** with settlement timestamp recorded.
+5. Log in as the respective **Vendor** and verify the payout appears in their settlement history ledger.
