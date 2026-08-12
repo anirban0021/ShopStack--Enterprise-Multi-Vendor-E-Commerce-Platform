@@ -412,18 +412,42 @@ export default function HomeDashboard({
           }
         },
         modal: {
-          ondismiss: function () {
+          ondismiss: async function () {
             setIsProcessingPayment(false);
             showFlash('info', 'Razorpay checkout cancelled.');
+            try {
+              await axios.post('http://localhost:8080/api/payment/record-failed', {
+                userId: user?.id,
+                razorpayOrderId: razorpayOrderId,
+                errorMessage: 'Payment cancelled / dismissed by user',
+                amount: totalAmount,
+                items: selectedCartItems,
+                deliveryInfo: deliveryInfo
+              });
+            } catch (e) {
+              console.error("Failed to record cancelled checkout", e);
+            }
           }
         }
       };
 
       const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', function (response) {
+      rzp.on('payment.failed', async function (response) {
         setIsProcessingPayment(false);
         setPaymentStep(2);
         showFlash('error', response.error?.description || 'Razorpay transaction failed.');
+        try {
+          await axios.post('http://localhost:8080/api/payment/record-failed', {
+            userId: user?.id,
+            razorpayOrderId: razorpayOrderId,
+            errorMessage: response.error?.description || 'Razorpay transaction failed',
+            amount: totalAmount,
+            items: selectedCartItems,
+            deliveryInfo: deliveryInfo
+          });
+        } catch (e) {
+          console.error("Failed to record failed checkout", e);
+        }
       });
       rzp.open();
     } catch (err) {

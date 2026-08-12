@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   TrendingUp, Package, AlertTriangle, IndianRupee, Plus, Edit2, 
-  Trash2, X, Check, Save, Truck, Calendar, ShoppingBag, Eye, Layers
+  Trash2, X, Check, Save, Truck, Calendar, ShoppingBag, Eye, Layers,
+  DollarSign, RefreshCw, CheckCircle, Clock, ShieldCheck, FileText, Search
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
@@ -27,6 +28,18 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
   const [vendorOrders, setVendorOrders] = useState([]);
   const [showProductModal, setShowProductModal] = useState(false);
   const [modalMode, setModalMode] = useState('add'); // 'add' or 'edit'
+  
+  // Settlements / Payouts state
+  const [settlements, setSettlements] = useState([]);
+  const [settlementsSummary, setSettlementsSummary] = useState({
+    totalGross: 0,
+    totalCommission: 0,
+    totalNetPayout: 0,
+    pendingPayout: 0,
+    settledPayout: 0
+  });
+  const [isLoadingSettlements, setIsLoadingSettlements] = useState(false);
+  const [settlementFilter, setSettlementFilter] = useState('ALL');
   
   // Dedicated Stock Management state (Zero Admin Approval Required)
   const [stockModalProduct, setStockModalProduct] = useState(null);
@@ -56,6 +69,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
     fetchAnalytics();
     fetchProducts();
     fetchVendorOrders();
+    fetchSettlements();
   }, []);
 
   const showFlash = (type, text) => {
@@ -87,6 +101,27 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       setVendorOrders(res.data);
     } catch (err) {
       console.error("Failed to load vendor orders", err);
+    }
+  };
+
+  const fetchSettlements = async () => {
+    setIsLoadingSettlements(true);
+    try {
+      const res = await axios.get(`http://localhost:8080/api/vendor/${user.id}/settlements`);
+      if (res.data) {
+        setSettlements(res.data.settlements || []);
+        setSettlementsSummary(res.data.summary || {
+          totalGross: 0,
+          totalCommission: 0,
+          totalNetPayout: 0,
+          pendingPayout: 0,
+          settledPayout: 0
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load vendor settlements", err);
+    } finally {
+      setIsLoadingSettlements(false);
     }
   };
 
@@ -371,6 +406,12 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
             className={`sidebar-item ${activeTab === 'orders' ? 'sidebar-item-active' : ''}`}
           >
             <ShoppingBag size={18} /> Customer Orders ({vendorOrders.length})
+          </div>
+          <div 
+            onClick={() => setActiveTab('settlements')} 
+            className={`sidebar-item ${activeTab === 'settlements' ? 'sidebar-item-active' : ''}`}
+          >
+            <IndianRupee size={18} /> Settlements & Payouts ({settlements.length})
           </div>
         </div>
 
@@ -697,6 +738,170 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                           </td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'settlements' && (
+            <div>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Vendor Settlement & Payout Ledger</h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Transparent earnings breakdown per sold item with automatic platform commission deduction (10%).
+                  </p>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={fetchSettlements} 
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                >
+                  <RefreshCw size={13} className={isLoadingSettlements ? "spin-animation" : ""} /> Refresh
+                </button>
+              </div>
+
+              {/* Settlement Summary Cards */}
+              <div className="analytics-grid" style={{ marginBottom: '24px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Gross Sales Volume</span>
+                    <DollarSign size={16} style={{ color: 'var(--accent-blue)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ fontSize: '22px' }}>
+                    ₹{settlementsSummary.totalGross?.toLocaleString('en-IN') || '0'}
+                  </div>
+                  <div className="analytics-card-desc">Total sales before commission</div>
+                </div>
+
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Platform Fee (10%)</span>
+                    <ShieldCheck size={16} style={{ color: 'var(--accent-rose)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ fontSize: '22px' }}>
+                    ₹{settlementsSummary.totalCommission?.toLocaleString('en-IN') || '0'}
+                  </div>
+                  <div className="analytics-card-desc">ShopStack commission</div>
+                </div>
+
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Net Payout Earned</span>
+                    <IndianRupee size={16} style={{ color: 'var(--accent-teal)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ fontSize: '22px' }}>
+                    ₹{settlementsSummary.totalNetPayout?.toLocaleString('en-IN') || '0'}
+                  </div>
+                  <div className="analytics-card-desc">Total vendor earnings</div>
+                </div>
+
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Pending Payouts</span>
+                    <Clock size={16} style={{ color: '#f59e0b' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ fontSize: '22px', color: '#f59e0b' }}>
+                    ₹{settlementsSummary.pendingPayout?.toLocaleString('en-IN') || '0'}
+                  </div>
+                  <div className="analytics-card-desc">Awaiting admin settlement</div>
+                </div>
+
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Settled Payouts</span>
+                    <CheckCircle size={16} style={{ color: 'var(--accent-emerald)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ fontSize: '22px', color: 'var(--accent-emerald)' }}>
+                    ₹{settlementsSummary.settledPayout?.toLocaleString('en-IN') || '0'}
+                  </div>
+                  <div className="analytics-card-desc">Successfully transferred</div>
+                </div>
+              </div>
+
+              {/* Filter Tabs */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                {['ALL', 'PENDING', 'SETTLED'].map(filter => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setSettlementFilter(filter)}
+                    className={`btn ${settlementFilter === filter ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '12px', padding: '6px 14px' }}
+                  >
+                    {filter === 'ALL' ? `All Records (${settlements.length})` : 
+                     filter === 'PENDING' ? `Pending (${settlements.filter(s => s.status === 'PENDING').length})` : 
+                     `Settled (${settlements.filter(s => s.status === 'SETTLED').length})`}
+                  </button>
+                ))}
+              </div>
+
+              {/* Settlement Records Table */}
+              {settlements.length === 0 ? (
+                <div className="cart-empty-state">
+                  <IndianRupee className="cart-empty-icon" style={{ opacity: 0.2 }} />
+                  <p>No settlement records found. Settlements are automatically created when paid orders are placed.</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Order ID</th>
+                        <th>Product Item</th>
+                        <th>Gross Sale</th>
+                        <th>Commission (10%)</th>
+                        <th>Net Payout</th>
+                        <th>Status</th>
+                        <th>Settled On</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {settlements
+                        .filter(s => settlementFilter === 'ALL' || s.status === settlementFilter)
+                        .map((s) => {
+                          const isSettled = s.status === 'SETTLED';
+                          return (
+                            <tr key={s.id}>
+                              <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                                {s.createdAt}
+                              </td>
+                              <td style={{ fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--accent-blue)' }}>
+                                {s.orderId}
+                              </td>
+                              <td style={{ fontWeight: '600', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {s.productName || `Item #${s.orderItemId}`}
+                              </td>
+                              <td style={{ fontWeight: '700' }}>
+                                ₹{s.grossAmount}
+                              </td>
+                              <td style={{ color: 'var(--accent-rose)', fontSize: '13px' }}>
+                                -₹{s.commissionAmount} ({s.commissionPercentage}%)
+                              </td>
+                              <td style={{ fontWeight: '800', color: 'var(--accent-emerald)', fontSize: '14px' }}>
+                                ₹{s.netPayoutAmount}
+                              </td>
+                              <td>
+                                {isSettled ? (
+                                  <span className="badge badge-approved" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <Check size={12} /> SETTLED
+                                  </span>
+                                ) : (
+                                  <span className="badge" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                                    <Clock size={12} /> PENDING
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                                {s.settledAt || 'Pending transfer'}
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>

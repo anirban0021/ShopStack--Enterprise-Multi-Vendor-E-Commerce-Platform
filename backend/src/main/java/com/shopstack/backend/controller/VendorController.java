@@ -21,9 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.shopstack.backend.model.Order;
 import com.shopstack.backend.model.OrderItem;
 import com.shopstack.backend.model.Product;
+import com.shopstack.backend.model.Settlement;
 import com.shopstack.backend.repository.OrderItemRepository;
 import com.shopstack.backend.repository.OrderRepository;
 import com.shopstack.backend.repository.ProductRepository;
+import com.shopstack.backend.repository.SettlementRepository;
 
 @RestController
 @RequestMapping("/api/vendor")
@@ -38,6 +40,9 @@ public class VendorController {
 
     @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private SettlementRepository settlementRepository;
 
     // Get Analytics for a Vendor
     @GetMapping("/{vendorId}/analytics")
@@ -113,6 +118,8 @@ public class VendorController {
                 orderMap.put("quantity", item.getQuantity());
                 orderMap.put("totalAmount", item.getPrice() * item.getQuantity());
                 orderMap.put("status", order.getStatus()); // Shared order status
+                orderMap.put("paymentStatus", order.getPaymentStatus() != null ? order.getPaymentStatus() : "PENDING");
+                orderMap.put("paymentMethod", order.getPaymentMethod());
                 response.add(orderMap);
             }
         }
@@ -135,11 +142,66 @@ public class VendorController {
 
         if (orderOpt.isPresent()) {
             Order order = orderOpt.get();
+            String oldStatus = order.getStatus() != null ? order.getStatus() : "";
             order.setStatus(newStatus.toUpperCase());
             orderRepository.save(order);
+
+            // Restore product stock inventory if status transitions to CANCELLED or REFUNDED
+            if (("CANCELLED".equalsIgnoreCase(newStatus) || "REFUNDED".equalsIgnoreCase(newStatus))
+                    && !"CANCELLED".equalsIgnoreCase(oldStatus) && !"REFUNDED".equalsIgnoreCase(oldStatus)) {
+                List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
+                for (OrderItem item : items) {
+                    if (item.getProductId() != null && item.getQuantity() > 0) {
+                        Optional<Product> prodOpt = productRepository.findById(item.getProductId());
+                        if (prodOpt.isPresent()) {
+                            Product prod = prodOpt.get();
+                            int currentStock = prod.getStock() != null ? prod.getStock() : 0;
+                            prod.setStock(currentStock + item.getQuantity());
+                            productRepository.save(prod);
+                        }
+                    }
+                }
+            }
+
             return ResponseEntity.ok(order);
         }
 
         return ResponseEntity.notFound().build();
+    }
+
+    // Get Vendor Settlement & Payout Ledger
+    @GetMapping("/{vendorId}/settlements")
+    public ResponseEntity<?> getVendorSettlements(@PathVariable Long vendorId) {
+        List<Settlement> settlements = settlementRepository.findByVendorIdOrderByIdDesc(vendorId);
+
+        double totalGross = 0;
+        double totalCommission = 0;
+        double totalNetPayout = 0;
+        double pendingPayout = 0;
+        double settledPayout = 0;
+
+        for (Settlement s : settlements) {
+            totalGross += s.getGrossAmount();
+            totalCommission += s.getCommissionAmount();
+            totalNetPayout += s.getNetPayoutAmount();
+            if ("SETTLED".equalsIgnoreCase(s.getStatus())) {
+                settledPayout += s.getNetPayoutAmount();
+            } else {
+                pendingPayout += s.getNetPayoutAmount();
+            }
+        }
+
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalGross", Math.round(totalGross * 100.0) / 100.0);
+        summary.put("totalCommission", Math.round(totalCommission * 100.0) / 100.0);
+        summary.put("totalNetPayout", Math.round(totalNetPayout * 100.0) / 100.0);
+        summary.put("pendingPayout", Math.round(pendingPayout * 100.0) / 100.0);
+        summary.put("settledPayout", Math.round(settledPayout * 100.0) / 100.0);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("summary", summary);
+        response.put("settlements", settlements);
+
+        return ResponseEntity.ok(response);
     }
 }

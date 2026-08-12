@@ -234,13 +234,21 @@ public class CustomerController {
         // Map order headers along with their order items
         List<Map<String, Object>> response = orders.stream().map(order -> {
             List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
-            return Map.of(
-                    "id", order.getId(),
-                    "orderId", order.getOrderId(),
-                    "date", order.getDate(),
-                    "totalAmount", order.getTotalAmount(),
-                    "status", order.getStatus(),
-                    "items", items);
+            Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", order.getId());
+            map.put("orderId", order.getOrderId());
+            map.put("date", order.getDate());
+            map.put("totalAmount", order.getTotalAmount());
+            map.put("status", order.getStatus());
+            map.put("paymentStatus", order.getPaymentStatus() != null ? order.getPaymentStatus() : "PENDING");
+            map.put("paymentMethod", order.getPaymentMethod() != null ? order.getPaymentMethod() : "RAZORPAY");
+            map.put("razorpayOrderId", order.getRazorpayOrderId());
+            map.put("razorpayPaymentId", order.getRazorpayPaymentId());
+            map.put("recipientName", order.getRecipientName());
+            map.put("recipientPhone", order.getRecipientPhone());
+            map.put("deliveryAddress", order.getDeliveryAddress());
+            map.put("items", items);
+            return map;
         }).collect(Collectors.toList());
 
         return ResponseEntity.ok(response);
@@ -253,13 +261,21 @@ public class CustomerController {
 
         List<Map<String, Object>> response = orders.stream().map(order -> {
             List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
-            return Map.of(
-                    "id", order.getId(),
-                    "orderId", order.getOrderId(),
-                    "date", order.getDate(),
-                    "totalAmount", order.getTotalAmount(),
-                    "status", order.getStatus(),
-                    "items", items);
+            Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", order.getId());
+            map.put("orderId", order.getOrderId());
+            map.put("date", order.getDate());
+            map.put("totalAmount", order.getTotalAmount());
+            map.put("status", order.getStatus());
+            map.put("paymentStatus", order.getPaymentStatus() != null ? order.getPaymentStatus() : "PENDING");
+            map.put("paymentMethod", order.getPaymentMethod() != null ? order.getPaymentMethod() : "RAZORPAY");
+            map.put("razorpayOrderId", order.getRazorpayOrderId());
+            map.put("razorpayPaymentId", order.getRazorpayPaymentId());
+            map.put("recipientName", order.getRecipientName());
+            map.put("recipientPhone", order.getRecipientPhone());
+            map.put("deliveryAddress", order.getDeliveryAddress());
+            map.put("items", items);
+            return map;
         }).collect(Collectors.toList());
 
         return ResponseEntity.ok(response);

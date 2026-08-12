@@ -4,7 +4,8 @@ import {
   User, Package, RefreshCw, ArrowLeft, Edit2, Save, X, LogOut, 
   CheckCircle2, AlertCircle, Phone, MapPin, Sun, Moon, Heart, 
   ShoppingCart, Plus, Minus, Trash2, Check,
-  CreditCard, QrCode, Smartphone, ArrowRight, ShieldCheck, Lock, Store, Truck
+  CreditCard, QrCode, Smartphone, ArrowRight, ShieldCheck, Lock, Store, Truck,
+  Receipt, RotateCcw, DollarSign, Clock, HelpCircle, FileText, CheckCircle, Search, Filter, AlertTriangle
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
@@ -50,6 +51,83 @@ export default function CustomerDashboard({
   const [selectedCartItemIds, setSelectedCartItemIds] = useState([]);
   const [products, setProducts] = useState([]);
 
+  // Transactions & Refunds State
+  const [transactions, setTransactions] = useState([]);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+  const [transactionFilter, setTransactionFilter] = useState('ALL');
+  const [transactionSearch, setTransactionSearch] = useState('');
+  
+  // Customer Return / Refund Request Modal State
+  const [refundModalOrder, setRefundModalOrder] = useState(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [returnReasonCategory, setReturnReasonCategory] = useState('DEFECTIVE_DAMAGED');
+  const [resolutionType, setResolutionType] = useState('REFUND');
+  const [refundReason, setRefundReason] = useState('Defective or damaged item received');
+  const [customerNotes, setCustomerNotes] = useState('');
+  const [isSubmittingRefund, setIsSubmittingRefund] = useState(false);
+  const [orderRefundHistory, setOrderRefundHistory] = useState([]);
+  
+  // Return Timeline Tracking Modal
+  const [trackingModalOrder, setTrackingModalOrder] = useState(null);
+
+  const fetchTransactions = async () => {
+    if (!profile.id) return;
+    setIsLoadingTransactions(true);
+    try {
+      const res = await axios.get(`http://localhost:8080/api/payment/transactions?userId=${profile.id}`);
+      setTransactions(res.data || []);
+    } catch (err) {
+      console.error("Failed to load customer transactions", err);
+    } finally {
+      setIsLoadingTransactions(false);
+    }
+  };
+
+  const handleOpenRefundModal = async (order) => {
+    setRefundModalOrder(order);
+    const rem = order.refundableBalance !== undefined ? order.refundableBalance : order.totalAmount;
+    setRefundAmount(rem.toString());
+    setReturnReasonCategory('DEFECTIVE_DAMAGED');
+    setResolutionType('REFUND');
+    setRefundReason('Defective or damaged item received');
+    setCustomerNotes('');
+    try {
+      const res = await axios.get(`http://localhost:8080/api/payment/refund/${order.orderId}`);
+      setOrderRefundHistory(res.data || []);
+    } catch (err) {
+      setOrderRefundHistory([]);
+    }
+  };
+
+  const handleSubmitRefund = async (e) => {
+    if (e) e.preventDefault();
+    if (!refundModalOrder) return;
+    const amt = parseFloat(refundAmount);
+    if (isNaN(amt) || amt <= 0) {
+      showToast('error', 'Invalid Amount', 'Please enter a valid refund amount.');
+      return;
+    }
+    setIsSubmittingRefund(true);
+    try {
+      const res = await axios.post('http://localhost:8080/api/payment/refund/request', {
+        orderId: refundModalOrder.orderId,
+        amount: amt,
+        returnReasonCategory: returnReasonCategory,
+        resolutionType: resolutionType,
+        reason: refundReason.trim() || 'Customer requested return',
+        customerNotes: customerNotes.trim()
+      });
+      showToast('success', 'Return Request Submitted!', `Your request is PENDING inspection. Once the item is returned and verified, your ${resolutionType.toLowerCase()} of ₹${amt} will be approved.`);
+      setRefundModalOrder(null);
+      if (fetchOrders) fetchOrders();
+      fetchTransactions();
+    } catch (err) {
+      showToast('error', 'Request Failed', err.response?.data || 'Failed to submit return request.');
+    } finally {
+      setIsSubmittingRefund(false);
+    }
+  };
+
   const fetchProducts = async () => {
     try {
       const res = await axios.get('http://localhost:8080/api/products');
@@ -63,7 +141,14 @@ export default function CustomerDashboard({
 
   useEffect(() => {
     fetchProducts();
-  }, []);
+    fetchTransactions();
+  }, [profile.id]);
+
+  useEffect(() => {
+    if (activeTab === 'transactions') {
+      fetchTransactions();
+    }
+  }, [activeTab]);
 
   // Auto-select valid in-stock items in cart initially or when items/products change
   useEffect(() => {
@@ -430,6 +515,7 @@ export default function CustomerDashboard({
             setIsProcessingPayment(false);
             setPaymentStep(4);
             if (fetchOrders) fetchOrders();
+            fetchTransactions();
           } catch (err) {
             setIsProcessingPayment(false);
             setPaymentStep(2);
@@ -437,18 +523,46 @@ export default function CustomerDashboard({
           }
         },
         modal: {
-          ondismiss: function () {
+          ondismiss: async function () {
             setIsProcessingPayment(false);
             showToast('info', 'Payment Cancelled', 'Razorpay checkout was dismissed.');
+            try {
+              await axios.post('http://localhost:8080/api/payment/record-failed', {
+                userId: profile.id,
+                razorpayOrderId: razorpayOrderId,
+                errorMessage: 'Payment window was dismissed by customer',
+                amount: totalAmount,
+                items: selectedCartItems,
+                deliveryInfo: deliveryInfo
+              });
+              if (fetchOrders) fetchOrders();
+              fetchTransactions();
+            } catch (e) {
+              console.error("Failed to record cancelled checkout", e);
+            }
           }
         }
       };
 
       const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', function (response) {
+      rzp.on('payment.failed', async function (response) {
         setIsProcessingPayment(false);
         setPaymentStep(2);
         showToast('error', 'Payment Failed', response.error?.description || 'Razorpay transaction was unsuccessful.');
+        try {
+          await axios.post('http://localhost:8080/api/payment/record-failed', {
+            userId: profile.id,
+            razorpayOrderId: razorpayOrderId,
+            errorMessage: response.error?.description || 'Razorpay transaction unsuccessful',
+            amount: totalAmount,
+            items: selectedCartItems,
+            deliveryInfo: deliveryInfo
+          });
+          if (fetchOrders) fetchOrders();
+          fetchTransactions();
+        } catch (e) {
+          console.error("Failed to record failed checkout", e);
+        }
       });
       rzp.open();
     } catch (err) {
@@ -611,6 +725,12 @@ export default function CustomerDashboard({
             className={`sidebar-item ${activeTab === 'orders' ? 'sidebar-item-active' : ''}`}
           >
             <Package size={18} /> My Orders ({orders.length})
+          </div>
+          <div 
+            onClick={() => setActiveTab('transactions')} 
+            className={`sidebar-item ${activeTab === 'transactions' ? 'sidebar-item-active' : ''}`}
+          >
+            <Receipt size={18} /> Transactions ({transactions.length})
           </div>
           <div 
             onClick={() => setActiveTab('wishlist')} 
@@ -917,41 +1037,400 @@ export default function CustomerDashboard({
 
           {activeTab === 'orders' && (
             <div>
-              <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '20px' }}>Your Order History</h2>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Your Order History</h2>
+                <button 
+                  type="button" 
+                  onClick={() => { if (fetchOrders) fetchOrders(); fetchTransactions(); }} 
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 12px' }}
+                >
+                  <RefreshCw size={13} /> Refresh
+                </button>
+              </div>
+
               {orders.length === 0 ? (
                 <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '10px' }}>
                   <Package className="cart-empty-icon" style={{ opacity: 0.2 }} />
                   <p>You haven't placed any orders yet.</p>
                 </div>
               ) : (
-                orders.map((ord, i) => (
-                  <div key={i} className="order-card" style={{ padding: '24px' }}>
-                    <div className="order-card-header">
-                      <span className="order-id" style={{ fontSize: '16px' }}>{ord.orderId}</span>
-                      <span className="order-status-badge">{ord.status}</span>
-                    </div>
-                    <div className="order-date">Date: {ord.date}</div>
-                    
-                    <div className="order-items-list" style={{ background: 'var(--bg-primary)' }}>
-                      {ord.items.map((item, idx) => (
-                        <div key={idx} className="order-item-row" style={{ alignItems: 'center', gap: '12px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{ width: '24px', height: '24px', flexShrink: 0 }}>
-                              <ProductIcon name={item.name} category={item.category} size={12} />
-                            </div>
-                            <span>{item.name}</span>
-                          </div>
-                          <strong>₹{item.price}</strong>
-                        </div>
-                      ))}
-                    </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {orders.map((ord, i) => {
+                    const payStatus = ord.paymentStatus || 'PENDING';
+                    const isPaid = payStatus === 'PAID';
+                    const isRefunded = payStatus === 'REFUNDED';
+                    const isPartiallyRefunded = payStatus === 'PARTIALLY_REFUNDED';
+                    const isFailed = payStatus === 'FAILED';
 
-                    <div className="order-total-row" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '12px', marginTop: '12px' }}>
-                      <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Total Paid</span>
-                      <strong style={{ fontSize: '18px', color: 'var(--accent-emerald)' }}>₹{ord.totalAmount}</strong>
-                    </div>
+                    return (
+                      <div key={ord.id || i} className="order-card" style={{ padding: '24px', borderRadius: '12px', background: 'var(--bg-input)' }}>
+                        <div className="order-card-header" style={{ flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span className="order-id" style={{ fontSize: '16px', fontWeight: '700' }}>{ord.orderId}</span>
+                            <span className="badge badge-customer" style={{ fontSize: '11px' }}>
+                              {ord.paymentMethod || 'RAZORPAY'}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            {/* Fulfillment Status */}
+                            <span className="order-status-badge">
+                              {ord.status}
+                            </span>
+
+                            {/* Payment Status Badge */}
+                            {isPaid && (
+                              <span className="badge badge-approved" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                                <Check size={12} strokeWidth={3} /> PAID
+                              </span>
+                            )}
+                            {isRefunded && (
+                              <span className="badge" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+                                <RotateCcw size={12} /> REFUNDED
+                              </span>
+                            )}
+                            {isPartiallyRefunded && (
+                              <span className="badge" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)' }}>
+                                <RotateCcw size={12} /> PARTIAL REFUND
+                              </span>
+                            )}
+                            {isFailed && (
+                              <span className="badge badge-rejected" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <X size={12} /> PAYMENT FAILED
+                              </span>
+                            )}
+                            {!isPaid && !isRefunded && !isPartiallyRefunded && !isFailed && (
+                              <span className="badge" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                                <Clock size={12} /> {payStatus}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '13px', color: 'var(--text-muted)' }}>
+                          <div>Date: <strong style={{ color: 'var(--text-primary)' }}>{ord.date}</strong></div>
+                          {ord.razorpayPaymentId && (
+                            <div style={{ fontSize: '12px' }}>
+                              Payment ID: <code style={{ color: 'var(--accent-teal)', background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>{ord.razorpayPaymentId}</code>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Order Items */}
+                        <div className="order-items-list" style={{ background: 'var(--bg-primary)', margin: '14px 0', borderRadius: '8px', padding: '12px' }}>
+                          {ord.items && ord.items.map((item, idx) => (
+                            <div key={idx} className="order-item-row" style={{ alignItems: 'center', gap: '12px', padding: '8px 0' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{ width: '28px', height: '28px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', background: 'var(--bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <ProductIcon name={item.productName || item.name} category={item.category} size={14} />
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: '600', fontSize: '13px' }}>{item.productName || item.name}</div>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Qty: {item.quantity} × ₹{item.price}</div>
+                                </div>
+                              </div>
+                              <strong style={{ fontSize: '13px' }}>₹{Math.round(item.price * item.quantity * 100) / 100}</strong>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Delivery address snippet */}
+                        {ord.deliveryAddress && (
+                          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <MapPin size={13} style={{ color: 'var(--accent-teal)' }} />
+                            <span>Delivery to: <strong style={{ color: 'var(--text-primary)' }}>{ord.recipientName || profile.fullName}</strong> — {ord.deliveryAddress}</span>
+                          </div>
+                        )}
+
+                        <div className="order-total-row" style={{ borderTop: '1px solid var(--border-light)', paddingTop: '14px', marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                          <div>
+                            <span style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'block' }}>Order Total</span>
+                            <strong style={{ fontSize: '18px', color: 'var(--accent-emerald)' }}>₹{ord.totalAmount}</strong>
+                          </div>
+
+                          {/* Refund / Return Action Buttons */}
+                          {(payStatus === 'REFUND_PENDING' || ord.status === 'RETURN_REQUESTED' || ord.hasPendingRefund) ? (
+                            <button 
+                              type="button" 
+                              onClick={() => setTrackingModalOrder(ord)} 
+                              className="btn btn-secondary"
+                              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '8px 14px', borderColor: 'rgba(245, 158, 11, 0.4)', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.08)' }}
+                            >
+                              <Clock size={14} /> Track Return (QC Pending)
+                            </button>
+                          ) : (isPaid || isPartiallyRefunded) ? (
+                            <button 
+                              type="button" 
+                              onClick={() => handleOpenRefundModal(ord)} 
+                              className="btn btn-secondary"
+                              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '8px 14px', borderColor: 'rgba(168, 85, 247, 0.3)', color: '#c084fc' }}
+                            >
+                              <RotateCcw size={14} /> Request Return / Refund
+                            </button>
+                          ) : isRefunded ? (
+                            <button 
+                              type="button"
+                              onClick={() => setTrackingModalOrder(ord)}
+                              className="badge" 
+                              style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa', fontSize: '12px', padding: '6px 12px', border: '1px solid rgba(139, 92, 246, 0.3)', cursor: 'pointer' }}
+                            >
+                              ✓ Refunded (View Audit)
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'transactions' && (
+            <div>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Payment Transactions Ledger</h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Complete audit trail of your checkout transactions, gateway responses, and refunds.
+                  </p>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={fetchTransactions} 
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                >
+                  <RefreshCw size={13} className={isLoadingTransactions ? "spin-animation" : ""} /> Refresh
+                </button>
+              </div>
+
+              {/* Transactions Overview Metric Cards */}
+              <div className="analytics-grid" style={{ marginBottom: '24px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Total Paid Volume</span>
+                    <DollarSign size={16} style={{ color: 'var(--accent-emerald)' }} />
                   </div>
-                ))
+                  <div className="analytics-card-value" style={{ fontSize: '22px' }}>
+                    ₹{transactions
+                      .filter(t => t.paymentStatus === 'PAID' || t.paymentStatus === 'REFUNDED' || t.paymentStatus === 'PARTIALLY_REFUNDED')
+                      .reduce((sum, t) => sum + (Number(t.totalAmount) || 0), 0)
+                      .toLocaleString('en-IN')}
+                  </div>
+                  <div className="analytics-card-desc">Successful transactions</div>
+                </div>
+
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Completed Orders</span>
+                    <CheckCircle size={16} style={{ color: 'var(--accent-teal)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ fontSize: '22px' }}>
+                    {transactions.filter(t => t.paymentStatus === 'PAID').length}
+                  </div>
+                  <div className="analytics-card-desc">Active paid orders</div>
+                </div>
+
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Refunded Amount</span>
+                    <RotateCcw size={16} style={{ color: 'var(--accent-indigo)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ fontSize: '22px' }}>
+                    ₹{transactions.reduce((sum, t) => sum + (Number(t.totalRefunded) || 0), 0).toLocaleString('en-IN')}
+                  </div>
+                  <div className="analytics-card-desc">Returned to source</div>
+                </div>
+
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Failed Attempts</span>
+                    <AlertTriangle size={16} style={{ color: 'var(--accent-rose)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ fontSize: '22px' }}>
+                    {transactions.filter(t => t.paymentStatus === 'FAILED').length}
+                  </div>
+                  <div className="analytics-card-desc">Cancelled or rejected</div>
+                </div>
+              </div>
+
+              {/* Search and Filters Bar */}
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input 
+                    type="text" 
+                    placeholder="Search by Order ID or Razorpay Payment ID..." 
+                    value={transactionSearch}
+                    onChange={(e) => setTransactionSearch(e.target.value)}
+                    className="form-input"
+                    style={{ paddingLeft: '36px', height: '38px', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {['ALL', 'PAID', 'PENDING', 'FAILED', 'REFUNDED'].map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setTransactionFilter(st)}
+                      className={`btn ${transactionFilter === st ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ fontSize: '12px', padding: '6px 12px', height: '38px' }}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Transactions Table */}
+              {transactions.length === 0 ? (
+                <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '10px' }}>
+                  <Receipt className="cart-empty-icon" style={{ opacity: 0.2 }} />
+                  <p>No transaction history recorded yet.</p>
+                </div>
+              ) : (
+                <div className="table-container" style={{ background: 'var(--bg-input)', borderRadius: '10px', overflowX: 'auto' }}>
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>Date & Time</th>
+                        <th>Order ID</th>
+                        <th>Method</th>
+                        <th>Razorpay Payment ID</th>
+                        <th>Total Amount</th>
+                        <th>Payment Status</th>
+                        <th>Refunds</th>
+                        <th style={{ textAlign: 'center' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transactions
+                        .filter(tx => {
+                          if (transactionFilter !== 'ALL') {
+                            if (transactionFilter === 'REFUNDED') {
+                              if (tx.paymentStatus !== 'REFUNDED' && tx.paymentStatus !== 'PARTIALLY_REFUNDED') return false;
+                            } else if (tx.paymentStatus !== transactionFilter) {
+                              return false;
+                            }
+                          }
+                          if (transactionSearch.trim()) {
+                            const query = transactionSearch.toLowerCase();
+                            const matchOrderId = tx.orderId?.toLowerCase().includes(query);
+                            const matchPaymentId = tx.razorpayPaymentId?.toLowerCase().includes(query);
+                            return matchOrderId || matchPaymentId;
+                          }
+                          return true;
+                        })
+                        .map((tx) => {
+                          const isPaid = tx.paymentStatus === 'PAID';
+                          const isRefunded = tx.paymentStatus === 'REFUNDED';
+                          const isPartiallyRefunded = tx.paymentStatus === 'PARTIALLY_REFUNDED';
+                          const isFailed = tx.paymentStatus === 'FAILED';
+
+                          return (
+                            <tr key={tx.id}>
+                              <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{tx.date}</td>
+                              <td>
+                                <strong style={{ color: 'var(--text-primary)', fontSize: '13px' }}>{tx.orderId}</strong>
+                              </td>
+                              <td>
+                                <span className="badge badge-customer" style={{ fontSize: '11px' }}>
+                                  {tx.paymentMethod || 'RAZORPAY'}
+                                </span>
+                              </td>
+                              <td>
+                                {tx.razorpayPaymentId ? (
+                                  <code style={{ fontSize: '11px', color: 'var(--accent-teal)', background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: '4px' }}>
+                                    {tx.razorpayPaymentId}
+                                  </code>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>—</span>
+                                )}
+                              </td>
+                              <td>
+                                <strong style={{ color: 'var(--accent-emerald)', fontSize: '14px' }}>
+                                  ₹{tx.totalAmount}
+                                </strong>
+                              </td>
+                              <td>
+                                {isPaid && (
+                                  <span className="badge badge-approved" style={{ fontSize: '11px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981' }}>
+                                    PAID
+                                  </span>
+                                )}
+                                {isRefunded && (
+                                  <span className="badge" style={{ fontSize: '11px', background: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa' }}>
+                                    REFUNDED
+                                  </span>
+                                )}
+                                {isPartiallyRefunded && (
+                                  <span className="badge" style={{ fontSize: '11px', background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc' }}>
+                                    PARTIAL REFUND
+                                  </span>
+                                )}
+                                {isFailed && (
+                                  <span className="badge badge-rejected" style={{ fontSize: '11px' }}>
+                                    FAILED
+                                  </span>
+                                )}
+                                {!isPaid && !isRefunded && !isPartiallyRefunded && !isFailed && (
+                                  <span className="badge" style={{ fontSize: '11px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
+                                    {tx.paymentStatus}
+                                  </span>
+                                )}
+                              </td>
+                              <td>
+                                {tx.totalRefunded > 0 ? (
+                                  <div style={{ fontSize: '12px', color: '#c084fc' }}>
+                                    <strong>₹{tx.totalRefunded}</strong> ({tx.refunds?.length} refund{tx.refunds?.length === 1 ? '' : 's'})
+                                  </div>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>None</span>
+                                )}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                {(tx.paymentStatus === 'REFUND_PENDING' || tx.hasPendingRefund) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setTrackingModalOrder(tx)}
+                                    className="btn btn-secondary"
+                                    style={{ fontSize: '11px', padding: '4px 8px', color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+                                    title="View Return & Inspection Status"
+                                  >
+                                    <Clock size={12} /> Pending QC
+                                  </button>
+                                ) : (isPaid || isPartiallyRefunded) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenRefundModal(tx)}
+                                    className="btn btn-secondary"
+                                    style={{ fontSize: '11px', padding: '4px 10px', color: '#c084fc', borderColor: 'rgba(168, 85, 247, 0.3)' }}
+                                  >
+                                    <RotateCcw size={12} /> Return
+                                  </button>
+                                ) : isRefunded ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setTrackingModalOrder(tx)}
+                                    className="btn btn-secondary"
+                                    style={{ fontSize: '11px', padding: '4px 8px', color: '#a78bfa', borderColor: 'rgba(139, 92, 246, 0.3)' }}
+                                    title="View Refund Audit"
+                                  >
+                                    <Check size={12} /> Refunded
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           )}
@@ -2102,6 +2581,320 @@ export default function CustomerDashboard({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Return & Refund Request Modal */}
+      {refundModalOrder && (
+        <div className="modal-overlay" onClick={() => setRefundModalOrder(null)}>
+          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '580px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RotateCcw size={20} style={{ color: '#a78bfa' }} />
+                <h2 className="modal-title">Initiate Return & Refund</h2>
+              </div>
+              <button onClick={() => setRefundModalOrder(null)} className="btn-icon-only">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Return Policy Banner */}
+            <div style={{ 
+              background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%)', 
+              border: '1px solid rgba(20, 184, 166, 0.3)', 
+              borderRadius: '8px', 
+              padding: '10px 14px', 
+              marginBottom: '16px',
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <CheckCircle size={18} style={{ color: 'var(--accent-teal)', flexShrink: 0 }} />
+              <div>
+                <strong style={{ color: 'var(--text-primary)', display: 'block' }}>7-Day Buyer Protection Return Policy Active</strong>
+                <span style={{ color: 'var(--text-secondary)' }}>Free pickup will be arranged. Refund will be approved once product passes quality inspection at warehouse.</span>
+              </div>
+            </div>
+
+            {/* Return Progress Preview */}
+            <div style={{ 
+              background: 'var(--bg-input)', 
+              borderRadius: '8px', 
+              padding: '12px', 
+              marginBottom: '16px',
+              border: '1px solid var(--border-light)'
+            }}>
+              <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                Return Lifecycle Stages
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', textAlign: 'center', fontSize: '11px' }}>
+                <div style={{ padding: '6px', background: 'rgba(20, 184, 166, 0.15)', borderRadius: '6px', color: 'var(--accent-teal)', fontWeight: '700' }}>
+                  1. Request (Pending)
+                </div>
+                <div style={{ padding: '6px', background: 'var(--bg-card)', borderRadius: '6px', color: 'var(--text-muted)' }}>
+                  2. Pickup & Transit
+                </div>
+                <div style={{ padding: '6px', background: 'var(--bg-card)', borderRadius: '6px', color: 'var(--text-muted)' }}>
+                  3. Quality Check
+                </div>
+                <div style={{ padding: '6px', background: 'var(--bg-card)', borderRadius: '6px', color: 'var(--text-muted)' }}>
+                  4. Refund Disbursed
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmitRefund} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: 'var(--bg-input)', padding: '14px', borderRadius: '8px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Order ID:</span>
+                  <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{refundModalOrder.orderId}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Order Total:</span>
+                  <strong style={{ color: 'var(--text-primary)' }}>₹{refundModalOrder.totalAmount}</strong>
+                </div>
+                {refundModalOrder.razorpayPaymentId && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Razorpay Payment ID:</span>
+                    <code style={{ color: 'var(--accent-teal)' }}>{refundModalOrder.razorpayPaymentId}</code>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-light)', paddingTop: '6px', marginTop: '4px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Refundable Balance:</span>
+                  <strong style={{ color: 'var(--accent-emerald)' }}>
+                    ₹{refundModalOrder.refundableBalance !== undefined ? refundModalOrder.refundableBalance : refundModalOrder.totalAmount}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Reason Category Selection */}
+              <div className="form-group">
+                <label className="form-label">Return Reason Category *</label>
+                <select 
+                  value={returnReasonCategory}
+                  onChange={(e) => {
+                    setReturnReasonCategory(e.target.value);
+                    if (e.target.value === 'DEFECTIVE_DAMAGED') setRefundReason('Defective or damaged item received');
+                    else if (e.target.value === 'WRONG_ITEM') setRefundReason('Wrong item delivered by seller');
+                    else if (e.target.value === 'SIZE_FIT_ISSUE') setRefundReason('Size or fit issue');
+                    else if (e.target.value === 'CHANGED_MIND') setRefundReason('Changed mind / No longer needed');
+                    else if (e.target.value === 'NOT_AS_DESCRIBED') setRefundReason('Product does not match catalog description');
+                  }}
+                  className="form-select"
+                >
+                  <option value="DEFECTIVE_DAMAGED">Defective / Damaged Product</option>
+                  <option value="WRONG_ITEM">Wrong Item Received</option>
+                  <option value="SIZE_FIT_ISSUE">Size or Fit Issue</option>
+                  <option value="NOT_AS_DESCRIBED">Item Not As Described / Missing Parts</option>
+                  <option value="CHANGED_MIND">Changed Mind / Accidental Purchase</option>
+                </select>
+              </div>
+
+              {/* Resolution Type Selection */}
+              <div className="form-group">
+                <label className="form-label">Desired Resolution *</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setResolutionType('REFUND')}
+                    className={`btn ${resolutionType === 'REFUND' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '12px', padding: '8px' }}
+                  >
+                    💳 Refund to Source
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setResolutionType('REPLACEMENT')}
+                    className={`btn ${resolutionType === 'REPLACEMENT' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '12px', padding: '8px' }}
+                  >
+                    🔄 Replacement
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setResolutionType('EXCHANGE')}
+                    className={`btn ${resolutionType === 'EXCHANGE' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '12px', padding: '8px' }}
+                  >
+                    👕 Size Exchange
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Refund Amount (₹) *</label>
+                <input 
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  max={refundModalOrder.refundableBalance !== undefined ? refundModalOrder.refundableBalance : refundModalOrder.totalAmount}
+                  value={refundAmount}
+                  onChange={(e) => setRefundAmount(e.target.value)}
+                  className="form-input"
+                  placeholder="Enter amount to refund"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Reason Summary *</label>
+                <input 
+                  type="text"
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  placeholder="e.g. Broken screen on arrival"
+                  className="form-input"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Additional Comments / Item Condition</label>
+                <textarea 
+                  value={customerNotes}
+                  onChange={(e) => setCustomerNotes(e.target.value)}
+                  placeholder="Provide any additional details about the packaging, accessories, or defects..."
+                  className="form-input"
+                  style={{ minHeight: '60px', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setRefundModalOrder(null)} 
+                  className="btn btn-secondary"
+                  disabled={isSubmittingRefund}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', color: '#fff' }}
+                  disabled={isSubmittingRefund || !refundAmount}
+                >
+                  {isSubmittingRefund ? "Submitting Request..." : "Submit Return Request"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Return Lifecycle Progress Tracking Modal */}
+      {trackingModalOrder && (
+        <div className="modal-overlay" onClick={() => setTrackingModalOrder(null)}>
+          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RotateCcw size={20} style={{ color: 'var(--accent-teal)' }} />
+                <h2 className="modal-title">Return & Refund Lifecycle Status</h2>
+              </div>
+              <button onClick={() => setTrackingModalOrder(null)} className="btn-icon-only">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: 'var(--bg-input)', padding: '14px', borderRadius: '8px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Order ID:</span>
+                  <strong style={{ color: 'var(--accent-blue)', fontFamily: 'monospace' }}>{trackingModalOrder.orderId}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Payment Status:</span>
+                  <span className={`badge ${trackingModalOrder.paymentStatus === 'REFUNDED' ? 'badge-approved' : trackingModalOrder.paymentStatus === 'REFUND_PENDING' ? 'badge-pending' : 'badge-customer'}`}>
+                    {trackingModalOrder.paymentStatus}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Total Amount:</span>
+                  <strong style={{ color: 'var(--accent-emerald)' }}>₹{trackingModalOrder.totalAmount}</strong>
+                </div>
+              </div>
+
+              {/* Visual 4-Step Stepper */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '8px 0' }}>
+                {/* Step 1: Return Requested */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#10b981', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
+                    ✓
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>1. Return Request Submitted</strong>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Request registered in system. Reverse pickup initiated with logistics partner.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 2: Item Shipped Back */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: trackingModalOrder.paymentStatus === 'REFUNDED' ? '#10b981' : '#f59e0b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
+                    {trackingModalOrder.paymentStatus === 'REFUNDED' ? '✓' : '2'}
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>2. Courier Pickup & Warehouse Inward</strong>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {trackingModalOrder.paymentStatus === 'REFUNDED' ? 'Package received at fulfillment center.' : 'Package in transit to ShopStack warehouse for inspection.'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 3: Quality Check Inspection */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: trackingModalOrder.paymentStatus === 'REFUNDED' ? '#10b981' : 'var(--bg-input)', color: trackingModalOrder.paymentStatus === 'REFUNDED' ? '#fff' : 'var(--text-muted)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
+                    {trackingModalOrder.paymentStatus === 'REFUNDED' ? '✓' : '3'}
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>3. Warehouse Quality Check (QC)</strong>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {trackingModalOrder.paymentStatus === 'REFUNDED' ? 'Passed quality check. Verified condition matched return reason.' : 'Inspection team verifies item condition against buyer reason.'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 4: Refund Disbursed */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: trackingModalOrder.paymentStatus === 'REFUNDED' ? '#10b981' : 'var(--bg-input)', color: trackingModalOrder.paymentStatus === 'REFUNDED' ? '#fff' : 'var(--text-muted)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
+                    {trackingModalOrder.paymentStatus === 'REFUNDED' ? '✓' : '4'}
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>4. Refund Disbursed via Razorpay</strong>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {trackingModalOrder.paymentStatus === 'REFUNDED' ? 'Refund transferred back to original payment method.' : 'Awaiting quality check clearance before payment reversal.'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Past Refund Records if any */}
+              {trackingModalOrder.refunds && trackingModalOrder.refunds.length > 0 && (
+                <div style={{ background: 'rgba(139, 92, 246, 0.08)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+                  <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: '#a78bfa', display: 'block', marginBottom: '6px' }}>
+                    Refund Log Details
+                  </span>
+                  {trackingModalOrder.refunds.map((rf, idx) => (
+                    <div key={idx} style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Status: <strong style={{ color: rf.status === 'PROCESSED' ? '#10b981' : '#f59e0b' }}>{rf.status}</strong></span>
+                        <strong style={{ color: '#c084fc' }}>₹{rf.amount}</strong>
+                      </div>
+                      {rf.adminNotes && <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Admin/QC Note: {rf.adminNotes}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <button type="button" onClick={() => setTrackingModalOrder(null)} className="btn btn-secondary">
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
