@@ -4,12 +4,13 @@ import {
   Check, X, ShieldAlert, AlertCircle, Bell, Store, Mail, Phone, MapPin, User,
   Activity, Receipt, IndianRupee, RefreshCw, Search, RotateCcw, CheckCircle, 
   Clock, AlertTriangle, Eye, DollarSign, Package, ShieldCheck, ArrowRight,
-  Truck, CornerUpLeft, ThumbsUp, ThumbsDown
+  Truck, CornerUpLeft, ThumbsUp, ThumbsDown, Users, BarChart3, Settings, 
+  FileSpreadsheet, HardDrive, Database, TrendingUp
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
 export default function AdminDashboard({ user, onGoToHome }) {
-  const [activeTab, setActiveTab] = useState('products'); // 'products' | 'returns' | 'monitoring' | 'transactions' | 'settlements'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'vendors' | 'products' | 'returns' | 'monitoring' | 'transactions' | 'settlements' | 'system' | 'reports'
   const [pendingProducts, setPendingProducts] = useState([]);
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
   
@@ -21,6 +22,56 @@ export default function AdminDashboard({ user, onGoToHome }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [showRejectionInput, setShowRejectionInput] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
+
+  // Dashboard Summary / Overview States
+  const [dashboardSummary, setDashboardSummary] = useState({
+    totalSalesVolume: 0,
+    totalCommission: 0,
+    totalPayouts: 0,
+    totalOrders: 0,
+    totalProducts: 0,
+    pendingProducts: 0,
+    approvedProducts: 0,
+    lowStockProducts: 0,
+    totalVendors: 0,
+    totalCustomers: 0,
+    categoryDistribution: {},
+    recentOrders: []
+  });
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+
+  // Vendor Management States
+  const [vendorsList, setVendorsList] = useState([]);
+  const [isLoadingVendors, setIsLoadingVendors] = useState(false);
+  const [vendorSearch, setVendorSearch] = useState('');
+  const [selectedVendorDetail, setSelectedVendorDetail] = useState(null);
+
+  // System Diagnostics States
+  const [systemStatus, setSystemStatus] = useState({
+    apiStatus: 'OFFLINE',
+    dbStatus: 'OFFLINE',
+    razorpayStatus: 'UNKNOWN',
+    uptime: '00:00:00',
+    processors: 0,
+    jvmMaxMemory: 0,
+    jvmTotalMemory: 0,
+    jvmUsedMemory: 0,
+    jvmFreeMemory: 0,
+    dbTotalUsers: 0,
+    dbTotalProducts: 0,
+    dbTotalOrders: 0,
+    dbTotalSettlements: 0,
+    dbTotalRefunds: 0,
+    storageImagesCount: 0,
+    storageTotalSizeMB: 0
+  });
+  const [isLoadingSystem, setIsLoadingSystem] = useState(false);
+
+  // Reports States
+  const [reportType, setReportType] = useState('SALES');
+  const [reportRecords, setReportRecords] = useState([]);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
+  const [reportSearch, setReportSearch] = useState('');
 
   // Return & Refund Requests States
   const [returnRequests, setReturnRequests] = useState([]);
@@ -77,12 +128,70 @@ export default function AdminDashboard({ user, onGoToHome }) {
 
   const dropdownRef = useRef(null);
 
+  const fetchDashboardSummary = async () => {
+    setIsLoadingSummary(true);
+    try {
+      const res = await axios.get('http://localhost:8080/api/admin/dashboard-summary');
+      if (res.data) setDashboardSummary(res.data);
+    } catch (err) {
+      console.error("Failed to load dashboard summary", err);
+    } finally {
+      setIsLoadingSummary(false);
+    }
+  };
+
+  const fetchVendorsList = async () => {
+    setIsLoadingVendors(true);
+    try {
+      const res = await axios.get('http://localhost:8080/api/admin/vendors');
+      if (res.data) setVendorsList(res.data);
+    } catch (err) {
+      console.error("Failed to load vendors stats", err);
+    } finally {
+      setIsLoadingVendors(false);
+    }
+  };
+
+  const fetchSystemStatus = async () => {
+    setIsLoadingSystem(true);
+    try {
+      const res = await axios.get('http://localhost:8080/api/admin/system-status');
+      if (res.data) setSystemStatus(res.data);
+    } catch (err) {
+      console.error("Failed to load system status", err);
+    } finally {
+      setIsLoadingSystem(false);
+    }
+  };
+
+  const fetchReportData = async (type = reportType) => {
+    setIsLoadingReport(true);
+    try {
+      const res = await axios.get(`http://localhost:8080/api/admin/reports/generate?type=${type}`);
+      if (res.data) setReportRecords(res.data);
+    } catch (err) {
+      console.error("Failed to load report data", err);
+      setReportRecords([]);
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
+  const handleExportCSV = (type = reportType) => {
+    window.open(`http://localhost:8080/api/admin/reports/export?type=${type}`);
+    showFlash('success', `${type} Business Report CSV download triggered!`);
+  };
+
   useEffect(() => {
+    fetchDashboardSummary();
     fetchPendingProducts();
     fetchReturnRequests();
     fetchMonitoring();
     fetchTransactions();
     fetchSettlements();
+    fetchVendorsList();
+    fetchSystemStatus();
+    fetchReportData(reportType);
   }, []);
 
   // Close notifications dropdown when clicking outside
@@ -436,6 +545,28 @@ export default function AdminDashboard({ user, onGoToHome }) {
         top: 0,
         zIndex: 10
       }}>
+        {/* Marketplace Overview tab */}
+        <button
+          type="button"
+          onClick={() => { setActiveTab('overview'); fetchDashboardSummary(); }}
+          className={`sidebar-item ${activeTab === 'overview' ? 'sidebar-item-active' : ''}`}
+          style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: activeTab === 'overview' ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
+        >
+          <BarChart3 size={17} style={{ color: activeTab === 'overview' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
+          <span>Marketplace Analytics</span>
+        </button>
+
+        {/* Vendor Management tab */}
+        <button
+          type="button"
+          onClick={() => { setActiveTab('vendors'); fetchVendorsList(); }}
+          className={`sidebar-item ${activeTab === 'vendors' ? 'sidebar-item-active' : ''}`}
+          style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: activeTab === 'vendors' ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
+        >
+          <Users size={17} style={{ color: activeTab === 'vendors' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
+          <span>Vendor Management ({vendorsList.length})</span>
+        </button>
+
         <button
           type="button"
           onClick={() => setActiveTab('products')}
@@ -473,7 +604,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
           style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: activeTab === 'monitoring' ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
         >
           <Activity size={17} style={{ color: activeTab === 'monitoring' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
-          <span>Payment Monitoring</span>
+          <span>Order Monitoring</span>
           {monitoringMetrics.failedCount > 0 && (
             <span className="badge badge-rejected" style={{ fontSize: '10px', padding: '1px 5px' }}>
               {monitoringMetrics.failedCount} Failed
@@ -498,17 +629,712 @@ export default function AdminDashboard({ user, onGoToHome }) {
           style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: activeTab === 'settlements' ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
         >
           <IndianRupee size={17} style={{ color: activeTab === 'settlements' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
-          <span>Vendor Settlements ({settlements.length})</span>
+          <span>Commission Management ({settlements.length})</span>
           {settlements.filter(s => s.status === 'PENDING').length > 0 && (
             <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '10px', padding: '1px 5px' }}>
               {settlements.filter(s => s.status === 'PENDING').length} Pending
             </span>
           )}
         </button>
+
+        {/* System Monitoring tab */}
+        <button
+          type="button"
+          onClick={() => { setActiveTab('system'); fetchSystemStatus(); }}
+          className={`sidebar-item ${activeTab === 'system' ? 'sidebar-item-active' : ''}`}
+          style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: activeTab === 'system' ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
+        >
+          <Settings size={17} style={{ color: activeTab === 'system' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
+          <span>System Monitoring</span>
+        </button>
+
+        {/* Business Reports tab */}
+        <button
+          type="button"
+          onClick={() => { setActiveTab('reports'); fetchReportData(reportType); }}
+          className={`sidebar-item ${activeTab === 'reports' ? 'sidebar-item-active' : ''}`}
+          style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: activeTab === 'reports' ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
+        >
+          <FileSpreadsheet size={17} style={{ color: activeTab === 'reports' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
+          <span>Business Reports</span>
+        </button>
       </div>
 
       <div className="dashboard-layout" style={{ flexDirection: 'column' }}>
         <div className="main-content" style={{ width: '100%' }}>
+
+          {/* TAB: OVERVIEW */}
+          {activeTab === 'overview' && (
+            <div style={{ animation: 'fadeIn 0.3s ease' }}>
+              <div className="flex-between" style={{ marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '24px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <BarChart3 size={24} style={{ color: 'var(--accent-teal)' }} /> Marketplace Summary & Analytics
+                  </h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Real-time performance ledger, revenue growth metrics, and catalog statistics.
+                  </p>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={fetchDashboardSummary} 
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '8px 16px' }}
+                >
+                  <RefreshCw size={13} className={isLoadingSummary ? "spin-animation" : ""} /> Refresh Analytics
+                </button>
+              </div>
+
+              {/* KPI Cards Grid */}
+              <div className="analytics-grid" style={{ marginBottom: '30px' }}>
+                <div className="analytics-card" style={{ borderLeft: '4px solid var(--accent-teal)', background: 'linear-gradient(to right, rgba(16, 185, 129, 0.03), transparent)' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Gross Sales Volume</span>
+                    <TrendingUp size={18} style={{ color: 'var(--accent-teal)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ color: 'var(--text-primary)' }}>
+                    ₹{dashboardSummary.totalSalesVolume?.toLocaleString('en-IN')}
+                  </div>
+                  <div className="analytics-card-desc">Verified transactions volume</div>
+                </div>
+
+                <div className="analytics-card" style={{ borderLeft: '4px solid var(--accent-rose)', background: 'linear-gradient(to right, rgba(239, 68, 68, 0.03), transparent)' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Platform Revenue (10%)</span>
+                    <DollarSign size={18} style={{ color: 'var(--accent-rose)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ color: 'var(--accent-rose)' }}>
+                    ₹{dashboardSummary.totalCommission?.toLocaleString('en-IN')}
+                  </div>
+                  <div className="analytics-card-desc">Commission fee collected</div>
+                </div>
+
+                <div className="analytics-card" style={{ borderLeft: '4px solid var(--accent-indigo)' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Net Vendor Payouts</span>
+                    <IndianRupee size={18} style={{ color: 'var(--accent-indigo)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ color: 'var(--text-primary)' }}>
+                    ₹{dashboardSummary.totalPayouts?.toLocaleString('en-IN')}
+                  </div>
+                  <div className="analytics-card-desc">Disbursed & pending transfers</div>
+                </div>
+
+                <div className="analytics-card" style={{ borderLeft: '4px solid var(--accent-blue)' }}>
+                  <div className="analytics-card-header">
+                    <span className="analytics-card-title">Total Orders Count</span>
+                    <Package size={18} style={{ color: 'var(--accent-blue)' }} />
+                  </div>
+                  <div className="analytics-card-value" style={{ color: 'var(--text-primary)' }}>
+                    {dashboardSummary.totalOrders}
+                  </div>
+                  <div className="analytics-card-desc">All registered checkouts</div>
+                </div>
+              </div>
+
+              {/* Secondary KPIs */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '30px' }}>
+                <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Active Vendors</div>
+                    <div style={{ fontSize: '20px', fontWeight: '800', marginTop: '4px' }}>{dashboardSummary.totalVendors}</div>
+                  </div>
+                  <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent-blue)', padding: '8px', borderRadius: '6px' }}>
+                    <Users size={16} />
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Total Products</div>
+                    <div style={{ fontSize: '20px', fontWeight: '800', marginTop: '4px' }}>{dashboardSummary.totalProducts}</div>
+                  </div>
+                  <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-teal)', padding: '8px', borderRadius: '6px' }}>
+                    <Package size={16} />
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: dashboardSummary.pendingProducts > 0 ? '3px solid #f59e0b' : '1px solid var(--border-light)' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Awaiting Approval</div>
+                    <div style={{ fontSize: '20px', fontWeight: '800', marginTop: '4px', color: dashboardSummary.pendingProducts > 0 ? '#f59e0b' : 'inherit' }}>{dashboardSummary.pendingProducts}</div>
+                  </div>
+                  <div style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', padding: '8px', borderRadius: '6px' }}>
+                    <ShieldAlert size={16} />
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: dashboardSummary.lowStockProducts > 0 ? '3px solid var(--accent-rose)' : '1px solid var(--border-light)' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Low Stock Alert</div>
+                    <div style={{ fontSize: '20px', fontWeight: '800', marginTop: '4px', color: dashboardSummary.lowStockProducts > 0 ? 'var(--accent-rose)' : 'inherit' }}>{dashboardSummary.lowStockProducts}</div>
+                  </div>
+                  <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-rose)', padding: '8px', borderRadius: '6px' }}>
+                    <AlertCircle size={16} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Charts & Distribution Section */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px', marginBottom: '30px' }}>
+                <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px', color: 'var(--text-primary)' }}>Product Category Share</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {Object.keys(dashboardSummary.categoryDistribution).length === 0 ? (
+                      <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No categories registered</p>
+                    ) : (
+                      Object.entries(dashboardSummary.categoryDistribution).map(([category, count]) => {
+                        const total = Math.max(1, dashboardSummary.totalProducts);
+                        const pct = Math.round((count / total) * 100);
+                        return (
+                          <div key={category}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '6px' }}>
+                              <span style={{ fontWeight: '600' }}>{category}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>{count} items ({pct}%)</span>
+                            </div>
+                            <div style={{ height: '8px', background: 'var(--bg-input)', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(to right, var(--accent-teal), var(--accent-blue))', borderRadius: '4px' }} />
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '8px', color: 'var(--text-primary)' }}>System Quick Actions</h3>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>Frequent administrative workflows console</p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <button onClick={() => setActiveTab('products')} className="btn btn-primary" style={{ justifyContent: 'flex-start', padding: '10px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <ShieldAlert size={15} /> Review Product Approvals ({pendingProducts.length})
+                    </button>
+                    <button onClick={() => { setActiveTab('returns'); fetchReturnRequests(); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <RotateCcw size={15} /> Returns & Refund Queue ({pendingReturnsCount} pending)
+                    </button>
+                    <button onClick={() => { setActiveTab('vendors'); fetchVendorsList(); }} className="btn btn-secondary" style={{ justifyContent: 'flex-start', padding: '10px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Users size={15} /> View Vendors Performance
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Orders List */}
+              <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px', color: 'var(--text-primary)' }}>Recent Marketplace Activity</h3>
+                <div className="table-container">
+                  <table className="custom-table" style={{ fontSize: '13px' }}>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Order ID</th>
+                        <th>Recipient</th>
+                        <th>Payment Method</th>
+                        <th>Status</th>
+                        <th>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dashboardSummary.recentOrders.length === 0 ? (
+                        <tr>
+                          <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>No orders registered yet</td>
+                        </tr>
+                      ) : (
+                        dashboardSummary.recentOrders.map(ord => (
+                          <tr key={ord.orderId}>
+                            <td>{ord.date}</td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: '700', color: 'var(--accent-blue)' }}>{ord.orderId}</td>
+                            <td>{ord.recipientName}</td>
+                            <td><span className="badge badge-customer">{ord.paymentMethod}</span></td>
+                            <td><span className="order-status-badge">{ord.status}</span></td>
+                            <td style={{ fontWeight: '800' }}>₹{ord.totalAmount}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: VENDOR MANAGEMENT */}
+          {activeTab === 'vendors' && (
+            <div style={{ animation: 'fadeIn 0.3s ease' }}>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Users size={22} style={{ color: 'var(--accent-teal)' }} /> Vendor Performance & Status Console
+                  </h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Monitor merchant operations, listed items, cumulative platform sales, and commission contributions.
+                  </p>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={fetchVendorsList} 
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                >
+                  <RefreshCw size={13} className={isLoadingVendors ? "spin-animation" : ""} /> Refresh Vendors
+                </button>
+              </div>
+
+              {/* Vendor Search */}
+              <div style={{ position: 'relative', marginBottom: '20px' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type="text" 
+                  placeholder="Search vendors by name, email, address, or vendor code..." 
+                  value={vendorSearch}
+                  onChange={(e) => setVendorSearch(e.target.value)}
+                  className="form-input"
+                  style={{ paddingLeft: '36px', height: '38px', fontSize: '13px' }}
+                />
+              </div>
+
+              {vendorsList.length === 0 ? (
+                <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '10px' }}>
+                  <Users className="cart-empty-icon" style={{ opacity: 0.2 }} />
+                  <p>No vendors registered on the marketplace yet.</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table className="custom-table" style={{ fontSize: '13px' }}>
+                    <thead>
+                      <tr>
+                        <th>Vendor ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Vendor Code</th>
+                        <th>Listed Items</th>
+                        <th>Gross Sales</th>
+                        <th>Commission (10%)</th>
+                        <th>Net Payout</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vendorsList
+                        .filter(v => {
+                          if (!vendorSearch.trim()) return true;
+                          const q = vendorSearch.toLowerCase();
+                          return (v.fullName?.toLowerCase().includes(q) || 
+                                  v.email?.toLowerCase().includes(q) || 
+                                  v.address?.toLowerCase().includes(q) || 
+                                  v.vendorCode?.toLowerCase().includes(q));
+                        })
+                        .map(v => (
+                          <tr key={v.id}>
+                            <td><strong>#{v.id}</strong></td>
+                            <td style={{ fontWeight: '600' }}>{v.fullName}</td>
+                            <td>{v.email}</td>
+                            <td><span className="badge badge-vendor">{v.vendorCode || 'N/A'}</span></td>
+                            <td>{v.totalProducts} products</td>
+                            <td style={{ fontWeight: '700' }}>₹{v.grossSales?.toLocaleString('en-IN')}</td>
+                            <td style={{ color: 'var(--accent-rose)' }}>₹{v.commissionPaid?.toLocaleString('en-IN')}</td>
+                            <td style={{ color: 'var(--accent-emerald)', fontWeight: '700' }}>₹{v.netPayout?.toLocaleString('en-IN')}</td>
+                            <td>
+                              <button 
+                                onClick={() => setSelectedVendorDetail(v)}
+                                className="btn btn-secondary" 
+                                style={{ padding: '4px 10px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <Eye size={12} /> Inspect Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: SYSTEM DIAGNOSTICS */}
+          {activeTab === 'system' && (
+            <div style={{ animation: 'fadeIn 0.3s ease' }}>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Settings size={22} style={{ color: 'var(--accent-indigo)' }} /> System Infrastructure & Telemetry Diagnostics
+                  </h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Live tracking of API server JVM status, relational database rows, uploads storage capacity, and payment gateway ping metrics.
+                  </p>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={fetchSystemStatus} 
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                >
+                  <RefreshCw size={13} className={isLoadingSystem ? "spin-animation" : ""} /> Refresh System Stats
+                </button>
+              </div>
+
+              {/* Status Indicators Grid */}
+              <div className="analytics-grid" style={{ marginBottom: '24px', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>Spring Boot Server Status</span>
+                    <span className="badge badge-approved" style={{ fontSize: '10px' }}>ONLINE</span>
+                  </div>
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>API Server Uptime</div>
+                    <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent-blue)', fontFamily: 'monospace', marginTop: '2px' }}>{systemStatus.uptime}</div>
+                  </div>
+                </div>
+
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>PostgreSQL Connection</span>
+                    <span className="badge badge-approved" style={{ fontSize: '10px' }}>UP</span>
+                  </div>
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Database Host</div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', marginTop: '8px', color: 'var(--text-primary)' }}>localhost:5432 / shopstack_db</div>
+                  </div>
+                </div>
+
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>Razorpay Payment API</span>
+                    <span className="badge badge-approved" style={{ fontSize: '10px' }}>CONFIGURED</span>
+                  </div>
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>API Environment Mode</div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', marginTop: '8px', color: 'var(--text-primary)' }}>Test Mode (rzp_test_...)</div>
+                  </div>
+                </div>
+
+                <div className="analytics-card" style={{ padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>Available Processor Cores</span>
+                    <HardDrive size={16} style={{ color: 'var(--text-muted)' }} />
+                  </div>
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Available JVM CPUs</div>
+                    <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent-teal)', marginTop: '2px' }}>{systemStatus.processors} cores</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Memory Diagnostics & Storage size */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                {/* Memory allocation */}
+                <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <HardDrive size={18} style={{ color: 'var(--accent-indigo)' }} /> JVM Memory Allocation Diagnostics
+                  </h3>
+                  
+                  {(() => {
+                    const total = systemStatus.jvmMaxMemory || 100;
+                    const used = systemStatus.jvmUsedMemory || 0;
+                    const pct = Math.round((used / total) * 100);
+                    return (
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
+                          <span>JVM Memory Used</span>
+                          <strong>{used} MB of {total} MB ({pct}%)</strong>
+                        </div>
+                        <div style={{ height: '14px', background: 'var(--bg-input)', borderRadius: '7px', overflow: 'hidden', marginBottom: '16px', display: 'flex' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: pct > 80 ? 'var(--accent-rose)' : 'linear-gradient(to right, var(--accent-indigo), var(--accent-blue))', borderRadius: '7px', transition: 'width 0.4s ease' }} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                          <div>JVM Total Allocated: <strong>{systemStatus.jvmTotalMemory} MB</strong></div>
+                          <div>JVM Free Available: <strong>{systemStatus.jvmFreeMemory} MB</strong></div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Local Disk Storage diagnostics */}
+                <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <HardDrive size={18} style={{ color: 'var(--accent-teal)' }} /> Uploads storage capacity status
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Local Storage Folder:</span>
+                      <strong>uploads/products/</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Total Saved Image Files:</span>
+                      <strong>{systemStatus.storageImagesCount} files</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Total Space Consumed:</span>
+                      <strong style={{ color: 'var(--accent-teal)', fontSize: '15px' }}>{systemStatus.storageTotalSizeMB} MB</strong>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid var(--border-light)', paddingTop: '8px', marginTop: '4px' }}>
+                      * Mitigation system converts Base64 inputs to binary files written directly to disk.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Database Telemetry (Row Counts) */}
+              <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Database size={18} style={{ color: 'var(--accent-blue)' }} /> Database Tables Row Telemetry
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px' }}>
+                  <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: '700' }}>users</span>
+                    <div style={{ fontSize: '24px', fontWeight: '800', marginTop: '4px', color: 'var(--text-primary)' }}>{systemStatus.dbTotalUsers}</div>
+                  </div>
+                  <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: '700' }}>products</span>
+                    <div style={{ fontSize: '24px', fontWeight: '800', marginTop: '4px', color: 'var(--text-primary)' }}>{systemStatus.dbTotalProducts}</div>
+                  </div>
+                  <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: '700' }}>orders</span>
+                    <div style={{ fontSize: '24px', fontWeight: '800', marginTop: '4px', color: 'var(--text-primary)' }}>{systemStatus.dbTotalOrders}</div>
+                  </div>
+                  <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: '700' }}>settlements</span>
+                    <div style={{ fontSize: '24px', fontWeight: '800', marginTop: '4px', color: 'var(--text-primary)' }}>{systemStatus.dbTotalSettlements}</div>
+                  </div>
+                  <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: '700' }}>refunds</span>
+                    <div style={{ fontSize: '24px', fontWeight: '800', marginTop: '4px', color: 'var(--text-primary)' }}>{systemStatus.dbTotalRefunds}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: BUSINESS REPORTS */}
+          {activeTab === 'reports' && (
+            <div style={{ animation: 'fadeIn 0.3s ease' }}>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileSpreadsheet size={22} style={{ color: 'var(--accent-teal)' }} /> Business Intelligence Reports Console
+                  </h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Select a report category, preview records on screen, and export cumulative logs as structured CSV files.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => fetchReportData(reportType)} 
+                    className="btn btn-secondary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                  >
+                    <RefreshCw size={13} className={isLoadingReport ? "spin-animation" : ""} /> Refresh Data
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => handleExportCSV(reportType)} 
+                    className="btn btn-primary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff', borderColor: '#10b981' }}
+                  >
+                    <FileSpreadsheet size={13} /> Export to CSV
+                  </button>
+                </div>
+              </div>
+
+              {/* Selector Bar */}
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                <div className="form-group" style={{ flex: '1', minWidth: '220px', marginBottom: 0 }}>
+                  <label className="form-label">Select Report Category</label>
+                  <select 
+                    value={reportType}
+                    onChange={(e) => { setReportType(e.target.value); fetchReportData(e.target.value); }}
+                    className="form-input"
+                  >
+                    <option value="SALES">Sales & Checkouts Report</option>
+                    <option value="VENDORS">Merchants Performance Report</option>
+                    <option value="INVENTORY">Inventory Valuation Report</option>
+                    <option value="REFUNDS">Returns & Refund QC Report</option>
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ flex: '2', minWidth: '300px', marginBottom: 0 }}>
+                  <label className="form-label">Quick Search / Filter Results</label>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                    <input 
+                      type="text" 
+                      placeholder="Filter records showing in report..." 
+                      value={reportSearch}
+                      onChange={(e) => setReportSearch(e.target.value)}
+                      className="form-input"
+                      style={{ paddingLeft: '36px' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Reports Preview Table */}
+              {reportRecords.length === 0 ? (
+                <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '10px' }}>
+                  <FileSpreadsheet className="cart-empty-icon" style={{ opacity: 0.2 }} />
+                  <p>No records found matching the report parameters.</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  {reportType === 'SALES' && (
+                    <table className="custom-table" style={{ fontSize: '13px' }}>
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Order ID</th>
+                          <th>Recipient</th>
+                          <th>Method</th>
+                          <th>Payment Status</th>
+                          <th>Fulfillment</th>
+                          <th>Total Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportRecords
+                          .filter(r => {
+                            if (!reportSearch.trim()) return true;
+                            const q = reportSearch.toLowerCase();
+                            return (r.orderId?.toLowerCase().includes(q) || r.recipientName?.toLowerCase().includes(q) || r.paymentStatus?.toLowerCase().includes(q));
+                          })
+                          .map(r => (
+                            <tr key={r.orderId}>
+                              <td>{r.date}</td>
+                              <td style={{ fontFamily: 'monospace', fontWeight: '700', color: 'var(--accent-blue)' }}>{r.orderId}</td>
+                              <td>{r.recipientName}</td>
+                              <td>{r.paymentMethod}</td>
+                              <td><span className={`badge ${r.paymentStatus === 'PAID' ? 'badge-approved' : 'badge-pending'}`}>{r.paymentStatus}</span></td>
+                              <td><span className="order-status-badge">{r.status}</span></td>
+                              <td style={{ fontWeight: '800' }}>₹{r.totalAmount}</td>
+                            </tr>
+                          ))
+                        }
+                      </tbody>
+                    </table>
+                  )}
+
+                  {reportType === 'VENDORS' && (
+                    <table className="custom-table" style={{ fontSize: '13px' }}>
+                      <thead>
+                        <tr>
+                          <th>Vendor ID</th>
+                          <th>Merchant Name</th>
+                          <th>Email Address</th>
+                          <th>Vendor Code</th>
+                          <th>Listed Products</th>
+                          <th>Cumulative Gross</th>
+                          <th>Commission Contributed</th>
+                          <th>Net Vendor Payout</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportRecords
+                          .filter(r => {
+                            if (!reportSearch.trim()) return true;
+                            const q = reportSearch.toLowerCase();
+                            return (r.fullName?.toLowerCase().includes(q) || r.email?.toLowerCase().includes(q) || r.vendorCode?.toLowerCase().includes(q));
+                          })
+                          .map(r => (
+                            <tr key={r.id}>
+                              <td><strong>#{r.id}</strong></td>
+                              <td style={{ fontWeight: '600' }}>{r.fullName}</td>
+                              <td>{r.email}</td>
+                              <td><span className="badge badge-vendor">{r.vendorCode}</span></td>
+                              <td>{r.totalProducts} items</td>
+                              <td style={{ fontWeight: '700' }}>₹{r.grossSales?.toLocaleString('en-IN')}</td>
+                              <td style={{ color: 'var(--accent-rose)' }}>-₹{r.commissionPaid?.toLocaleString('en-IN')}</td>
+                              <td style={{ color: 'var(--accent-emerald)', fontWeight: '700' }}>₹{r.netPayout?.toLocaleString('en-IN')}</td>
+                            </tr>
+                          ))
+                        }
+                      </tbody>
+                    </table>
+                  )}
+
+                  {reportType === 'INVENTORY' && (
+                    <table className="custom-table" style={{ fontSize: '13px' }}>
+                      <thead>
+                        <tr>
+                          <th>Product ID</th>
+                          <th>Name</th>
+                          <th>Category</th>
+                          <th>Brand</th>
+                          <th>Fulfillment stock</th>
+                          <th>Base Price</th>
+                          <th>Final Price</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportRecords
+                          .filter(r => {
+                            if (!reportSearch.trim()) return true;
+                            const q = reportSearch.toLowerCase();
+                            return (r.name?.toLowerCase().includes(q) || r.category?.toLowerCase().includes(q) || r.brand?.toLowerCase().includes(q));
+                          })
+                          .map(r => (
+                            <tr key={r.id}>
+                              <td><strong>#{r.id}</strong></td>
+                              <td style={{ fontWeight: '600', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name}>{r.name}</td>
+                              <td><span className="badge badge-customer">{r.category}</span></td>
+                              <td>{r.brand || 'N/A'}</td>
+                              <td style={{ fontWeight: 'bold', color: r.stock <= 5 ? 'var(--accent-rose)' : 'inherit' }}>{r.stock} units</td>
+                              <td>₹{r.price}</td>
+                              <td style={{ fontWeight: '700', color: 'var(--accent-teal)' }}>₹{r.finalPrice}</td>
+                              <td><span className={`badge ${r.status === 'APPROVED' ? 'badge-approved' : 'badge-pending'}`}>{r.status}</span></td>
+                            </tr>
+                          ))
+                        }
+                      </tbody>
+                    </table>
+                  )}
+
+                  {reportType === 'REFUNDS' && (
+                    <table className="custom-table" style={{ fontSize: '13px' }}>
+                      <thead>
+                        <tr>
+                          <th>Refund ID</th>
+                          <th>Order ID</th>
+                          <th>Date Requested</th>
+                          <th>Return Reason</th>
+                          <th>Resolution</th>
+                          <th>Stage</th>
+                          <th>Refund status</th>
+                          <th>Refund Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportRecords
+                          .filter(r => {
+                            if (!reportSearch.trim()) return true;
+                            const q = reportSearch.toLowerCase();
+                            return (r.orderId?.toLowerCase().includes(q) || r.returnReasonCategory?.toLowerCase().includes(q) || r.status?.toLowerCase().includes(q));
+                          })
+                          .map(r => (
+                            <tr key={r.id}>
+                              <td><strong>#{r.id}</strong></td>
+                              <td style={{ fontFamily: 'monospace', fontWeight: '700', color: 'var(--accent-blue)' }}>{r.orderId}</td>
+                              <td>{r.requestedAt}</td>
+                              <td><span className="badge badge-customer">{r.returnReasonCategory}</span></td>
+                              <td>{r.resolutionType}</td>
+                              <td><span className="badge badge-vendor">{r.returnStage}</span></td>
+                              <td><span className={`badge ${r.status === 'PROCESSED' ? 'badge-approved' : 'badge-pending'}`}>{r.status}</span></td>
+                              <td style={{ fontWeight: '800', color: 'var(--accent-emerald)' }}>₹{r.amount}</td>
+                            </tr>
+                          ))
+                        }
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* TAB 1: PRODUCT APPROVALS */}
           {activeTab === 'products' && (
@@ -1896,6 +2722,86 @@ export default function AdminDashboard({ user, onGoToHome }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Vendor Profile Inspection Modal */}
+      {selectedVendorDetail && (
+        <div className="modal-overlay" onClick={() => setSelectedVendorDetail(null)}>
+          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Store size={20} style={{ color: 'var(--accent-teal)' }} />
+                <h2 className="modal-title">Vendor Operation Details</h2>
+              </div>
+              <button onClick={() => setSelectedVendorDetail(null)} className="btn-icon-only">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '13px' }}>
+              <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Vendor Name:</span>
+                  <strong>{selectedVendorDetail.fullName}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Email Address:</span>
+                  <strong>{selectedVendorDetail.email}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Phone Number:</span>
+                  <strong>{selectedVendorDetail.phone || 'N/A'}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Operational Code:</span>
+                  <span className="badge badge-vendor" style={{ fontWeight: 'bold' }}>{selectedVendorDetail.vendorCode || 'N/A'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Fulfillment Status:</span>
+                  <span className="badge badge-approved">ACTIVE MERCHANT</span>
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Products Listed:</span>
+                  <strong>{selectedVendorDetail.totalProducts} items</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-light)', paddingTop: '8px', marginTop: '4px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Cumulative Sales:</span>
+                  <strong style={{ color: 'var(--text-primary)', fontSize: '14px' }}>₹{selectedVendorDetail.grossSales?.toLocaleString('en-IN')}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Platform Commission (10%):</span>
+                  <strong style={{ color: 'var(--accent-rose)' }}>-₹{selectedVendorDetail.commissionPaid?.toLocaleString('en-IN')}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Vendor Net Payout:</span>
+                  <strong style={{ color: 'var(--accent-emerald)', fontSize: '15px' }}>₹{selectedVendorDetail.netPayout?.toLocaleString('en-IN')}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Pending Settlements:</span>
+                  <strong style={{ color: '#f59e0b' }}>{selectedVendorDetail.pendingPayoutsCount} records</strong>
+                </div>
+              </div>
+
+              {selectedVendorDetail.address && (
+                <div>
+                  <span style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Registered Warehouse Address:</span>
+                  <div style={{ background: 'var(--bg-input)', padding: '12px', borderRadius: '8px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                    {selectedVendorDetail.address}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <button type="button" onClick={() => setSelectedVendorDetail(null)} className="btn btn-secondary">
+                  Close Details
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
