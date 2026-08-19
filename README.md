@@ -1008,3 +1008,61 @@ GET | `/api/payment/status/{orderId}` | Live payment and fulfillment status for 
 3. Click **"Mark Settled"** on a pending settlement.
 4. Verify status updates to emerald **`SETTLED`** with settlement timestamp recorded.
 5. Log in as the respective **Vendor** and verify the payout appears in their settlement history ledger.
+
+---
+
+## 📡 API Endpoints (Day 8: Admin Dashboard & Reporting Modules)
+
+### Marketplace Analytics & Vendor Management
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/admin/dashboard-summary` | Aggregates gross marketplace volume, commission fees, net payouts, orders, products count, low stock items, category distribution, and recent orders.
+GET | `/api/admin/vendors` | Returns all registered vendor profiles with products counts, gross sales, commission contributed, net payouts, and operational code details.
+
+### System Diagnostics & Service Telemetry
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/admin/system-status` | Compiles live JVM memory details (used/max), available CPUs, API uptime, database tables rows (users, products, orders, settlements, refunds), local disk storage files count/size, and Razorpay configuration check.
+
+### Business Intelligence Reports
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/admin/reports/generate` | Generates structured JSON reports for Sales, Merchants, Inventory, and Refunds filtered by type.
+GET | `/api/admin/reports/export` | Generates and streams formatted CSV files directly as HTTP file download attachments.
+
+---
+
+## 🧪 Testing Checklist & Verification Guide (Day 8)
+
+### 1. Marketplace Analytics
+1. Log in as an **Administrator** (using an email ending in `@admin`).
+2. Verify redirection to the newly designed Admin Dashboard console.
+3. Browse the **Marketplace Analytics** tab:
+   - ✅ Assert gross sales volume, commission fees, net payouts, and total orders match database aggregates.
+   - ✅ Verify the **Product Category Share** horizontal progress bars render category ratios accurately.
+   - ✅ Verify the **Recent Marketplace Activity** table displays the 5 most recent orders with dates, order IDs, recipient names, payment methods, and statuses.
+
+### 2. Vendor Management
+1. Select the **Vendor Management** tab.
+2. Search a vendor by name, email, or vendor code.
+3. ✅ Assert that the listed items, cumulative gross sales, commission, and net payouts align with that vendor's settlements.
+4. Click **"Inspect Details"** on a vendor row:
+   - ✅ Verify the profile details modal pops up displaying the name, email, phone, registered warehouse address, operational code, and net payout stats.
+
+### 3. System Monitoring
+1. Select the **System Monitoring** tab.
+2. Check JVM Memory Diagnostics:
+   - ✅ Verify that the progress bar displays correct used memory percentage relative to max JVM memory size.
+3. Check Uploads Storage Capacity Status:
+   - ✅ Verify the total count of image files and total space consumed (MB) inside the `uploads/` directory match the values calculated from the backend scan.
+4. Check Database Tables Row Telemetry:
+   - ✅ Verify row counts are retrieved and displayed for core tables: `users`, `products`, `orders`, `settlements`, `refunds`.
+5. Check pings for API status (`ONLINE`), PostgreSQL connection (`UP`), and Razorpay SDK (`CONFIGURED`).
+
+### 4. Business Reports & CSV Export
+1. Select the **Business Reports** tab.
+2. Choose a category from the **Select Report Category** dropdown (e.g. *Sales & Checkouts Report*, *Merchants Performance Report*, *Inventory Valuation Report*, *Returns & Refund QC Report*).
+3. Search or filter results using the search input.
+4. Click **"Export to CSV"** at the top right:
+   - ✅ Verify that a file download is initiated (e.g. `report_sales_172409...csv`).
+   - ✅ Open the downloaded file and assert that the headers (e.g. *Order ID, Date, Recipient Name, Payment Method, Payment Status, Total Amount*) and values are formatted correctly as a standard comma-separated text table.
