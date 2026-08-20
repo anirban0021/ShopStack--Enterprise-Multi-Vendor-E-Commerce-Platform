@@ -1,4 +1,5 @@
 {
     "java.compile.nullAnalysis.mode": "automatic",
-    "css.lint.unknownProperties": "ignore"
+    "css.lint.unknownProperties": "ignore",
+    "java.configuration.updateBuildConfiguration": "interactive"
 }

@@ -31,6 +31,9 @@ public class User {
     private String address;
     private String vendorCode; // 6-digit random unique ID for Vendors
 
+    @Column(name = "commission_rate")
+    private Double commissionRate;
+
     public User() {}
 
     public User(String fullName, String email, String password, String role, String phone, String address) {
@@ -41,6 +44,7 @@ public class User {
         this.phone = phone;
         this.address = address;
         this.vendorCode = null;
+        this.commissionRate = null;
     }
 
     public Long getId() { return id; }
@@ -66,4 +70,7 @@ public class User {
 
     public String getVendorCode() { return vendorCode; }
     public void setVendorCode(String vendorCode) { this.vendorCode = vendorCode; }
+
+    public Double getCommissionRate() { return commissionRate; }
+    public void setCommissionRate(Double commissionRate) { this.commissionRate = commissionRate; }
 }

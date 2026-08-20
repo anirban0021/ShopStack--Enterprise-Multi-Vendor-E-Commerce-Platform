@@ -26,6 +26,7 @@ import com.shopstack.backend.repository.OrderItemRepository;
 import com.shopstack.backend.repository.OrderRepository;
 import com.shopstack.backend.repository.ProductRepository;
 import com.shopstack.backend.repository.SettlementRepository;
+import com.shopstack.backend.service.PaymentService;
 
 @RestController
 @RequestMapping("/api/vendor")
@@ -43,6 +44,9 @@ public class VendorController {
 
     @Autowired
     private SettlementRepository settlementRepository;
+
+    @Autowired
+    private PaymentService paymentService;
 
     // Get Analytics for a Vendor
     @GetMapping("/{vendorId}/analytics")
@@ -145,6 +149,15 @@ public class VendorController {
             String oldStatus = order.getStatus() != null ? order.getStatus() : "";
             order.setStatus(newStatus.toUpperCase());
             orderRepository.save(order);
+
+            // Handle COD Order Delivery: mark as PAID and generate vendor settlements
+            if ("DELIVERED".equalsIgnoreCase(newStatus) && "COD".equalsIgnoreCase(order.getPaymentMethod())
+                    && "PENDING".equalsIgnoreCase(order.getPaymentStatus())) {
+                order.setPaymentStatus("PAID");
+                orderRepository.save(order);
+                List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
+                paymentService.createSettlementsForOrder(order, items);
+            }
 
             // Restore product stock inventory if status transitions to CANCELLED or REFUNDED
             if (("CANCELLED".equalsIgnoreCase(newStatus) || "REFUNDED".equalsIgnoreCase(newStatus))

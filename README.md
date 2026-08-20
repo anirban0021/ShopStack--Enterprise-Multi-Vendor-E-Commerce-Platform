@@ -1066,3 +1066,76 @@ GET | `/api/admin/reports/export` | Generates and streams formatted CSV files di
 4. Click **"Export to CSV"** at the top right:
    - ✅ Verify that a file download is initiated (e.g. `report_sales_172409...csv`).
    - ✅ Open the downloaded file and assert that the headers (e.g. *Order ID, Date, Recipient Name, Payment Method, Payment Status, Total Amount*) and values are formatted correctly as a standard comma-separated text table.
+
+---
+
+# 📦 ShopStack — Day 9: Configurable Vendor Commission Calculations, Admin Dashboard Overrides, and Settlement Auditing
+
+This milestone implements dynamic vendor-specific commission calculations, backend REST APIs for simulations/records retrieval, and visual management consoles in the Admin Dashboard to customize commission percentages and monitor platform earnings.
+
+---
+
+## 📌 Day 9 Deliverables & Major Enhancements
+
+### 1. Configurable Vendor-Specific Commission Rates
+- [x] **Database Override Support:** Added `commission_rate` column to the `users` table allowing individual vendors to have customized percentage rates (e.g., `5%`, `15%`).
+- [x] **Global Config Fallback:** The backend dynamically falls back to the system default rate (`shopstack.commission.percentage=10.0` in `application.properties`) if a vendor does not have a custom rate set.
+- [x] **Attribution & Dynamic Calculation:** In `PaymentService.java`, the system retrieves the vendor's profile at payment confirmation, calculates the corresponding platform commission, and allocates the remainder to the vendor as a net payout.
+
+### 2. REST API Endpoints
+- [x] **On-the-Fly Calculation API:** Introduced `/api/commission/calculate` to verify splits dynamically based on gross amount and optional rate or vendor ID overrides.
+- [x] **Auditable Records Retrieval:** Exposes `/api/commission/records` to filter past settlements by order ID or vendor ID.
+- [x] **Admins Configuration API:** Exposes `PUT /api/admin/vendors/{vendorId}/commission-rate` to modify commission rates dynamically.
+
+### 3. Frontend Admin Controls
+- [x] **Inspect Details Integration:** Added a numerical commission percentage input and an "Update" button to the Vendor operation details modal in the Admin Dashboard.
+- [x] **Dynamic Table Statistics:** Displays each vendor's active commission percentage next to their cumulative commissions paid.
+
+### 4. Cash on Delivery (COD) Payment & Payout Settlement Flow
+- [x] **Auto-Settlement on COD Deliveries (`VendorController.updateOrderStatus`):** When a COD order's status transitions to `DELIVERED` via the Warehouse/Vendor console, the backend automatically sets the payment status to `PAID` and triggers settlement record creation using the vendor's active commission rate.
+
+---
+
+## 📡 API Endpoints (Day 9)
+
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/commission/calculate` | Calculates splits on-the-fly for a gross `amount` applying custom rates, vendor rates, or global config fallback
+GET | `/api/commission/records` | Retrieves commission/settlement records filtered by optional `vendorId` or `orderId`
+PUT | `/api/admin/vendors/{vendorId}/commission-rate` | Updates the custom commission rate percentage for a specific vendor
+
+---
+
+## 🧪 Testing Checklist & Verification Guide (Day 9)
+
+### 1. Global Fallback Calculations (10% Default)
+1. Place an order for ₹10,000 for a product belonging to a vendor with no custom rate override.
+2. Confirm the payment status is marked `PAID`.
+3. In **Admin Dashboard -> Commission Management**, verify that a settlement is created with:
+   - ✅ Gross Amount: ₹10,000
+   - ✅ Commission Rate: 10%
+   - ✅ Commission Amount: ₹1,000
+   - ✅ Net Vendor Payout: ₹9,000
+
+### 2. Custom Commission Calculations
+1. Log in as an Administrator, open the **Vendors** tab, and click **Inspect Details** on a vendor.
+2. Update their custom commission rate to `5%` and click **Update**.
+3. Place an order for ₹5,000 for a product belonging to this vendor.
+4. Verify in the **Commission Management** tab that the settlement contains:
+   - ✅ Gross Amount: ₹5,000
+   - ✅ Commission Rate: 5%
+   - ✅ Commission Amount: ₹250
+   - ✅ Net Vendor Payout: ₹4,750
+
+### 3. COD Order Settlement & Payment Transition
+1. Place a Cash on Delivery (COD) order.
+2. In the Admin Dashboard -> Commission Management, verify that **no settlement record** exists for this order yet (since payment is pending).
+3. Log in as Warehouse Staff and change the order's status to **`DELIVERED`** (which calls the vendor status update API).
+4. As an Admin, verify:
+   - ✅ In **Commission Management**, the settlement record has now been automatically generated.
+   - ✅ In **Payment Monitoring**, the order's payment status has automatically changed from `PENDING` to **`PAID`**.
+
+### 4. Automated Test Suite Integration
+1. Run `mvn test -Dtest=CommissionCalculationTests` inside the `backend` folder.
+2. ✅ Verify that all 5 tests pass successfully with a `BUILD SUCCESS` output status.
+

@@ -32,6 +32,8 @@ import com.shopstack.backend.repository.OrderRepository;
 import com.shopstack.backend.repository.ProductRepository;
 import com.shopstack.backend.repository.RefundRepository;
 import com.shopstack.backend.repository.SettlementRepository;
+import com.shopstack.backend.repository.UserRepository;
+import com.shopstack.backend.model.User;
 
 @Service
 public class PaymentService {
@@ -56,6 +58,9 @@ public class PaymentService {
 
     @Autowired
     private SettlementRepository settlementRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Value("${shopstack.commission.percentage:10.0}")
     private double commissionPercentage;
@@ -231,8 +236,15 @@ public class PaymentService {
         for (OrderItem item : items) {
             if (item.getVendorId() == null) continue;
 
+            // Fetch vendor's custom commission rate if available
+            double rateToUse = commissionPercentage;
+            Optional<User> vendorOpt = userRepository.findById(item.getVendorId());
+            if (vendorOpt.isPresent() && vendorOpt.get().getCommissionRate() != null) {
+                rateToUse = vendorOpt.get().getCommissionRate();
+            }
+
             double grossAmount = Math.round((item.getPrice() * item.getQuantity()) * 100.0) / 100.0;
-            double commissionFee = Math.round((grossAmount * (commissionPercentage / 100.0)) * 100.0) / 100.0;
+            double commissionFee = Math.round((grossAmount * (rateToUse / 100.0)) * 100.0) / 100.0;
             double netPayout = Math.round((grossAmount - commissionFee) * 100.0) / 100.0;
 
             Settlement settlement = new Settlement(
@@ -241,7 +253,7 @@ public class PaymentService {
                     item.getId(),
                     item.getProductName(),
                     grossAmount,
-                    commissionPercentage,
+                    rateToUse,
                     commissionFee,
                     netPayout,
                     "PENDING",

@@ -45,6 +45,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
   const [isLoadingVendors, setIsLoadingVendors] = useState(false);
   const [vendorSearch, setVendorSearch] = useState('');
   const [selectedVendorDetail, setSelectedVendorDetail] = useState(null);
+  const [tempCommissionRate, setTempCommissionRate] = useState('');
 
   // System Diagnostics States
   const [systemStatus, setSystemStatus] = useState({
@@ -149,6 +150,23 @@ export default function AdminDashboard({ user, onGoToHome }) {
       console.error("Failed to load vendors stats", err);
     } finally {
       setIsLoadingVendors(false);
+    }
+  };
+
+  const handleUpdateCommissionRate = async (vendorId, rate) => {
+    try {
+      await axios.put(`http://localhost:8080/api/admin/vendors/${vendorId}/commission-rate`, {
+        commissionRate: rate === '' ? null : parseFloat(rate)
+      });
+      showFlash('success', 'Vendor commission rate updated successfully.');
+      fetchVendorsList();
+      setSelectedVendorDetail(prev => ({
+        ...prev,
+        commissionRate: rate === '' ? null : parseFloat(rate)
+      }));
+    } catch (err) {
+      console.error("Failed to update commission rate", err);
+      showFlash('error', err.response?.data || 'Failed to update commission rate.');
     }
   };
 
@@ -911,7 +929,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                         <th>Vendor Code</th>
                         <th>Listed Items</th>
                         <th>Gross Sales</th>
-                        <th>Commission (10%)</th>
+                        <th>Commission Paid</th>
                         <th>Net Payout</th>
                         <th>Action</th>
                       </tr>
@@ -934,11 +952,19 @@ export default function AdminDashboard({ user, onGoToHome }) {
                             <td><span className="badge badge-vendor">{v.vendorCode || 'N/A'}</span></td>
                             <td>{v.totalProducts} products</td>
                             <td style={{ fontWeight: '700' }}>₹{v.grossSales?.toLocaleString('en-IN')}</td>
-                            <td style={{ color: 'var(--accent-rose)' }}>₹{v.commissionPaid?.toLocaleString('en-IN')}</td>
+                            <td style={{ color: 'var(--accent-rose)' }}>
+                              ₹{v.commissionPaid?.toLocaleString('en-IN')}
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>
+                                ({v.commissionRate !== null && v.commissionRate !== undefined ? v.commissionRate : 10}%)
+                              </span>
+                            </td>
                             <td style={{ color: 'var(--accent-emerald)', fontWeight: '700' }}>₹{v.netPayout?.toLocaleString('en-IN')}</td>
                             <td>
                               <button 
-                                onClick={() => setSelectedVendorDetail(v)}
+                                onClick={() => {
+                                  setSelectedVendorDetail(v);
+                                  setTempCommissionRate(v.commissionRate !== null && v.commissionRate !== undefined ? v.commissionRate.toString() : '');
+                                }}
                                 className="btn btn-secondary" 
                                 style={{ padding: '4px 10px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                               >
@@ -2762,6 +2788,31 @@ export default function AdminDashboard({ user, onGoToHome }) {
                   <span style={{ color: 'var(--text-muted)' }}>Fulfillment Status:</span>
                   <span className="badge badge-approved">ACTIVE MERCHANT</span>
                 </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Commission Rate:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      max="100" 
+                      step="0.1" 
+                      placeholder="Default"
+                      value={tempCommissionRate}
+                      onChange={(e) => setTempCommissionRate(e.target.value)}
+                      className="form-input"
+                      style={{ width: '80px', height: '28px', padding: '4px 8px', fontSize: '12px', textAlign: 'right' }}
+                    />
+                    <span style={{ fontSize: '13px', fontWeight: 'bold' }}>%</span>
+                    <button 
+                      type="button" 
+                      onClick={() => handleUpdateCommissionRate(selectedVendorDetail.id, tempCommissionRate)}
+                      className="btn btn-primary"
+                      style={{ padding: '4px 8px', fontSize: '11px', height: '28px' }}
+                    >
+                      Update
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2774,7 +2825,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                   <strong style={{ color: 'var(--text-primary)', fontSize: '14px' }}>₹{selectedVendorDetail.grossSales?.toLocaleString('en-IN')}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Platform Commission (10%):</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Platform Commission ({selectedVendorDetail.commissionRate !== null && selectedVendorDetail.commissionRate !== undefined ? selectedVendorDetail.commissionRate : 10}%):</span>
                   <strong style={{ color: 'var(--accent-rose)' }}>-₹{selectedVendorDetail.commissionPaid?.toLocaleString('en-IN')}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
