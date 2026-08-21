@@ -48,19 +48,12 @@ public class CommissionController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Order amount cannot be negative.");
         }
-
-        double rateToUse = defaultCommissionPercentage;
-
+        double rateToUse = 10.0;
         if (rate != null) {
             rateToUse = rate;
         } else if (vendorId != null) {
             Optional<User> vendorOpt = userRepository.findById(vendorId);
-            if (vendorOpt.isPresent() && "VENDOR".equalsIgnoreCase(vendorOpt.get().getRole())) {
-                Double vendorRate = vendorOpt.get().getCommissionRate();
-                if (vendorRate != null) {
-                    rateToUse = vendorRate;
-                }
-            } else {
+            if (vendorOpt.isEmpty() || !"VENDOR".equalsIgnoreCase(vendorOpt.get().getRole())) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body("Vendor with ID " + vendorId + " not found.");
             }

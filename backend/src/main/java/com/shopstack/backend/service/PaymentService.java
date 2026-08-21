@@ -236,12 +236,8 @@ public class PaymentService {
         for (OrderItem item : items) {
             if (item.getVendorId() == null) continue;
 
-            // Fetch vendor's custom commission rate if available
-            double rateToUse = commissionPercentage;
-            Optional<User> vendorOpt = userRepository.findById(item.getVendorId());
-            if (vendorOpt.isPresent() && vendorOpt.get().getCommissionRate() != null) {
-                rateToUse = vendorOpt.get().getCommissionRate();
-            }
+            // Force global fixed 10% commission rate
+            double rateToUse = 10.0;
 
             double grossAmount = Math.round((item.getPrice() * item.getQuantity()) * 100.0) / 100.0;
             double commissionFee = Math.round((grossAmount * (rateToUse / 100.0)) * 100.0) / 100.0;

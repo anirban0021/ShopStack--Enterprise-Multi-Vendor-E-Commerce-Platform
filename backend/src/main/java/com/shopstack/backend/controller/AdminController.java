@@ -327,7 +327,7 @@ public class AdminController {
                 vStat.put("phone", v.getPhone());
                 vStat.put("address", v.getAddress());
                 vStat.put("vendorCode", v.getVendorCode());
-                vStat.put("commissionRate", v.getCommissionRate());
+                vStat.put("commissionRate", 10.0);
                 vStat.put("totalProducts", vProducts.size());
                 vStat.put("grossSales", Math.round(grossSales * 100.0) / 100.0);
                 vStat.put("commissionPaid", Math.round(commission * 100.0) / 100.0);
@@ -550,7 +550,7 @@ public class AdminController {
                 m.put("fullName", v.getFullName());
                 m.put("email", v.getEmail());
                 m.put("vendorCode", v.getVendorCode());
-                m.put("commissionRate", v.getCommissionRate());
+                m.put("commissionRate", 10.0);
                 m.put("totalProducts", productsCount);
                 m.put("grossSales", grossSales);
                 m.put("commissionPaid", commission);
@@ -580,32 +580,7 @@ public class AdminController {
      */
     @PutMapping("/vendors/{vendorId}/commission-rate")
     public ResponseEntity<?> updateVendorCommissionRate(@PathVariable Long vendorId, @RequestBody Map<String, Object> payload) {
-        try {
-            Optional<User> vendorOpt = userRepository.findById(vendorId);
-            if (vendorOpt.isEmpty() || !"VENDOR".equalsIgnoreCase(vendorOpt.get().getRole())) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Vendor not found or user is not a vendor.");
-            }
-
-            Double commissionRate = null;
-            if (payload.containsKey("commissionRate") && payload.get("commissionRate") != null) {
-                commissionRate = Double.parseDouble(payload.get("commissionRate").toString());
-                if (commissionRate < 0 || commissionRate > 100) {
-                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Commission percentage must be between 0 and 100.");
-                }
-            }
-
-            User vendor = vendorOpt.get();
-            vendor.setCommissionRate(commissionRate);
-            userRepository.save(vendor);
-
-            return ResponseEntity.ok(Map.of(
-                "message", "Vendor commission rate updated successfully",
-                "commissionRate", commissionRate != null ? commissionRate : "default"
-            ));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to update commission rate: " + e.getMessage());
-        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body("Vendor-specific commission rates are disabled. The platform commission rate is fixed at 10.0%.");
     }
 }

@@ -108,16 +108,16 @@ public class CommissionCalculationTests {
 
     @Test
     public void testVendorSpecificCommissionCalculation() {
-        // 1. Update the vendor's commission rate to 15% via Admin API
+        // 1. Trying to update the vendor's commission rate to 15% via Admin API should be rejected (BAD_REQUEST)
         Map<String, Object> updatePayload = new HashMap<>();
         updatePayload.put("commissionRate", 15.0);
 
         ResponseEntity<?> updateRes = adminController.updateVendorCommissionRate(testVendor.getId(), updatePayload);
-        assertEquals(HttpStatus.OK, updateRes.getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, updateRes.getStatusCode());
 
         // 2. Perform calculation lookup for the vendor without specifying the rate parameter
-        // Order Amount: ₹20,000, Rate lookup should fetch vendor's custom 15%
-        // Platform Commission: ₹3,000, Vendor Amount: ₹17,000
+        // It should ignore any custom rate and evaluate to the fixed 10% rate
+        // Order Amount: ₹20,000 -> Platform Commission: ₹2,000, Vendor Amount: ₹18,000
         ResponseEntity<?> calcRes = commissionController.calculateCommission(20000.0, testVendor.getId(), null);
         assertEquals(HttpStatus.OK, calcRes.getStatusCode());
 
@@ -125,9 +125,9 @@ public class CommissionCalculationTests {
         Map<String, Object> body = (Map<String, Object>) calcRes.getBody();
         assertNotNull(body);
         assertEquals(20000.0, body.get("orderAmount"));
-        assertEquals(15.0, body.get("commissionRate"));
-        assertEquals(3000.0, body.get("commissionAmount"));
-        assertEquals(17000.0, body.get("vendorAmount"));
+        assertEquals(10.0, body.get("commissionRate")); // Should evaluate to fixed 10.0
+        assertEquals(2000.0, body.get("commissionAmount"));
+        assertEquals(18000.0, body.get("vendorAmount"));
     }
 
     @Test

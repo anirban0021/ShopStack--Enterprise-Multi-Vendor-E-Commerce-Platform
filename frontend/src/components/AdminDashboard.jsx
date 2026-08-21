@@ -955,7 +955,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                             <td style={{ color: 'var(--accent-rose)' }}>
                               ₹{v.commissionPaid?.toLocaleString('en-IN')}
                               <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>
-                                ({v.commissionRate !== null && v.commissionRate !== undefined ? v.commissionRate : 10}%)
+                                (10%)
                               </span>
                             </td>
                             <td style={{ color: 'var(--accent-emerald)', fontWeight: '700' }}>₹{v.netPayout?.toLocaleString('en-IN')}</td>
@@ -2790,28 +2790,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Commission Rate:</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <input 
-                      type="number" 
-                      min="0" 
-                      max="100" 
-                      step="0.1" 
-                      placeholder="Default"
-                      value={tempCommissionRate}
-                      onChange={(e) => setTempCommissionRate(e.target.value)}
-                      className="form-input"
-                      style={{ width: '80px', height: '28px', padding: '4px 8px', fontSize: '12px', textAlign: 'right' }}
-                    />
-                    <span style={{ fontSize: '13px', fontWeight: 'bold' }}>%</span>
-                    <button 
-                      type="button" 
-                      onClick={() => handleUpdateCommissionRate(selectedVendorDetail.id, tempCommissionRate)}
-                      className="btn btn-primary"
-                      style={{ padding: '4px 8px', fontSize: '11px', height: '28px' }}
-                    >
-                      Update
-                    </button>
-                  </div>
+                  <strong style={{ color: 'var(--text-primary)' }}>10%</strong>
                 </div>
               </div>
 
@@ -2825,7 +2804,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                   <strong style={{ color: 'var(--text-primary)', fontSize: '14px' }}>₹{selectedVendorDetail.grossSales?.toLocaleString('en-IN')}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Platform Commission ({selectedVendorDetail.commissionRate !== null && selectedVendorDetail.commissionRate !== undefined ? selectedVendorDetail.commissionRate : 10}%):</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Platform Commission (10%):</span>
                   <strong style={{ color: 'var(--accent-rose)' }}>-₹{selectedVendorDetail.commissionPaid?.toLocaleString('en-IN')}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
