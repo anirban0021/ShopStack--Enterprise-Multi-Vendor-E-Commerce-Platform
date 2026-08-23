@@ -225,6 +225,7 @@ public class ProductController {
             p.setBrand(updated.getBrand());
             p.setDescription(updated.getDescription());
             p.setImages(updated.getImages());
+            p.setCouponsEnabled(updated.isCouponsEnabled());
 
             // Sanitize any base64 images into disk files before persisting
             p = fileStorageService.sanitizeProductImages(p);

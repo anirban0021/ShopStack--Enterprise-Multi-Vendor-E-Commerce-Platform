@@ -105,6 +105,9 @@ public class PaymentController {
                 }
             }
 
+            String couponCode = payload.containsKey("couponCode") && payload.get("couponCode") != null 
+                    ? payload.get("couponCode").toString() : null;
+
             // Place verified order in the database
             Order order = paymentService.placeVerifiedOrder(
                     userId, 
@@ -112,7 +115,8 @@ public class PaymentController {
                     paymentMethod, 
                     razorpayOrderId, 
                     razorpayPaymentId, 
-                    deliveryInfo
+                    deliveryInfo,
+                    couponCode
             );
 
             return ResponseEntity.ok(order);

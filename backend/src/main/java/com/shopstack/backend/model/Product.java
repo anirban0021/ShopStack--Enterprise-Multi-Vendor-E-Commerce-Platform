@@ -35,6 +35,7 @@ public class Product {
 
     private Double discountPercentage = 0.0;
     private Double finalPrice;
+    private boolean couponsEnabled = true;
 
     @jakarta.persistence.ElementCollection(fetch = jakarta.persistence.FetchType.EAGER)
     @jakarta.persistence.CollectionTable(name = "product_images", joinColumns = @jakarta.persistence.JoinColumn(name = "product_id"))
@@ -162,4 +163,7 @@ public class Product {
     public void setVendorCode(String vendorCode) { this.vendorCode = vendorCode; }
     public String getVendorAddress() { return vendorAddress; }
     public void setVendorAddress(String vendorAddress) { this.vendorAddress = vendorAddress; }
+
+    public boolean isCouponsEnabled() { return couponsEnabled; }
+    public void setCouponsEnabled(boolean couponsEnabled) { this.couponsEnabled = couponsEnabled; }
 }

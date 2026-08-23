@@ -3,7 +3,7 @@ import axios from 'axios';
 import { 
   TrendingUp, Package, AlertTriangle, IndianRupee, Plus, Edit2, 
   Trash2, X, Check, Save, Truck, Calendar, ShoppingBag, Eye, Layers,
-  DollarSign, RefreshCw, CheckCircle, Clock, ShieldCheck, FileText, Search
+  DollarSign, RefreshCw, CheckCircle, Clock, ShieldCheck, FileText, Search, Ticket
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
@@ -55,6 +55,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
     price: '',
     discountPercentage: 0,
     stock: '',
+    couponsEnabled: true,
     imageUrl: '📦',
     images: [],
     vendorId: user.id,
@@ -65,16 +66,87 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
 
+  // Coupons states
+  const [coupons, setCoupons] = useState([]);
+  const [isLoadingCoupons, setIsLoadingCoupons] = useState(false);
+
   useEffect(() => {
     fetchAnalytics();
     fetchProducts();
     fetchVendorOrders();
     fetchSettlements();
+    fetchVendorCoupons();
   }, []);
 
   const showFlash = (type, text) => {
     setFlashMessage({ type, text });
     setTimeout(() => setFlashMessage({ type: '', text: '' }), 3000);
+  };
+
+  const fetchVendorCoupons = async () => {
+    setIsLoadingCoupons(true);
+    try {
+      const res = await axios.get(`http://localhost:8080/api/coupons/vendor/${user.id}`);
+      setCoupons(res.data);
+    } catch (err) {
+      console.error("Failed to fetch vendor coupons", err);
+    } finally {
+      setIsLoadingCoupons(false);
+    }
+  };
+
+  const [showAcceptPromoModal, setShowAcceptPromoModal] = useState(false);
+  const [selectedPromoCode, setSelectedPromoCode] = useState(null);
+  const [acceptPromoMode, setAcceptPromoMode] = useState('all'); // 'all' | 'specific'
+  const [selectedPromoProductIds, setSelectedPromoProductIds] = useState([]);
+
+  const handleApproveCoupon = async (code) => {
+    setSelectedPromoCode(code);
+    try {
+      const res = await axios.get(`http://localhost:8080/api/coupons/${code}/products`);
+      if (res.data && res.data.length > 0) {
+        setSelectedPromoProductIds(res.data);
+        setAcceptPromoMode('specific');
+      } else {
+        const initialSelected = products.filter(p => p.couponsEnabled !== false).map(p => p.id);
+        setSelectedPromoProductIds(initialSelected);
+        setAcceptPromoMode('all');
+      }
+    } catch (err) {
+      console.error("Failed to load approved products for coupon", err);
+      const initialSelected = products.filter(p => p.couponsEnabled !== false).map(p => p.id);
+      setSelectedPromoProductIds(initialSelected);
+      setAcceptPromoMode('all');
+    }
+    setShowAcceptPromoModal(true);
+  };
+
+  const submitApproveCoupon = async (code, applyToAll, productIds) => {
+    try {
+      await axios.post(`http://localhost:8080/api/coupons/vendor/${user.id}/approve`, {
+        couponCode: code,
+        applyToAll: applyToAll,
+        productIds: productIds
+      });
+      fetchVendorCoupons();
+      fetchProducts();
+      setShowAcceptPromoModal(false);
+      showFlash('success', `Approved coupon campaign "${code}" for your products.`);
+    } catch (err) {
+      console.error("Failed to approve coupon", err);
+      showFlash('error', 'Failed to approve coupon.');
+    }
+  };
+
+  const handleRejectCoupon = async (code) => {
+    try {
+      await axios.post(`http://localhost:8080/api/coupons/vendor/${user.id}/reject`, { couponCode: code });
+      fetchVendorCoupons();
+      showFlash('success', `Rejected coupon campaign "${code}".`);
+    } catch (err) {
+      console.error("Failed to reject coupon", err);
+      showFlash('error', 'Failed to reject coupon.');
+    }
   };
 
   const fetchAnalytics = async () => {
@@ -136,6 +208,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       price: '',
       discountPercentage: 0,
       stock: '10',
+      couponsEnabled: true,
       imageUrl: '📦',
       images: [],
       vendorId: user.id,
@@ -156,6 +229,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       price: prod.price,
       discountPercentage: prod.discountPercentage != null ? prod.discountPercentage : 0,
       stock: prod.stock,
+      couponsEnabled: prod.couponsEnabled !== false,
       imageUrl: prod.imageUrl || '📦',
       images: prod.images || [],
       vendorId: user.id,
@@ -412,6 +486,12 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
             className={`sidebar-item ${activeTab === 'settlements' ? 'sidebar-item-active' : ''}`}
           >
             <IndianRupee size={18} /> Settlements & Payouts ({settlements.length})
+          </div>
+          <div 
+            onClick={() => { setActiveTab('coupons'); fetchVendorCoupons(); }} 
+            className={`sidebar-item ${activeTab === 'coupons' ? 'sidebar-item-active' : ''}`}
+          >
+            <Ticket size={18} /> Promotions & Coupons
           </div>
         </div>
 
@@ -908,6 +988,125 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
               )}
             </div>
           )}
+
+          {/* TAB: PROMOTIONS & COUPONS */}
+          {activeTab === 'coupons' && (
+            <div>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Promotional Coupon Campaigns</h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Confirm or reject admin-launched coupon promotions for your store. Customers can only redeem coupons on your items after you approve them.
+                  </p>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={fetchVendorCoupons} 
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                >
+                  <RefreshCw size={13} className={isLoadingCoupons ? "spin-animation" : ""} /> Refresh Campaigns
+                </button>
+              </div>
+
+              {isLoadingCoupons ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                  Loading coupon campaigns...
+                </div>
+              ) : coupons.length === 0 ? (
+                <div className="cart-empty-state">
+                  <Ticket className="cart-empty-icon" style={{ opacity: 0.2, width: '48px', height: '48px' }} />
+                  <p>No coupon campaigns currently active on the platform.</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>Promo Code</th>
+                        <th>Discount Info</th>
+                        <th>Min Order Required</th>
+                        <th>Campaign Dates</th>
+                        <th>Your Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {coupons.map((coupon) => {
+                        const isApproved = coupon.approvalStatus === 'APPROVED';
+                        const isRejected = coupon.approvalStatus === 'REJECTED';
+                        const isPending = !isApproved && !isRejected;
+
+                        return (
+                          <tr key={coupon.id}>
+                            <td>
+                              <strong style={{ color: 'var(--accent-teal)', fontSize: '14px', letterSpacing: '0.5px' }}>{coupon.code}</strong>
+                            </td>
+                            <td>
+                              <span style={{ fontWeight: 'bold' }}>
+                                {coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}% Off` : `₹${coupon.discountValue} Flat Off`}
+                              </span>
+                              {coupon.maxDiscount && (
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>
+                                  Cap: ₹{coupon.maxDiscount}
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              {coupon.minOrderAmount ? `₹${coupon.minOrderAmount}` : 'No Minimum'}
+                            </td>
+                            <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              <div>Start: {coupon.startDate ? coupon.startDate.replace('T', ' ').substring(0, 16) : ''}</div>
+                              <div>Expiry: {coupon.expiryDate ? coupon.expiryDate.replace('T', ' ').substring(0, 16) : ''}</div>
+                            </td>
+                            <td>
+                              {isApproved && (
+                                <span className="badge badge-approved" style={{ fontSize: '11px' }}>
+                                  ACCEPTED
+                                </span>
+                              )}
+                              {isRejected && (
+                                <span className="badge badge-rejected" style={{ fontSize: '11px' }}>
+                                  REJECTED
+                                </span>
+                              )}
+                              {isPending && (
+                                <span className="badge" style={{ fontSize: '11px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                                  AWAITING CONFIRMATION
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button 
+                                  type="button" 
+                                  onClick={() => handleApproveCoupon(coupon.code)}
+                                  className="btn btn-primary"
+                                  style={{ padding: '4px 10px', fontSize: '12px', background: isApproved ? 'var(--bg-card-hover)' : 'var(--accent-teal)', border: isApproved ? '1px solid var(--border-light)' : 'none', color: isApproved ? 'var(--text-muted)' : '#fff' }}
+                                  disabled={isApproved}
+                                >
+                                  {isApproved ? 'Accepted' : 'Accept'}
+                                </button>
+                                <button 
+                                  type="button" 
+                                  onClick={() => handleRejectCoupon(coupon.code)}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '4px 10px', fontSize: '12px', color: isRejected ? 'var(--text-muted)' : 'var(--accent-rose)' }}
+                                  disabled={isRejected}
+                                >
+                                  {isRejected ? 'Rejected' : 'Reject'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1038,6 +1237,19 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                     />
                   </div>
                 )}
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', marginBottom: '10px' }}>
+                <input 
+                  type="checkbox" 
+                  id="couponsEnabled"
+                  checked={productForm.couponsEnabled}
+                  onChange={(e) => setProductForm({...productForm, couponsEnabled: e.target.checked})} 
+                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                />
+                <label htmlFor="couponsEnabled" style={{ fontSize: '13px', cursor: 'pointer', fontWeight: '500' }}>
+                  Enable Promotional Coupons for this Product
+                </label>
               </div>
 
               {modalMode === 'edit' && (
@@ -1273,6 +1485,156 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Accept Promo Coupon Modal */}
+      {showAcceptPromoModal && selectedPromoCode && (
+        <div className="modal-overlay" onClick={() => setShowAcceptPromoModal(false)} style={{ zIndex: 3000 }}>
+          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Activate Coupon: {selectedPromoCode}</h2>
+              <button onClick={() => setShowAcceptPromoModal(false)} className="btn-icon-only">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '16px 0', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                Choose how you want this promotional discount to apply to your listings:
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setAcceptPromoMode('all')}
+                  className={`btn ${acceptPromoMode === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '12px', fontSize: '13px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}
+                >
+                  <strong style={{ fontSize: '14px' }}>Apply to All</strong>
+                  <span style={{ fontSize: '11px', opacity: 0.8 }}>Enable for all current products</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAcceptPromoMode('specific')}
+                  className={`btn ${acceptPromoMode === 'specific' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '12px', fontSize: '13px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}
+                >
+                  <strong style={{ fontSize: '14px' }}>Select Products</strong>
+                  <span style={{ fontSize: '11px', opacity: 0.8 }}>Choose specific items manually</span>
+                </button>
+              </div>
+
+              {acceptPromoMode === 'specific' && (
+                <div style={{ border: '1px solid var(--border-light)', borderRadius: '8px', padding: '12px', background: 'var(--bg-input)', overflowX: 'auto' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', display: 'block', marginBottom: '12px', textTransform: 'uppercase' }}>
+                    Select Eligible Products ({selectedPromoProductIds.length} / {products.length})
+                  </label>
+                  <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                    <table className="custom-table" style={{ fontSize: '12px', width: '100%' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: '32px', padding: '6px' }}>
+                            <input 
+                              type="checkbox"
+                              checked={selectedPromoProductIds.length === products.length && products.length > 0}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedPromoProductIds(products.map(p => p.id));
+                                } else {
+                                  setSelectedPromoProductIds([]);
+                                }
+                              }}
+                              style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                            />
+                          </th>
+                          <th style={{ width: '48px', padding: '6px' }}>Icon</th>
+                          <th style={{ padding: '6px' }}>Name</th>
+                          <th style={{ padding: '6px' }}>Category</th>
+                          <th style={{ padding: '6px' }}>Price</th>
+                          <th style={{ padding: '6px' }}>Stock</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {products.length === 0 ? (
+                          <tr>
+                            <td colSpan="6" style={{ textAlign: 'center', padding: '12px', color: 'var(--text-muted)' }}>
+                              No products listed.
+                            </td>
+                          </tr>
+                        ) : (
+                          products.map((prod) => {
+                            const isChecked = selectedPromoProductIds.includes(prod.id);
+                            return (
+                              <tr 
+                                key={prod.id} 
+                                style={{ 
+                                  background: isChecked ? 'rgba(20, 184, 166, 0.08)' : 'transparent',
+                                  transition: 'background-color 0.2s'
+                                }}
+                              >
+                                <td style={{ padding: '6px', textAlign: 'center' }}>
+                                  <input 
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedPromoProductIds([...selectedPromoProductIds, prod.id]);
+                                      } else {
+                                        setSelectedPromoProductIds(selectedPromoProductIds.filter(id => id !== prod.id));
+                                      }
+                                    }}
+                                    style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px' }}>
+                                  <div style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', overflow: 'hidden', background: 'var(--bg-card)' }}>
+                                    {prod.imageUrl && prod.imageUrl.length > 4 ? (
+                                      <img src={prod.imageUrl} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    ) : (
+                                      <ProductIcon name={prod.name} category={prod.category} size={14} />
+                                    )}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '6px', fontWeight: '600', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={prod.name}>
+                                  {prod.name}
+                                </td>
+                                <td style={{ padding: '6px' }}>
+                                  <span className="badge badge-customer" style={{ fontSize: '10px', padding: '2px 6px' }}>{prod.category}</span>
+                                </td>
+                                <td style={{ padding: '6px', fontWeight: '700' }}>
+                                  ₹{prod.price}
+                                </td>
+                                <td style={{ padding: '6px' }}>
+                                  <span style={{ fontWeight: '600', color: prod.stock <= 3 ? 'var(--accent-rose)' : 'inherit' }}>
+                                    {prod.stock}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '10px', borderTop: '1px solid var(--border-light)' }}>
+              <button type="button" onClick={() => setShowAcceptPromoModal(false)} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                onClick={() => submitApproveCoupon(selectedPromoCode, acceptPromoMode === 'all', selectedPromoProductIds)} 
+                className="btn btn-primary"
+                style={{ background: 'var(--accent-teal)' }}
+              >
+                Confirm & Accept Coupon
+              </button>
+            </div>
           </div>
         </div>
       )}

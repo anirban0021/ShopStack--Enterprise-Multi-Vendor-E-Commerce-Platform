@@ -5,7 +5,7 @@ import {
   Activity, Receipt, IndianRupee, RefreshCw, Search, RotateCcw, CheckCircle, 
   Clock, AlertTriangle, Eye, DollarSign, Package, ShieldCheck, ArrowRight,
   Truck, CornerUpLeft, ThumbsUp, ThumbsDown, Users, BarChart3, Settings, 
-  FileSpreadsheet, HardDrive, Database, TrendingUp
+  FileSpreadsheet, HardDrive, Database, TrendingUp, Ticket
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
@@ -13,6 +13,26 @@ export default function AdminDashboard({ user, onGoToHome }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'vendors' | 'products' | 'returns' | 'monitoring' | 'transactions' | 'settlements' | 'system' | 'reports'
   const [pendingProducts, setPendingProducts] = useState([]);
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
+
+  // Promo Coupons States
+  const [coupons, setCoupons] = useState([]);
+  const [couponAnalytics, setCouponAnalytics] = useState([]);
+  const [showCouponModal, setShowCouponModal] = useState(false);
+  const [couponFormData, setCouponFormData] = useState({
+    id: null,
+    code: '',
+    discountType: 'PERCENTAGE',
+    discountValue: 0,
+    minOrderAmount: '',
+    maxDiscount: '',
+    startDate: '',
+    startTime: '00:00',
+    expiryDate: '',
+    expiryTime: '23:59',
+    usageLimit: '',
+    active: true
+  });
+  const [isEditingCoupon, setIsEditingCoupon] = useState(false);
   
   // Notification states
   const [showNotifications, setShowNotifications] = useState(false);
@@ -200,6 +220,121 @@ export default function AdminDashboard({ user, onGoToHome }) {
     showFlash('success', `${type} Business Report CSV download triggered!`);
   };
 
+  const fetchCoupons = async () => {
+    try {
+      const res = await axios.get('http://localhost:8080/api/coupons');
+      setCoupons(res.data);
+    } catch (err) {
+      console.error("Failed to fetch coupons", err);
+    }
+  };
+
+  const fetchCouponAnalytics = async () => {
+    try {
+      const res = await axios.get('http://localhost:8080/api/coupons/analytics');
+      setCouponAnalytics(res.data);
+    } catch (err) {
+      console.error("Failed to fetch coupon analytics", err);
+    }
+  };
+
+  const handleCreateOrCreateCoupon = async (e) => {
+    e.preventDefault();
+    if (!couponFormData.code.trim()) {
+      alert("Coupon code is required");
+      return;
+    }
+    
+    const payload = {
+      ...couponFormData,
+      code: couponFormData.code.toUpperCase().trim(),
+      minOrderAmount: couponFormData.minOrderAmount ? parseFloat(couponFormData.minOrderAmount) : null,
+      maxDiscount: couponFormData.maxDiscount ? parseFloat(couponFormData.maxDiscount) : null,
+      usageLimit: couponFormData.usageLimit ? parseInt(couponFormData.usageLimit) : null,
+      startDate: couponFormData.startDate + 'T' + (couponFormData.startTime || '00:00') + ':00',
+      expiryDate: couponFormData.expiryDate + 'T' + (couponFormData.expiryTime || '23:59') + ':00'
+    };
+
+    try {
+      if (isEditingCoupon) {
+        await axios.put(`http://localhost:8080/api/coupons/${couponFormData.id}`, payload);
+      } else {
+        await axios.post('http://localhost:8080/api/coupons', payload);
+      }
+      setShowCouponModal(false);
+      fetchCoupons();
+      fetchCouponAnalytics();
+      showFlash('success', `Coupon campaign saved successfully!`);
+    } catch (err) {
+      alert(err.response?.data || "Failed to save coupon.");
+    }
+  };
+
+  const handleToggleCoupon = async (id) => {
+    try {
+      await axios.put(`http://localhost:8080/api/coupons/${id}/toggle`);
+      fetchCoupons();
+      fetchCouponAnalytics();
+      showFlash('success', `Coupon status updated.`);
+    } catch (err) {
+      console.error("Failed to toggle coupon status", err);
+    }
+  };
+
+  const handleDeleteCoupon = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this coupon?")) return;
+    try {
+      await axios.delete(`http://localhost:8080/api/coupons/${id}`);
+      fetchCoupons();
+      fetchCouponAnalytics();
+      showFlash('success', `Coupon deleted.`);
+    } catch (err) {
+      console.error("Failed to delete coupon", err);
+    }
+  };
+
+  const openAddCouponModal = () => {
+    const tzOffset = new Date().getTimezoneOffset() * 60000;
+    const nowLocalDate = new Date(Date.now() - tzOffset).toISOString();
+    const futureLocalDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 - tzOffset).toISOString();
+    
+    setCouponFormData({
+      id: null,
+      code: '',
+      discountType: 'PERCENTAGE',
+      discountValue: 0,
+      minOrderAmount: '',
+      maxDiscount: '',
+      startDate: nowLocalDate.split('T')[0],
+      startTime: nowLocalDate.split('T')[1].substring(0, 5),
+      expiryDate: futureLocalDate.split('T')[0],
+      expiryTime: '23:59',
+      usageLimit: '',
+      active: true
+    });
+    setIsEditingCoupon(false);
+    setShowCouponModal(true);
+  };
+
+  const openEditCouponModal = (coupon) => {
+    setCouponFormData({
+      id: coupon.id,
+      code: coupon.code,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
+      minOrderAmount: coupon.minOrderAmount || '',
+      maxDiscount: coupon.maxDiscount || '',
+      startDate: coupon.startDate ? coupon.startDate.split('T')[0] : '',
+      startTime: coupon.startDate && coupon.startDate.includes('T') ? coupon.startDate.split('T')[1].substring(0, 5) : '00:00',
+      expiryDate: coupon.expiryDate ? coupon.expiryDate.split('T')[0] : '',
+      expiryTime: coupon.expiryDate && coupon.expiryDate.includes('T') ? coupon.expiryDate.split('T')[1].substring(0, 5) : '23:59',
+      usageLimit: coupon.usageLimit || '',
+      active: coupon.active
+    });
+    setIsEditingCoupon(true);
+    setShowCouponModal(true);
+  };
+
   useEffect(() => {
     fetchDashboardSummary();
     fetchPendingProducts();
@@ -210,6 +345,8 @@ export default function AdminDashboard({ user, onGoToHome }) {
     fetchVendorsList();
     fetchSystemStatus();
     fetchReportData(reportType);
+    fetchCoupons();
+    fetchCouponAnalytics();
   }, []);
 
   // Close notifications dropdown when clicking outside
@@ -653,6 +790,17 @@ export default function AdminDashboard({ user, onGoToHome }) {
               {settlements.filter(s => s.status === 'PENDING').length} Pending
             </span>
           )}
+        </button>
+
+        {/* Promo Coupons tab */}
+        <button
+          type="button"
+          onClick={() => { setActiveTab('coupons'); fetchCoupons(); fetchCouponAnalytics(); }}
+          className={`sidebar-item ${activeTab === 'coupons' ? 'sidebar-item-active' : ''}`}
+          style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: activeTab === 'coupons' ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
+        >
+          <Ticket size={17} style={{ color: activeTab === 'coupons' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
+          <span>Promo Coupons</span>
         </button>
 
         {/* System Monitoring tab */}
@@ -2356,6 +2504,326 @@ export default function AdminDashboard({ user, onGoToHome }) {
                   </table>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 6: PROMO COUPONS */}
+          {activeTab === 'coupons' && (
+            <div>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Ticket size={22} style={{ color: 'var(--accent-teal)' }} /> Coupon & Promotion Manager
+                  </h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Create and manage platform-wide promotional discounts.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    type="button" 
+                    onClick={openAddCouponModal} 
+                    className="btn btn-primary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                  >
+                    + Create Coupon
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => { fetchCoupons(); fetchCouponAnalytics(); }} 
+                    className="btn btn-secondary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                  >
+                    <RefreshCw size={13} /> Refresh List
+                  </button>
+                </div>
+              </div>
+
+              {/* Coupons List */}
+              <div className="table-responsive" style={{ maxHeight: '600px', overflowY: 'auto' }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Coupon Code</th>
+                      <th>Type</th>
+                      <th>Value</th>
+                      <th>Min Order</th>
+                      <th>Max Discount</th>
+                      <th>Campaign Dates</th>
+                      <th>Redemptions</th>
+                      <th>Total Discount</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coupons.length === 0 ? (
+                      <tr>
+                        <td colSpan="10" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>
+                          No coupons found. Click "Create Coupon" to launch your first promotional campaign!
+                        </td>
+                      </tr>
+                    ) : (
+                      coupons.map((coupon) => {
+                        const analytics = couponAnalytics.find(a => a.code === coupon.code) || { totalUses: 0, totalDiscount: 0, history: [] };
+                        return (
+                          <tr key={coupon.id}>
+                            <td>
+                              <strong style={{ color: 'var(--accent-teal)', fontSize: '14px', letterSpacing: '0.5px' }}>{coupon.code}</strong>
+                            </td>
+                            <td>
+                              <span className={`badge ${coupon.discountType === 'PERCENTAGE' ? 'badge-customer' : 'badge-vendor'}`}>
+                                {coupon.discountType}
+                              </span>
+                            </td>
+                            <td>
+                              <strong>{coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}%` : `₹${coupon.discountValue}`}</strong>
+                            </td>
+                            <td>
+                              {coupon.minOrderAmount ? `₹${coupon.minOrderAmount}` : 'None'}
+                            </td>
+                            <td>
+                              {coupon.maxDiscount ? `₹${coupon.maxDiscount}` : 'None'}
+                            </td>
+                            <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              <div>Start: {coupon.startDate ? coupon.startDate.replace('T', ' ').substring(0, 16) : ''}</div>
+                              <div>Expiry: {coupon.expiryDate ? coupon.expiryDate.replace('T', ' ').substring(0, 16) : ''}</div>
+                            </td>
+                            <td>
+                              <span style={{ fontWeight: 'bold' }}>{coupon.usageCount}</span>
+                              {coupon.usageLimit ? ` / ${coupon.usageLimit}` : ''}
+                            </td>
+                            <td style={{ color: 'var(--accent-emerald)', fontWeight: 'bold' }}>
+                              ₹{analytics.totalDiscount?.toLocaleString('en-IN') || '0'}
+                            </td>
+                            <td>
+                              <button 
+                                type="button"
+                                onClick={() => handleToggleCoupon(coupon.id)}
+                                className={`badge ${coupon.active ? 'badge-approved' : 'badge-rejected'}`}
+                                style={{ border: 'none', cursor: 'pointer' }}
+                              >
+                                {coupon.active ? 'ACTIVE' : 'INACTIVE'}
+                              </button>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button 
+                                  type="button" 
+                                  onClick={() => openEditCouponModal(coupon)} 
+                                  className="btn btn-secondary"
+                                  style={{ padding: '2px 8px', fontSize: '11px' }}
+                                >
+                                  Edit
+                                </button>
+                                <button 
+                                  type="button" 
+                                  onClick={() => handleDeleteCoupon(coupon.id)} 
+                                  className="btn btn-secondary"
+                                  style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--accent-rose)' }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Coupon Analytics & Performance Section */}
+              <div style={{ marginTop: '30px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px' }}>Campaign Performance & Redemption Ledger</h3>
+                <div className="analytics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+                  {couponAnalytics.filter(a => a.totalUses > 0).map((a) => (
+                    <div key={a.code} className="analytics-card" style={{ padding: '16px' }}>
+                      <div className="analytics-card-header" style={{ marginBottom: '10px' }}>
+                        <span className="analytics-card-title" style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--accent-teal)' }}>
+                          {a.code} ({a.discountType})
+                        </span>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                          {a.totalUses} Uses
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Total Discount Granted:</span>
+                        <strong style={{ color: 'var(--accent-emerald)' }}>₹{a.totalDiscount?.toLocaleString('en-IN')}</strong>
+                      </div>
+                      <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Recent Redemptions:</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '100px', overflowY: 'auto' }}>
+                          {a.history.map((h, i) => (
+                            <div key={i} style={{ fontSize: '10px', display: 'flex', justifyContent: 'space-between', background: 'var(--bg-input)', padding: '4px 6px', borderRadius: '4px' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>{h.userEmail || `User #${h.userId}`}</span>
+                              <strong style={{ color: 'var(--text-primary)' }}>-₹{h.discountAmount}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Coupon Create/Edit Modal */}
+          {showCouponModal && (
+            <div className="modal-overlay" onClick={() => setShowCouponModal(false)} style={{ zIndex: 3000 }}>
+              <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto' }}>
+                <div className="modal-header">
+                  <h2 className="modal-title">{isEditingCoupon ? 'Edit Coupon Campaign' : 'Create Coupon Campaign'}</h2>
+                  <button onClick={() => setShowCouponModal(false)} className="btn-icon-only">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreateOrCreateCoupon} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div className="form-group">
+                    <label className="form-label">Coupon Code (e.g. SAVE20) *</label>
+                    <input 
+                      type="text" 
+                      value={couponFormData.code}
+                      onChange={(e) => setCouponFormData({ ...couponFormData, code: e.target.value.toUpperCase() })}
+                      className="form-input" 
+                      placeholder="CODE" 
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div className="form-group">
+                      <label className="form-label">Discount Type *</label>
+                      <select 
+                        value={couponFormData.discountType}
+                        onChange={(e) => setCouponFormData({ ...couponFormData, discountType: e.target.value })}
+                        className="form-input"
+                      >
+                        <option value="PERCENTAGE">Percentage (%)</option>
+                        <option value="FIXED">Fixed Amount (₹)</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Discount Value *</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        value={couponFormData.discountValue}
+                        onChange={(e) => setCouponFormData({ ...couponFormData, discountValue: parseFloat(e.target.value) || 0 })}
+                        className="form-input" 
+                        min="0.01"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div className="form-group">
+                      <label className="form-label">Min Order Amount (₹)</label>
+                      <input 
+                        type="number" 
+                        value={couponFormData.minOrderAmount}
+                        onChange={(e) => setCouponFormData({ ...couponFormData, minOrderAmount: e.target.value })}
+                        className="form-input" 
+                        placeholder="None"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Max Discount Cap (₹)</label>
+                      <input 
+                        type="number" 
+                        value={couponFormData.maxDiscount}
+                        onChange={(e) => setCouponFormData({ ...couponFormData, maxDiscount: e.target.value })}
+                        className="form-input" 
+                        placeholder="None"
+                        disabled={couponFormData.discountType !== 'PERCENTAGE'}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '10px' }}>
+                    <div className="form-group">
+                      <label className="form-label">Start Date *</label>
+                      <input 
+                        type="date" 
+                        value={couponFormData.startDate}
+                        onChange={(e) => setCouponFormData({ ...couponFormData, startDate: e.target.value })}
+                        className="form-input" 
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Start Time *</label>
+                      <input 
+                        type="time" 
+                        value={couponFormData.startTime}
+                        onChange={(e) => setCouponFormData({ ...couponFormData, startTime: e.target.value })}
+                        className="form-input" 
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '10px' }}>
+                    <div className="form-group">
+                      <label className="form-label">Expiry Date *</label>
+                      <input 
+                        type="date" 
+                        value={couponFormData.expiryDate}
+                        onChange={(e) => setCouponFormData({ ...couponFormData, expiryDate: e.target.value })}
+                        className="form-input" 
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Expiry Time *</label>
+                      <input 
+                        type="time" 
+                        value={couponFormData.expiryTime}
+                        onChange={(e) => setCouponFormData({ ...couponFormData, expiryTime: e.target.value })}
+                        className="form-input" 
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Usage Limit (Global Total Uses)</label>
+                    <input 
+                      type="number" 
+                      value={couponFormData.usageLimit}
+                      onChange={(e) => setCouponFormData({ ...couponFormData, usageLimit: e.target.value })}
+                      className="form-input" 
+                      placeholder="Unlimited"
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                    <input 
+                      type="checkbox" 
+                      id="couponActive"
+                      checked={couponFormData.active}
+                      onChange={(e) => setCouponFormData({ ...couponFormData, active: e.target.checked })}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    <label htmlFor="couponActive" style={{ fontSize: '13px', cursor: 'pointer', fontWeight: '500' }}>
+                      Mark Campaign as Active
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                    <button type="button" onClick={() => setShowCouponModal(false)} className="btn btn-secondary">
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      {isEditingCoupon ? 'Save Changes' : 'Launch Campaign'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
 

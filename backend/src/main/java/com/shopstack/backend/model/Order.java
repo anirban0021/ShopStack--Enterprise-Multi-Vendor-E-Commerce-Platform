@@ -30,6 +30,9 @@ public class Order {
     @Column(length = 1000)
     private String deliveryAddress;
 
+    private String couponCode;
+    private double couponDiscount = 0.0;
+
     public Order() {}
 
     public Order(String orderId, Long userId, String date, double totalAmount, String status) {
@@ -113,4 +116,10 @@ public class Order {
 
     public String getDeliveryAddress() { return deliveryAddress; }
     public void setDeliveryAddress(String deliveryAddress) { this.deliveryAddress = deliveryAddress; }
+
+    public String getCouponCode() { return couponCode; }
+    public void setCouponCode(String couponCode) { this.couponCode = couponCode; }
+
+    public double getCouponDiscount() { return couponDiscount; }
+    public void setCouponDiscount(double couponDiscount) { this.couponDiscount = couponDiscount; }
 }

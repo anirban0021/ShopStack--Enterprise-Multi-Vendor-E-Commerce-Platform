@@ -62,6 +62,9 @@ public class PaymentService {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private CouponService couponService;
+
     @Value("${shopstack.commission.percentage:10.0}")
     private double commissionPercentage;
 
@@ -131,7 +134,7 @@ public class PaymentService {
     @Transactional
     public Order placeVerifiedOrder(Long userId, List<Map<String, Object>> itemsList, 
                                    String paymentMethod, String razorpayOrderId, String razorpayPaymentId,
-                                   Map<String, Object> deliveryInfo) {
+                                   Map<String, Object> deliveryInfo, String couponCode) {
         if (itemsList == null || itemsList.isEmpty()) {
             throw new IllegalArgumentException("Cart is empty");
         }
@@ -157,7 +160,16 @@ public class PaymentService {
 
         // Delivery fee calculation: Under 500 = 99, 500 and above = free
         double deliveryFee = (itemsSubtotal < 500.0 && itemsSubtotal > 0) ? 99.0 : 0.0;
-        double totalAmount = Math.round((itemsSubtotal + deliveryFee) * 100.0) / 100.0;
+
+        double couponDiscount = 0.0;
+        if (couponCode != null && !couponCode.trim().isEmpty()) {
+            Map<String, Object> validation = couponService.validateAndCalculateDiscount(couponCode, itemsList, userId);
+            if (Boolean.TRUE.equals(validation.get("valid"))) {
+                couponDiscount = Double.parseDouble(validation.get("discountAmount").toString());
+            }
+        }
+
+        double totalAmount = Math.max(0.0, Math.round((itemsSubtotal + deliveryFee - couponDiscount) * 100.0) / 100.0);
 
         String orderIdStr = "ORD-" + (int) (100000 + Math.random() * 900000);
         String dateStr = new SimpleDateFormat("MMM dd, yyyy").format(new Date());
@@ -186,6 +198,8 @@ public class PaymentService {
                 recipientPhone,
                 deliveryAddress
         );
+        order.setCouponCode(couponCode != null && !couponCode.trim().isEmpty() ? couponCode.trim().toUpperCase() : null);
+        order.setCouponDiscount(couponDiscount);
         orderRepository.save(order);
 
         List<OrderItem> savedItems = new ArrayList<>();
@@ -217,6 +231,10 @@ public class PaymentService {
             OrderItem orderItem = new OrderItem(orderIdStr, productId, productName, price, originalPrice, discountPercentage, quantity, vendorId);
             OrderItem savedItem = orderItemRepository.save(orderItem);
             savedItems.add(savedItem);
+        }
+
+        if (couponCode != null && !couponCode.trim().isEmpty() && couponDiscount > 0) {
+            couponService.recordUsage(couponCode, userId, order.getOrderId(), couponDiscount);
         }
 
         // Auto-generate per-vendor Settlement records when paymentStatus is PAID

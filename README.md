@@ -1134,3 +1134,67 @@ PUT | `/api/admin/vendors/{vendorId}/commission-rate` | [DISABLED] Returns `400 
 1. Run `mvn test -Dtest=CommissionCalculationTests` inside the `backend` folder.
 2. ✅ Verify that all 5 tests pass successfully with a `BUILD SUCCESS` output status.
 
+---
+
+# 🏷️ ShopStack — Day 10: Advanced Vendor Coupon Management & Fine-Grained Product Mapping
+
+This milestone introduces selective, coupon-specific product mappings for vendors, enables editing of coupon codes, adds automated cascading cleanup/reset configurations, and implements pre-filtering checkout dropdown lists with clean warnings.
+
+---
+
+## 📌 Day 10 Deliverables & Major Enhancements
+
+### 1. Fine-Grained Product Mappings & Time Limits
+- [x] **ProductCoupon Mapping Table:** Introduced the `product_coupons` table to map `productId` with `couponCode`. This decouples activation configurations, letting vendors choose completely different sets of products for each coupon campaign.
+- [x] **Pre-Populated Activation Modal:** When a vendor clicks "Accept" or edits a coupon in the Vendor Dashboard, the system fetches previously saved mappings (`GET /api/coupons/{code}/products`) so vendors can view and edit the checklist seamlessly.
+- [x] **Separate Coupon Date & Time Pickers:** Split start and expiry configurations into separate Date and Time text input boxes supporting manual keyboard typing, with built-in regex format validation (`YYYY-MM-DD` and `HH:MM`).
+
+### 2. Upgraded Customer Checkout Experience & Time Limit Visibility
+- [x] **Pre-Filtered Dropdown Options:** Concurrently fetches active coupons, vendor approvals, and product mappings during checkout initialization, automatically disabling and applying a line-through style to coupons that are ineligible.
+- [x] **Visible Expiry Limits:** Appends time limits directly next to each campaign code inside the customer checkout selection options in the format: `(Expires: YYYY-MM-DD HH:mm)`.
+- [x] **Simplified Suffix Labels:** Suffixes for disabled option labels are shortened to a clean `[Not Applicable]`.
+- [x] **Simplified Info Warning:** Cleaned up the applied coupon message banner by removing the verbose explanation text `(coupons disabled or pending vendor acceptance)`, presenting it as: `ℹ️ Excluded items: Apple watch series 11`.
+
+### 3. Enabled Coupon Code Editing
+- [x] **Editable Coupon Codes:** Removed the readonly/disabled lock on the Coupon Code input field in the Admin Dashboard editor modal.
+- [x] **Cascaded Code Renames:** When the admin re-names a coupon's code, the backend automatically migrates all associated vendor approvals and product mappings to the new code.
+
+### 4. Cascaded Cleanup & Parameter Change Detections
+- [x] **Cascade Delete:** Deleting a coupon code automatically clears matching vendor approval and product mapping rows in the database.
+- [x] **Edit Reset Trigger:** Modifying any parameter of an existing coupon (discount rate, cap, minimum orders, dates, or code) automatically resets all vendor response statuses and product mappings back to pending status, forcing vendors to re-review and re-accept/reject the updated campaign.
+
+---
+
+## 📡 API Endpoints (Day 10)
+
+Method | Endpoint | Description
+------ | -------- | -----------
+GET | `/api/coupons/mappings` | Retrieves all product-coupon mapping records in the database.
+GET | `/api/coupons/{code}/products` | Retrieves the list of product IDs mapped to a specific coupon campaign.
+
+---
+
+## 🧪 Testing Checklist & Verification Guide (Day 10)
+
+### 1. Coupon-Specific Product Selection
+1. Log in as a Vendor, and click **Accept** on a campaign (e.g. `SAVE20`).
+2. Choose "Select Specific Products", check only one item, and save.
+3. Click **Accept** on another campaign (e.g. `BBD1000`), select different products, and save.
+4. Click **Accept** again on `SAVE20` and verify:
+   - ✅ The previously checked product is automatically pre-selected.
+   - ✅ The selections do not conflict or overwrite the mapping for `BBD1000`.
+
+### 2. Customer Checkout Option Rendering
+1. As a Customer, add a product to the cart that has not been approved for `BBD1000`.
+2. Start the checkout flow:
+   - ✅ Verify that `BBD1000` is disabled, has a line-through, and displays `[Not Applicable]`.
+   - ✅ Select an applicable coupon (e.g. `SAVE20`), click **Apply**, and verify:
+     - ✅ The coupon is applied successfully.
+     - ✅ The excluded items info banner lists any excluded products without the verbose bracketed text.
+
+### 3. Coupon Changes Cascade Reset
+1. Log in as an Admin and edit any field on an active coupon.
+2. Log in as the Vendor:
+   - ✅ Verify the coupon status has changed from `ACCEPTED` back to `AWAITING CONFIRMATION`.
+
+

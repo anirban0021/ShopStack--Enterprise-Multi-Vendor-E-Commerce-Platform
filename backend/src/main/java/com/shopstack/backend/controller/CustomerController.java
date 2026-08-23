@@ -32,6 +32,7 @@ import com.shopstack.backend.repository.OrderRepository;
 import com.shopstack.backend.repository.ProductRepository;
 import com.shopstack.backend.repository.UserRepository;
 import com.shopstack.backend.repository.WishlistItemRepository;
+import com.shopstack.backend.service.CouponService;
 
 @RestController
 @RequestMapping("/api/customer")
@@ -40,6 +41,9 @@ public class CustomerController {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private CouponService couponService;
 
     @Autowired
     private WishlistItemRepository wishlistItemRepository;
@@ -311,13 +315,25 @@ public class CustomerController {
 
         // Delivery fee: under 500 = 99, 500 and above = free (0)
         double deliveryFee = (itemsSubtotal < 500.0 && itemsSubtotal > 0) ? 99.0 : 0.0;
-        double totalAmount = Math.round((itemsSubtotal + deliveryFee) * 100.0) / 100.0;
+
+        double couponDiscount = 0.0;
+        String couponCode = payload.containsKey("couponCode") && payload.get("couponCode") != null ? payload.get("couponCode").toString() : null;
+        if (couponCode != null && !couponCode.trim().isEmpty()) {
+            Map<String, Object> validation = couponService.validateAndCalculateDiscount(couponCode, itemsList, id);
+            if (Boolean.TRUE.equals(validation.get("valid"))) {
+                couponDiscount = Double.parseDouble(validation.get("discountAmount").toString());
+            }
+        }
+
+        double totalAmount = Math.max(0.0, Math.round((itemsSubtotal + deliveryFee - couponDiscount) * 100.0) / 100.0);
 
         String orderIdStr = "ORD-" + (int) (100000 + Math.random() * 900000);
         String dateStr = new java.text.SimpleDateFormat("MMM dd, yyyy").format(new java.util.Date());
 
         // Create and save Order Header
         Order order = new Order(orderIdStr, id, dateStr, totalAmount, "CONFIRMED");
+        order.setCouponCode(couponCode != null && !couponCode.trim().isEmpty() ? couponCode.trim().toUpperCase() : null);
+        order.setCouponDiscount(couponDiscount);
         orderRepository.save(order);
 
         // Process each cart item
@@ -347,6 +363,10 @@ public class CustomerController {
             // Create and save Order Line Item with discounted price, original price and discount %
             OrderItem orderItem = new OrderItem(orderIdStr, productId, productName, price, originalPrice, discountPercentage, quantity, vendorId);
             orderItemRepository.save(orderItem);
+        }
+
+        if (couponCode != null && !couponCode.trim().isEmpty() && couponDiscount > 0) {
+            couponService.recordUsage(couponCode, id, order.getOrderId(), couponDiscount);
         }
 
         return ResponseEntity.ok(order);

@@ -21,6 +21,16 @@ export default function HomeDashboard({
 
   // Checkout & Payment Modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  // Coupon State variables
+  const [couponCodeInput, setCouponCodeInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponSuccess, setCouponSuccess] = useState('');
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [couponApprovals, setCouponApprovals] = useState([]);
+  const [couponMappings, setCouponMappings] = useState([]);
   const [paymentStep, setPaymentStep] = useState(1); // 1: Review & Address, 2: Payment Method, 3: Processing, 4: Confirmed
   const [deliveryInfo, setDeliveryInfo] = useState({
     name: '',
@@ -252,7 +262,108 @@ export default function HomeDashboard({
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
     if (subtotal <= 0) return 0;
-    return Math.round((subtotal + calculateDeliveryFee()) * 100) / 100;
+    const discount = appliedCoupon ? Number(appliedCoupon.discountAmount) : 0;
+    return Math.max(0, Math.round((subtotal + calculateDeliveryFee() - discount) * 100) / 100);
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!couponCodeInput.trim()) {
+      setCouponError('Please enter a coupon code.');
+      return;
+    }
+    setIsValidatingCoupon(true);
+    setCouponError('');
+    setCouponSuccess('');
+    
+    try {
+      const payload = {
+        code: couponCodeInput.trim().toUpperCase(),
+        userId: user.id,
+        items: selectedCartItems
+      };
+      
+      const res = await axios.post('http://localhost:8080/api/coupons/validate', payload);
+      if (res.data.valid) {
+        setAppliedCoupon(res.data);
+        setCouponSuccess(res.data.message);
+        showFlash('success', 'Coupon applied successfully!');
+      } else {
+        setAppliedCoupon(null);
+        setCouponError(res.data.message || 'Invalid coupon.');
+      }
+    } catch (err) {
+      setAppliedCoupon(null);
+      setCouponError(err.response?.data?.message || err.response?.data || 'Failed to validate coupon.');
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+    setCouponError('');
+    setCouponSuccess('');
+    showFlash('info', 'Coupon removed.');
+  };
+
+  const fetchAvailableCoupons = async () => {
+    try {
+      const [res, appRes, mapRes] = await Promise.all([
+        axios.get('http://localhost:8080/api/coupons'),
+        axios.get('http://localhost:8080/api/coupons/approvals'),
+        axios.get('http://localhost:8080/api/coupons/mappings')
+      ]);
+      const tzOffset = new Date().getTimezoneOffset() * 60000;
+      const nowStr = new Date(Date.now() - tzOffset).toISOString().substring(0, 16);
+      const activeCoupons = res.data.filter(c => {
+        const start = c.startDate ? c.startDate.substring(0, 16) : '';
+        const expiry = c.expiryDate ? c.expiryDate.substring(0, 16) : '';
+        return (
+          c.active && 
+          (!start || start <= nowStr) && 
+          (!expiry || expiry >= nowStr) &&
+          (!c.usageLimit || c.usageCount < c.usageLimit)
+        );
+      });
+      setCouponApprovals(appRes.data || []);
+      setCouponMappings(mapRes.data || []);
+      setAvailableCoupons(activeCoupons);
+    } catch (err) {
+      console.error("Failed to fetch available coupons", err);
+    }
+  };
+
+  const isCouponEligibleForCart = (coupon) => {
+    const subtotal = calculateSubtotal();
+    if (coupon.minOrderAmount && subtotal < coupon.minOrderAmount) {
+      return false;
+    }
+
+    const approvalsArray = Array.isArray(couponApprovals) ? couponApprovals : (couponApprovals?.value || []);
+    const mappingsArray = Array.isArray(couponMappings) ? couponMappings : (couponMappings?.value || []);
+
+    const hasEligibleProduct = selectedCartItems.some(item => {
+      const liveProd = products.find(p => String(p.id) === String(item.id));
+      if (!liveProd) return false;
+      if (liveProd.couponsEnabled === false) return false;
+      if (liveProd.vendorId) {
+        const approval = approvalsArray.find(a => 
+          a && a.vendorId && String(a.vendorId) === String(liveProd.vendorId) && 
+          a.couponCode && a.couponCode.trim().toUpperCase() === coupon.code.trim().toUpperCase()
+        );
+        if (!approval || approval.status !== 'APPROVED') return false;
+
+        const mapping = mappingsArray.find(m => 
+          m && String(m.productId) === String(liveProd.id) && 
+          m.couponCode && m.couponCode.trim().toUpperCase() === coupon.code.trim().toUpperCase()
+        );
+        return !!mapping;
+      }
+      return true;
+    });
+
+    return hasEligibleProduct;
   };
 
   const handleStartCheckout = () => {
@@ -260,6 +371,12 @@ export default function HomeDashboard({
       showFlash('error', 'Please select at least 1 in-stock item from your cart to proceed to checkout.');
       return;
     }
+
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+    setCouponError('');
+    setCouponSuccess('');
+    fetchAvailableCoupons();
 
     // Check if any selected item is out of stock or exceeds inventory
     const outOfStockItem = selectedCartItems.find(item => {
@@ -328,7 +445,8 @@ export default function HomeDashboard({
           userId: user.id,
           items: selectedCartItems,
           deliveryInfo: deliveryInfo,
-          paymentMethod: 'COD'
+          paymentMethod: 'COD',
+          couponCode: appliedCoupon ? appliedCoupon.couponCode : null
         };
 
         const res = await axios.post('http://localhost:8080/api/payment/verify-and-order', payload);
@@ -394,7 +512,8 @@ export default function HomeDashboard({
               paymentMethod: 'RAZORPAY',
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature
+              razorpaySignature: response.razorpay_signature,
+              couponCode: appliedCoupon ? appliedCoupon.couponCode : null
             };
 
             const verifyRes = await axios.post('http://localhost:8080/api/payment/verify-and-order', verifyPayload);
@@ -2155,6 +2274,85 @@ export default function HomeDashboard({
                     </div>
                   </div>
 
+                  {/* Coupon Code Selection Field */}
+                  <div style={{ background: 'var(--bg-input)', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+                      Select Available Coupon / Promo Code
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <select 
+                        value={couponCodeInput}
+                        onChange={(e) => {
+                          setCouponCodeInput(e.target.value);
+                          if (appliedCoupon && appliedCoupon.couponCode !== e.target.value) {
+                            setAppliedCoupon(null);
+                            setCouponError('');
+                            setCouponSuccess('');
+                          }
+                        }}
+                        className="form-input"
+                        style={{ fontSize: '13px', padding: '6px 10px', flex: 1 }}
+                        disabled={appliedCoupon != null}
+                      >
+                        <option value="">-- Choose Coupon --</option>
+                        {availableCoupons.map(c => {
+                          const isEligible = isCouponEligibleForCart(c);
+                          const errorMsg = !isEligible ? ' [Not Applicable]' : '';
+                          const formatDateTime = (isoString) => {
+                            if (!isoString) return '';
+                            return isoString.replace('T', ' ').substring(0, 16);
+                          };
+
+                          return (
+                            <option 
+                              key={c.id} 
+                              value={c.code}
+                              disabled={!isEligible}
+                              style={{ textDecoration: !isEligible ? 'line-through' : 'none', color: !isEligible ? 'var(--text-muted)' : 'inherit' }}
+                            >
+                              {c.code} - {c.discountType === 'PERCENTAGE' ? `${c.discountValue}%` : `₹${c.discountValue}`} Off {c.minOrderAmount ? `(Min: ₹${c.minOrderAmount})` : ''} (Expires: {formatDateTime(c.expiryDate)}){errorMsg}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {appliedCoupon ? (
+                        <button 
+                          type="button" 
+                          onClick={handleRemoveCoupon}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '12px', padding: '6px 12px', color: 'var(--accent-rose)' }}
+                        >
+                          Remove
+                        </button>
+                      ) : (
+                        <button 
+                          type="button" 
+                          onClick={handleApplyCoupon}
+                          className="btn btn-primary"
+                          style={{ fontSize: '12px', padding: '6px 16px', background: 'var(--accent-teal)' }}
+                          disabled={isValidatingCoupon}
+                        >
+                          {isValidatingCoupon ? 'Checking...' : 'Apply'}
+                        </button>
+                      )}
+                    </div>
+                    {couponError && (
+                      <div style={{ fontSize: '11px', color: 'var(--accent-rose)', marginTop: '6px', fontWeight: '600' }}>
+                        ⚠️ {couponError}
+                      </div>
+                    )}
+                    {couponSuccess && (
+                      <div style={{ fontSize: '11px', color: 'var(--accent-emerald)', marginTop: '6px', fontWeight: '600' }}>
+                        ✓ {couponSuccess}
+                      </div>
+                    )}
+                    {appliedCoupon && appliedCoupon.excludedItems && appliedCoupon.excludedItems.length > 0 && (
+                      <div style={{ fontSize: '11px', color: '#f59e0b', marginTop: '6px', lineHeight: '1.3' }}>
+                        ℹ️ <strong>Excluded items</strong>: {appliedCoupon.excludedItems.join(', ')}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Financial Price Breakdown */}
                   <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                     <div className="flex-between" style={{ color: 'var(--text-secondary)' }}>
@@ -2171,6 +2369,12 @@ export default function HomeDashboard({
                       <span>Items Subtotal</span>
                       <span>₹{calculateSubtotal().toLocaleString('en-IN')}</span>
                     </div>
+                    {appliedCoupon && (
+                      <div className="flex-between" style={{ color: 'var(--accent-teal)' }}>
+                        <span style={{ fontWeight: '600' }}>Coupon Discount ({appliedCoupon.couponCode})</span>
+                        <strong style={{ fontWeight: '700' }}>-₹{appliedCoupon.discountAmount.toLocaleString('en-IN')}</strong>
+                      </div>
+                    )}
                     <div className="flex-between">
                       <span style={{ color: 'var(--text-secondary)' }}>Delivery Charges</span>
                       {calculateDeliveryFee() === 0 ? (
