@@ -1136,123 +1136,331 @@ PUT | `/api/admin/vendors/{vendorId}/commission-rate` | [DISABLED] Returns `400 
 
 ---
 
-# 🏷️ ShopStack — Day 10: Advanced Vendor Coupon Management & Fine-Grained Product Mapping
+# 🏷️ ShopStack — Day 10: Coupon & Promotion Engine (Enterprise Multi-Vendor Campaign Architecture)
 
-This milestone introduces selective, coupon-specific product mappings for vendors, enables full coupon code editing, introduces robust cascade delete/update and edit-reset behaviors, implements minute-level LocalDateTime temporal bounds, and upgrades the customer checkout experience with high-performance pre-filtered coupon dropdowns.
+This milestone introduces a robust **Coupon and Promotion Engine** that empowers Administrators to orchestrate platform-wide campaigns, allows Vendors to selectively accept/reject campaigns and map specific products to them, enables Customers to search and apply valid discount coupons during checkout, tracks every single coupon application, and aggregates deep performance metrics and analytics.
 
 ---
 
-## 📌 Day 10 Architecture & Data Flow
+## 📌 Workflow & System Architecture
 
-Previously, coupon eligibility for products was binary and global: a single boolean flag (`coupons_enabled`) on the product table determined coupon eligibility. Day 10 introduces a fine-grained, relational model mapping specific products to coupon campaigns.
+### 1. Complete Business Workflow
+```text
+Admin Creates Coupon (Active)
+      │
+      ▼
+Vendors Review Campaign
+      │
+      ├───────────────────────────────┐
+      ▼ (Accepts)                     ▼ (Rejects / Ignores)
+Maps Products & Approves          Coupon Not Applicable
+      │                               │
+      └──────────────┬────────────────┘
+                     ▼
+Customer Adds Products to Cart
+                     │
+                     ▼
+Customer Proceeds to Checkout (Views Filtered Coupon Options)
+                     │
+                     ▼
+Customer Selects & Applies Coupon Code
+                     │
+                     ▼
+Backend Validation: Exists? Active? Temporal bounds? Min Order? Usage limit? Product eligibility mapping?
+                     │
+      ┌──────────────┴──────────────┐
+      ▼ (Valid)                     ▼ (Invalid)
+Calculate Discount              Reject with Error Msg
+(Percentage / Fixed)
+      │
+      ▼
+Update Order Checkout Total (Reflected in Razorpay/COD Payment flow)
+      │
+      ▼
+Confirm Checkout Order
+      │
+      ▼
+Record Usage Track (Usage Count Increment & CouponUsage log)
+      │
+      ▼
+Admin Reviews Campaign Analytics (Total uses, total discounts, client-level auditing)
+```
 
+### 2. Full Technical Data Flow
+The Coupon Engine follows a modern, decoupled MVC architectural pattern spanning the database storage up to the client layer:
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Customer
-    participant FE as Customer Frontend
-    participant BE as Coupon Controller
-    participant DB as Database (product_coupons / coupons)
+    actor Admin as Administrator
+    actor Vendor as Merchant
+    actor Customer as Shopper
+    participant React as React UI (Vite)
+    participant Axios as Axios / API Client
+    participant Controller as Spring Boot Controller
+    participant Service as Coupon Service (Logic)
+    participant DB as PostgreSQL Database
 
-    Customer->>FE: Starts Checkout Flow
-    FE->>BE: GET /api/coupons, /api/coupons/approvals, /api/coupons/mappings
-    BE->>DB: Fetch Coupons, Vendor Approvals, & Mapped Products
-    DB-->>BE: Mappings & Approval status
-    BE-->>FE: Returns all coupon metadata & mappings
-    Note over FE: Client-side evaluation:<br/>Matches cart items against mappings<br/>String(p.id) === String(item.id)
-    FE->>Customer: Renders Dropdown<br/>(Ineligible: line-through & [Not Applicable]<br/>Eligible: Clickable + Expiry Time)
-    Customer->>FE: Selects coupon & clicks "Apply"
-    FE->>BE: POST /api/coupons/validate (cart items, couponCode)
-    BE->>DB: Check ProductCouponRepository mapping
-    alt Mapping Exists & Active
-        DB-->>BE: Valid Mapping found
-        BE-->>FE: Validation success (Discount applied)
-    else Mapping Missing or Expired
-        DB-->>BE: No mapping / Expired
-        BE-->>FE: HTTP 400 Validation failed
+    %% Admin Workflow
+    Admin->>React: Fills Create Coupon Form
+    React->>Axios: POST /api/coupons
+    Axios->>Controller: createCoupon(Coupon)
+    Controller->>Service: createCoupon()
+    Service->>DB: Save in `coupons` table
+    DB-->>React: HTTP 200 (Active Coupon Created)
+
+    %% Vendor Mapping Workflow
+    Vendor->>React: Opens campaigns tab & clicks "Accept"
+    React->>Axios: GET /api/coupons/{code}/products (Pre-populate)
+    Vendor->>React: Selects specific products & approves
+    React->>Axios: POST /api/coupons/vendor/{vendorId}/approve
+    Axios->>Controller: approveCoupon(payload)
+    Controller->>Service: setVendorCouponStatusWithProducts()
+    Service->>DB: Write to `vendor_coupon_approvals` & `product_coupons`
+    DB-->>React: HTTP 200 (Coupon accepted)
+
+    %% Customer Application Workflow
+    Customer->>React: Navigates to Checkout
+    React->>Axios: Promise.all(/api/coupons, /approvals, /mappings)
+    Axios-->>React: Return coupon meta & mappings
+    Note over React: Filters coupons: Strikethrough & [Not Applicable]<br/>if cart items do not map to the campaign
+    Customer->>React: Applies coupon code
+    React->>Axios: POST /api/coupons/validate (cart items, code, userId)
+    Axios->>Controller: validateCoupon(payload)
+    Controller->>Service: validateAndCalculateDiscount(code, items, userId)
+    Service->>DB: Read Coupon details & check product mappings
+    alt Validation Passes
+        Service-->>React: Return discountAmount & finalAmount (valid: true)
+        Note over React: Update Razorpay / COD payment totals
+    else Validation Fails (Expired, Min Order not met, Usage limit exceeded)
+        Service-->>React: Return bad request message (valid: false)
     end
+
+    %% Order Submission & Usage Tracking
+    Customer->>React: Submits Order Payment
+    React->>Axios: Submit Order Payload
+    Axios->>Controller: Process Order checkout
+    Controller->>Service: recordUsage(code, userId, orderId, discount)
+    Service->>DB: Increment coupon usage_count & write to `coupon_usages`
 ```
 
 ---
 
-## 📌 Day 10 Deliverables & Major Enhancements
+## 📌 Deliverables & Core Features
 
-### 1. Fine-Grained Product-Coupon Mapping
-*   **The Relational Mapping Model**: Introduced the `product_coupons` table to map specific products (`product_id`) to individual coupons (`coupon_code`). This allows vendors to selectively opt individual products into or out of different promotional campaigns.
-*   **Pre-populated Activation Modal**: When vendors access the confirmation modal in [VendorDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx), the system fetches previously saved product mappings via `GET /api/coupons/{code}/products`, allowing them to see, verify, and update their selections without resetting them from scratch.
-*   **Targeted Validation Engine**: Updated the core calculation engine in [CouponService.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/service/CouponService.java) (`validateAndCalculateDiscount`) to assert product eligibility against the database mappings using [ProductCouponRepository.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/repository/ProductCouponRepository.java).
+### 1. Admin — Coupon Creation & Lifecycle Management
+Administrators can create, update, delete, and toggle coupon campaigns from a dedicated portal. Key metadata configured per coupon:
+*   **Coupon Code:** Unified alphanumeric uppercase identifier (e.g. `SAVE20`, `BBD1000`).
+*   **Discount Type:** Supports dynamic `PERCENTAGE` discount calculation or static `FIXED` amount deduct.
+*   **Discount Value:** The numerical value (e.g., 20% discount or ₹500 flat off).
+*   **Minimum Order Amount:** Configurable minimum order subtotal required to qualify (e.g., must order $\ge$ ₹1,000).
+*   **Maximum Discount Amount:** Upper limit cap on percentage discounts to control platform budget loss (e.g., 20% off up to ₹400).
+*   **Temporal Bounds (Start & Expiry Date/Time):** Minute-level precision mapping of campaign validity windows using `java.time.LocalDateTime`.
+*   **Usage Limit:** Hard cap on the total number of times the coupon can be successfully applied platform-wide.
+*   **Active Status Toggle:** Quick status flag allowing immediate manual disablement or enablement of campaigns.
 
-### 2. High-Performance Checkout Selection & Expiry Visibility
-*   **Concurrent Dropdown Filtering**: In [CustomerDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx) and [HomeDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/HomeDashboard.jsx), checkout start initiates a concurrent query (`Promise.all`) to fetch all active coupons, vendor approvals, and product-coupon mappings.
-*   **Visual Disabled Strikethrough**: Coupons inapplicable to cart items are visually disabled, formatted with a `line-through` style, and appended with a clean `[Not Applicable]` suffix.
-*   **Expiry Limits on Checkout**: Expiry limits are appended directly adjacent to the coupon selection items in the customer checkout dropdown: `(Expires: YYYY-MM-DD HH:mm)`.
-*   **Simplified Warning Banners**: The applied coupon info banner has been simplified to remove the wordy explanation bracketed message, displaying a clean warning showing exactly which items are excluded: `ℹ️ Excluded items: Apple watch series 11`.
+### 2. Customer — Coupon Browsing & Checkout Application
+The client frontend streamlines the shopper's path to purchase:
+*   **Checkout Application:** Shoppers can pick an active coupon from a dropdown or manually enter a coupon code during checkout in the Address & Payment selector.
+*   **Immediate Financial Recalculation:** Applying a coupon recomputes the cart total immediately, displaying:
+    *   Subtotal savings.
+    *   Applied coupon discount deduction.
+    *   Final updated payable amount.
+*   **Visual Eligibility Feedback:** Integrates client-side mappings evaluation. If items in the cart do not match the vendor-accepted products, the coupon renders in the dropdown with a visual `line-through` and `[Not Applicable]` tag.
 
-### 3. Enabled Coupon Code Editing & Cascaded Updates
-*   **Unlock Coupon Code Modifications**: Removed the locked `readonly`/`disabled` state from the Coupon Code input field in the Admin Dashboard modal form.
-*   **Cascaded Renames**: When an Admin re-names a coupon code, the backend automatically performs a cascade update, migrating all existing vendor approvals and selective product mappings to the new code to prevent orphaned records.
-*   **Cascaded Deletes**: When a coupon is deleted, the backend triggers automated cascading cleanups to remove related entries from both the `vendor_coupon_approvals` and `product_coupons` tables.
-*   **Edit-Reset Trigger**: Any administrative modification to a coupon (discount rate, cap, minimum orders, dates, or code) deletes all previous vendor approvals and product mappings for that campaign, returning its state to `AWAITING CONFIRMATION` to ensure vendors re-review and re-accept/reject the updated terms.
+### 3. Backend Validation Engine
+On coupon application, the service layers execute high-precision validation rules:
+*   **Existence:** Asserts code maps to an existing coupon in PostgreSQL.
+*   **Active Status:** Verifies that `active` is set to `true`.
+*   **Temporal Check:** Validates that the current time (`LocalDateTime.now()`) falls strictly between `startDate` and `expiryDate`.
+*   **Minimum Order Check:** Validates that the sum total of all cart items meets or exceeds `minOrderAmount`.
+*   **Usage Limit Check:** Ensures that the cumulative application count `usageCount` is less than `usageLimit`.
+*   **Fine-Grained Product Mapping:** Iterates cart items and verifies that the specific product is opted-in and mapped to the coupon campaign via `product_coupons` mappings. If a subset of items is ineligible, their pricing is excluded from discount calculations and listed on a warning info banner.
 
-### 4. Minute-Level LocalDateTime Temporal Boundaries
-*   **Database Schema Migration**: Converted the `start_date` and `expiry_date` columns in the `coupons` table from standard date/time text/date types to native PostgreSQL `timestamp without time zone` columns to support minute-level resolution.
-*   **JPA Data Model Alignment**: Modified [Coupon.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Coupon.java) to map `startDate` and `expiryDate` to `java.time.LocalDateTime`.
-*   **Minute-level Validity Checks**: Modified [CouponService.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/service/CouponService.java) to check validity relative to `LocalDateTime.now()` instead of basic days, allowing precise campaign starts and expires.
-*   **Dual Keyboard Date & Time Pickers**: Split the date and time fields in the Admin Dashboard [AdminDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/AdminDashboard.jsx) form into separate text input fields (Start Date, Start Time, Expiry Date, Expiry Time) to allow manual keyboard typing. Includes client-side Regex validations (`YYYY-MM-DD` and `HH:MM`) before assembling the combined payload into a standard ISO LocalDateTime format.
+### 4. Discount & Payment Integration
+Calculates discounts accurately on both the client side and server side:
+*   **Percentage discount:** Computes value using:
+    $$\text{Discount} = \min\left(\text{Eligible Subtotal} \times \frac{\text{Value}}{100}, \text{Max Discount Cap}\right)$$
+*   **Fixed discount:** Applies the flat value directly, capping it at the eligible subtotal.
+*   **Secure Payment Syncing:** The final updated amount is verified on signature completion and transmitted directly into Razorpay order generation or COD order confirm logs to prevent checkout vulnerabilities.
+
+### 5. Transactional Coupon Tracking
+Maintains audit logs for historical settlements:
+*   Every application registers a new record in `coupon_usages` containing the coupon code, customer ID, customer email, generated unique order ID, calculated discount amount, and timestamp (`LocalDateTime`).
+*   The parent `Coupon` entity's `usage_count` is incremented.
+
+### 6. Analytics Dashboard
+Provides platform operators with business intelligence metrics:
+*   **Performance Metrics:** Displays total times a coupon was used, total discounts disbursed, and active campaign status.
+*   **Granular Usage Logs:** Provides a detailed table showcasing user details, associated order references, and exact discount values.
+
+---
+
+## ⚡ Day 10 Advanced Enhancements
+
+*   **Selective Product-Coupon Mapping:** Deprecated the binary global boolean flag on the products table. Replaced with the relational entity [`ProductCoupon.java`](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/ProductCoupon.java) and mapping table `product_coupons`. Vendors can selectively opt-in specific items or all products.
+*   **Dynamic Pre-populated Selection:** Toggling campaign acceptances fetches current selective product mapping arrays (`GET /api/coupons/{code}/products`) allowing vendors to inspect and modify selections without resetting them from scratch.
+*   **High-Performance checkout lookup:** Concurrently queries active campaigns, approvals, and mapping records using `Promise.all` on checkout load to eliminate redundant API delays.
+*   **LocalDateTime Migration:** Migrated backend schema columns for `start_date` and `expiry_date` in table `coupons` to `timestamp without time zone` columns, mapping to `LocalDateTime` models in [`Coupon.java`](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/Coupon.java) for minute-level verification.
+*   **Keyboard Date-Time Inputs:** Replaced default dropdown date selectors with split text boxes validating inputs against `YYYY-MM-DD` and `HH:MM` patterns via client-side regex rules.
+*   **Cascading Updates & Resets:**
+    *   **Rename Cascade:** Editing a coupon code updates associated vendor approvals and product mappings.
+    *   **Delete Cascade:** Deleting a coupon automatically cleans up references in mappings and approvals.
+    *   **Edit-Reset Trigger:** Changing coupon parameters (rate, cap, dates, code) resets vendor approval states back to `AWAITING CONFIRMATION` and clears existing product mappings, ensuring merchants re-accept modified terms.
+
+---
+
+## 📂 Project Structure Updates (Day 10)
+
+```text
+ShopStack/
+├── backend/
+│   └── src/main/java/com/shopstack/backend/
+│       ├── model/
+│       │   ├── Coupon.java                      # JPA Entity for Coupon meta data (LocalDateTime temporal fields)
+│       │   ├── CouponUsage.java                 # JPA Entity logging coupon applications
+│       │   ├── VendorCouponApproval.java        # JPA Entity tracking merchant acceptances
+│       │   └── ProductCoupon.java               # JPA Entity mapping selective products to coupons
+│       ├── repository/
+│       │   ├── CouponRepository.java            # JPA repository interface for Coupon
+│       │   ├── CouponUsageRepository.java       # JPA repository interface for CouponUsage
+│       │   ├── VendorCouponApprovalRepository.java # JPA repository interface for VendorCouponApproval
+│       │   └── ProductCouponRepository.java      # JPA repository interface for ProductCoupon mappings
+│       ├── controller/
+│       │   └── CouponController.java            # REST APIs (/api/coupons) for Admin CRUD, validation & approvals
+│       └── service/
+│           └── CouponService.java               # Core validations, discount formulas, and analytics aggregates
+│
+└── frontend/
+    └── src/
+        └── components/
+            ├── AdminDashboard.jsx               # Coupon Manager: create form, split inputs, list & analytics
+            ├── VendorDashboard.jsx              # Acceptance console, selective product selector modal
+            ├── CustomerDashboard.jsx            # Checkout validation integration & filtered options list
+            └── HomeDashboard.jsx                # Checkout validation integration & filtered options list
+```
 
 ---
 
 ## 📡 API Endpoints (Day 10)
 
-Method | Endpoint | Description | Response Model / Format
------- | -------- | ----------- | ----------------------
-GET | `/api/coupons/mappings` | Retrieves all product-to-coupon mapping records across all active campaigns. | List of [ProductCoupon](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/ProductCoupon.java) mapping objects.
-GET | `/api/coupons/{code}/products` | Retrieves all `productId` values currently mapped to the specified coupon `code`. | Array of Longs (`[1, 2, 3]`).
+### Campaign & Discount Operations
+Method | Endpoint | Description | Payload Format / Response Model
+------ | -------- | ----------- | ------------------------------
+GET | `/api/coupons` | Fetch all coupons in the system | Returns List of [`Coupon`](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/Coupon.java) entities
+POST | `/api/coupons` | Create a new campaign | Body: `Coupon` object. Returns saved `Coupon`
+PUT | `/api/coupons/{id}` | Update existing coupon meta & **triggers edit-reset** | Body: `Coupon` object. Returns updated `Coupon`
+PUT | `/api/coupons/{id}/toggle` | Toggle coupon active status | Returns modified `Coupon`
+DELETE | `/api/coupons/{id}` | Delete coupon and **cascade cleanup** related maps | Returns HTTP 200 String
+POST | `/api/coupons/validate` | Validates coupon subtotal and calculates discount | Body: `{"code": String, "userId": Long, "items": List}`. Returns calculations map
+
+### Vendor & Product Mappings
+Method | Endpoint | Description | Payload Format / Response Model
+------ | -------- | ----------- | ------------------------------
+GET | `/api/coupons/approvals` | Fetch all vendor-campaign approvals | Returns List of [`VendorCouponApproval`](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/VendorCouponApproval.java)
+GET | `/api/coupons/mappings` | Fetch all product-coupon mappings | Returns List of [`ProductCoupon`](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)/backend/src/main/java/com/shopstack/backend/model/ProductCoupon.java)
+GET | `/api/coupons/{code}/products` | Fetch mapped product IDs for a coupon code | Returns Array of product ID Longs
+GET | `/api/coupons/vendor/{vendorId}` | Fetch coupons with approval status for a vendor | Returns List of maps containing coupon and status details
+POST | `/api/coupons/vendor/{vendorId}/approve` | Approve a campaign with selective product mapping | Body: `{"couponCode": String, "applyToAll": Boolean, "productIds": List<Long>}`
+POST | `/api/coupons/vendor/{vendorId}/reject` | Reject a campaign | Body: `{"couponCode": String}`
+
+### Reporting & Diagnostics
+Method | Endpoint | Description | Payload Format / Response Model
+------ | -------- | ----------- | ------------------------------
+GET | `/api/coupons/analytics` | Fetch analytics details for campaigns | Returns List of maps (usages, total discount, history list)
 
 ---
 
-## 🗄️ Database Schema Updates
+## 🗄️ Database Schema Mapping Details
 
-### 1. New Table: `product_coupons`
-Maps selective products to active coupon campaigns.
+### 1. Table: `coupons`
+Stores campaign details and limits.
+*   `id` (BIGINT, PRIMARY KEY)
+*   `code` (VARCHAR, UNIQUE)
+*   `discount_type` (VARCHAR) - `PERCENTAGE` or `FIXED`
+*   `discount_value` (DOUBLE PRECISION)
+*   `min_order_amount` (DOUBLE PRECISION, NULLABLE)
+*   `max_discount` (DOUBLE PRECISION, NULLABLE)
+*   `start_date` (TIMESTAMP WITHOUT TIME ZONE)
+*   `expiry_date` (TIMESTAMP WITHOUT TIME ZONE)
+*   `usage_limit` (INTEGER, NULLABLE)
+*   `usage_count` (INTEGER, Default: 0)
+*   `active` (BOOLEAN, Default: true)
 
-Column | Data Type | Key / Constraint | Description
------- | --------- | ---------------- | -----------
-`id` | BIGINT | PRIMARY KEY (Auto-Increment) | Internal record identifier.
-`product_id` | BIGINT | FOREIGN KEY (references `products.id`) | The ID of the mapped product.
-`coupon_code` | VARCHAR(255) | FOREIGN KEY (references `coupons.code`) | The coupon code mapping constraint.
+### 2. Table: `coupon_usages`
+Logs coupon usages for orders.
+*   `id` (BIGINT, PRIMARY KEY)
+*   `coupon_code` (VARCHAR)
+*   `user_id` (BIGINT)
+*   `user_email` (VARCHAR)
+*   `order_id` (VARCHAR)
+*   `discount_amount` (DOUBLE PRECISION)
+*   `usage_date_time` (TIMESTAMP WITHOUT TIME ZONE)
 
-### 2. Updated Table: `coupons`
-Migrated columns for high-precision time configuration.
+### 3. Table: `vendor_coupon_approvals`
+Tracks merchant consent for campaigns.
+*   `id` (BIGINT, PRIMARY KEY)
+*   `vendor_id` (BIGINT)
+*   `coupon_code` (VARCHAR)
+*   `status` (VARCHAR) - `APPROVED`, `REJECTED`, or `PENDING`
 
-Column | Target Type | Migration Command
------- | ----------- | -----------------
-`start_date` | `timestamp without time zone` | `ALTER TABLE coupons ALTER COLUMN start_date TYPE timestamp without time zone USING start_date::timestamp without time zone`
-`expiry_date` | `timestamp without time zone` | `ALTER TABLE coupons ALTER COLUMN expiry_date TYPE timestamp without time zone USING expiry_date::timestamp without time zone`
+### 4. Table: `product_coupons`
+Binds eligible products to coupons.
+*   `id` (BIGINT, PRIMARY KEY)
+*   `product_id` (BIGINT) - Foreign key referencing `products.id`
+*   `coupon_code` (VARCHAR) - Foreign key referencing `coupons.code`
 
 ---
 
-## 🧪 Testing Checklist & Verification Guide (Day 10)
+## 🧪 Testing Checklist & Verification Guide
 
-### 1. Verification of Coupon-Specific Product Mappings
-1. Log in as a Vendor, locate a campaign in the **Vendor Dashboard** (e.g. `SAVE20`), and click **Accept**.
-2. Select **"Select Specific Products"**, check only specific items (e.g. Product A), and save.
-3. Locate another campaign (e.g. `BBD1000`), click **Accept**, select different items (e.g. Product B), and save.
-4. Click **Accept** or edit `SAVE20` again:
-   - ✅ Verify that Product A is pre-selected and visible in the modal.
-   - ✅ Verify that mappings do not conflict with or overwrite the selections for `BBD1000`.
+### 1. Admin Coupon Creation & Editing
+1. Log in as an **Administrator** and navigate to the **Coupons** tab.
+2. Click **Create Coupon** and input details:
+   - Code: `SAVE20`
+   - Type: `PERCENTAGE`
+   - Value: `20`
+   - Min Order: `1000`
+   - Max Discount: `400`
+   - Start Date/Time: Fill valid present values (e.g. `2026-08-01 00:00`)
+   - Expiry Date/Time: Fill future values (e.g. `2026-08-30 23:59`)
+   - Usage Limit: `10`
+3. Click Save. Assert `SAVE20` appears in the campaigns table.
+4. Click Edit on `SAVE20`. Update Min Order to `1200` and save.
+   - Verify that any vendor mappings/approvals for `SAVE20` are reset.
+5. Click the toggle active switch. Verify the status updates.
 
-### 2. Verification of Customer Checkout Filtering
-1. Log in as a Customer and add Product B (which is not mapped to `SAVE20`) to your cart.
-2. Navigate to the checkout section:
-   - ✅ Verify that `SAVE20` is displayed with a `line-through` styling and has a `[Not Applicable]` suffix in the coupon selector dropdown.
-   - ✅ Verify that coupon expiry limits are appended in the dropdown in `(Expires: YYYY-MM-DD HH:mm)` format.
-3. Add Product A to the cart and verify:
-   - ✅ `SAVE20` is now enabled and selectable.
-   - ✅ Selecting and applying `SAVE20` works, and any excluded item is listed cleanly inside the info banner without verbose text (e.g. `ℹ️ Excluded items: Product B`).
+### 2. Merchant Approval & Selective Product Mapping
+1. Log in as a **Vendor**. Go to the **Coupons** section.
+2. Locate `SAVE20` (marked as `AWAITING CONFIRMATION`). Click **Accept**.
+3. Select **"Select Specific Products"**, check only Product A, and save.
+4. Locate `BBD1000`, click **Accept**, select **"Apply to All Products"**, and save.
+5. Click Accept/Edit on `SAVE20` again and verify Product A remains checked.
 
-### 3. Verification of Admin Modifications & Edit-Reset Trigger
-1. Log in as an Admin, navigate to **Admin Dashboard**, and edit any parameter on an active coupon (e.g., minimum order value or start time).
-2. Log in as a Vendor:
-   - ✅ Verify the coupon status has changed from `ACCEPTED` back to `AWAITING CONFIRMATION`.
-   - ✅ Verify that the previously saved selective product mappings for this coupon have been completely reset/removed.
+### 3. Customer Application & Validation Checkout
+1. Log in as a **Customer**. Add Product A (priced at ₹1,500) to the cart.
+2. Go to **Checkout**:
+   - Verify `SAVE20` is selectable.
+   - Verify that `SAVE20` shows `(Expires: 2026-08-30 23:59)`.
+3. Apply `SAVE20`:
+   - Assert discount calculations: $1500 \times 0.20 = ₹300$ off. Final payable: ₹1,200.
+4. Add Product B (not mapped to `SAVE20`, priced at ₹800) to the cart instead:
+   - Verify `SAVE20` is displayed with a `line-through` style and marked `[Not Applicable]` in the dropdown.
+   - Try entering `SAVE20` manually and clicking Apply. Assert validation fails with an error: *"None of the items in your cart are eligible for this coupon."*
+5. Add both Product A (₹1,500) and Product B (₹800) to the cart. Subtotal: ₹2,300.
+   - Apply `SAVE20`.
+   - Assert calculations: discount applies only to Product A ($1500 \times 0.20 = ₹300$). Discount amount is ₹300. Payable amount is ₹2,000.
+   - Assert the warning banner displays: `ℹ️ Excluded items: Product B`.
+
+### 4. Usage Limits & Temporal Expiries
+1. Edit coupon `SAVE20` to set `Usage Limit` to `1` (or change `Expiry Date` to a past timestamp).
+2. As a Customer, apply `SAVE20` and complete the checkout order.
+3. Try placing a second order with `SAVE20` as another customer.
+   - Assert validation fails showing *"Coupon usage limit has been reached."* (or *"Coupon has expired."*).
+
+### 5. Tracking & Analytics Audit
+1. Navigate to **Admin Dashboard -> Coupon Analytics**.
+2. Locate `SAVE20` row:
+   - Verify the usage count has increased.
+   - Verify that total discounts provided correctly sums up calculations.
+   - Click the info detail viewer to audit user details, order ID, and timestamp logs.
+
