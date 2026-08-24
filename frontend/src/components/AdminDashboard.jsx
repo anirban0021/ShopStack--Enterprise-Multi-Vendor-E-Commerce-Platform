@@ -2540,20 +2540,20 @@ export default function AdminDashboard({ user, onGoToHome }) {
               </div>
 
               {/* Coupons List */}
-              <div className="table-responsive" style={{ maxHeight: '600px', overflowY: 'auto' }}>
-                <table className="table">
+              <div className="table-container" style={{ maxHeight: '600px', overflowY: 'auto' }}>
+                <table className="custom-table" style={{ fontSize: '13px' }}>
                   <thead>
                     <tr>
-                      <th>Coupon Code</th>
-                      <th>Type</th>
-                      <th>Value</th>
-                      <th>Min Order</th>
-                      <th>Max Discount</th>
-                      <th>Campaign Dates</th>
-                      <th>Redemptions</th>
-                      <th>Total Discount</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Coupon Code</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Type</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Value</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Min Order</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Max Discount</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Campaign Dates</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Redemptions</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Total Discount</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Status</th>
+                      <th style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2569,31 +2569,47 @@ export default function AdminDashboard({ user, onGoToHome }) {
                         return (
                           <tr key={coupon.id}>
                             <td>
-                              <strong style={{ color: 'var(--accent-teal)', fontSize: '14px', letterSpacing: '0.5px' }}>{coupon.code}</strong>
+                              <strong style={{ color: 'var(--accent-teal)', fontSize: '14px', letterSpacing: '0.5px', fontFamily: 'var(--font-mono)' }}>
+                                {coupon.code}
+                              </strong>
                             </td>
                             <td>
-                              <span className={`badge ${coupon.discountType === 'PERCENTAGE' ? 'badge-customer' : 'badge-vendor'}`}>
+                              <span className={`badge ${coupon.discountType === 'PERCENTAGE' ? 'badge-customer' : 'badge-vendor'}`} style={{ letterSpacing: '0.5px', fontSize: '10px' }}>
                                 {coupon.discountType}
                               </span>
                             </td>
                             <td>
-                              <strong>{coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}%` : `₹${coupon.discountValue}`}</strong>
+                              <strong style={{ fontSize: '14px' }}>
+                                {coupon.discountType === 'PERCENTAGE' ? `${coupon.discountValue}%` : `₹${coupon.discountValue}`}
+                              </strong>
                             </td>
                             <td>
-                              {coupon.minOrderAmount ? `₹${coupon.minOrderAmount}` : 'None'}
+                              {coupon.minOrderAmount ? `₹${coupon.minOrderAmount.toLocaleString('en-IN')}` : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                             </td>
                             <td>
-                              {coupon.maxDiscount ? `₹${coupon.maxDiscount}` : 'None'}
+                              {coupon.maxDiscount ? `₹${coupon.maxDiscount.toLocaleString('en-IN')}` : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                             </td>
-                            <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                              <div>Start: {coupon.startDate ? coupon.startDate.replace('T', ' ').substring(0, 16) : ''}</div>
-                              <div>Expiry: {coupon.expiryDate ? coupon.expiryDate.replace('T', ' ').substring(0, 16) : ''}</div>
+                            <td style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '9px', fontWeight: 'bold', width: '36px' }}>START</span>
+                                  <span>{coupon.startDate ? coupon.startDate.replace('T', ' ').substring(0, 16) : ''}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '9px', fontWeight: 'bold', width: '36px' }}>EXPIRY</span>
+                                  <span>{coupon.expiryDate ? coupon.expiryDate.replace('T', ' ').substring(0, 16) : ''}</span>
+                                </div>
+                              </div>
                             </td>
-                            <td>
-                              <span style={{ fontWeight: 'bold' }}>{coupon.usageCount}</span>
-                              {coupon.usageLimit ? ` / ${coupon.usageLimit}` : ''}
+                            <td style={{ whiteSpace: 'nowrap' }}>
+                              <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{coupon.usageCount}</span>
+                              {coupon.usageLimit ? (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}> / {coupon.usageLimit}</span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}> (No Limit)</span>
+                              )}
                             </td>
-                            <td style={{ color: 'var(--accent-emerald)', fontWeight: 'bold' }}>
+                            <td style={{ color: 'var(--accent-emerald)', fontWeight: 'bold', fontSize: '14px', whiteSpace: 'nowrap' }}>
                               ₹{analytics.totalDiscount?.toLocaleString('en-IN') || '0'}
                             </td>
                             <td>
@@ -2601,18 +2617,19 @@ export default function AdminDashboard({ user, onGoToHome }) {
                                 type="button"
                                 onClick={() => handleToggleCoupon(coupon.id)}
                                 className={`badge ${coupon.active ? 'badge-approved' : 'badge-rejected'}`}
-                                style={{ border: 'none', cursor: 'pointer' }}
+                                style={{ border: 'none', cursor: 'pointer', transition: 'all 0.2s ease', outline: 'none' }}
+                                title="Click to toggle status"
                               >
                                 {coupon.active ? 'ACTIVE' : 'INACTIVE'}
                               </button>
                             </td>
                             <td>
-                              <div style={{ display: 'flex', gap: '6px' }}>
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                                 <button 
                                   type="button" 
                                   onClick={() => openEditCouponModal(coupon)} 
                                   className="btn btn-secondary"
-                                  style={{ padding: '2px 8px', fontSize: '11px' }}
+                                  style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '4px' }}
                                 >
                                   Edit
                                 </button>
@@ -2620,7 +2637,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                                   type="button" 
                                   onClick={() => handleDeleteCoupon(coupon.id)} 
                                   className="btn btn-secondary"
-                                  style={{ padding: '2px 8px', fontSize: '11px', color: 'var(--accent-rose)' }}
+                                  style={{ padding: '4px 10px', fontSize: '11px', color: 'var(--accent-rose)', borderRadius: '4px' }}
                                 >
                                   Delete
                                 </button>
