@@ -66,9 +66,15 @@ export default function CustomerDashboard({
   const [customerNotes, setCustomerNotes] = useState('');
   const [isSubmittingRefund, setIsSubmittingRefund] = useState(false);
   const [orderRefundHistory, setOrderRefundHistory] = useState([]);
+  const [customerProofImage, setCustomerProofImage] = useState('');
   
   // Return Timeline Tracking Modal
   const [trackingModalOrder, setTrackingModalOrder] = useState(null);
+
+  // Experience feedback survey states
+  const [feedbackRatingInput, setFeedbackRatingInput] = useState({});
+  const [feedbackCommentInput, setFeedbackCommentInput] = useState({});
+  const [orderRefundsMap, setOrderRefundsMap] = useState({});
 
   const fetchTransactions = async () => {
     if (!profile.id) return;
@@ -83,7 +89,40 @@ export default function CustomerDashboard({
     }
   };
 
+  const getDaysElapsed = (orderDateStr) => {
+    try {
+      // Parse MMM dd, yyyy
+      const parts = orderDateStr.split(' ');
+      if (parts.length < 3) return 0;
+      const orderDate = new Date(orderDateStr);
+      if (isNaN(orderDate.getTime())) return 0;
+      const diffTime = Math.abs(new Date() - orderDate);
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    } catch (e) {
+      return 0;
+    }
+  };
+
+  const getProductReturnPolicy = (productId) => {
+    const prod = products.find(p => p.id === productId);
+    return prod ? prod.returnPolicy || '7_DAYS' : '7_DAYS';
+  };
+
   const handleOpenRefundModal = async (order) => {
+    const daysElapsed = getDaysElapsed(order.date);
+    const hasEligibleItem = order.items && order.items.some(item => {
+      const policy = getProductReturnPolicy(item.productId);
+      if (policy === 'NON_RETURNABLE') return false;
+      if (policy === '7_DAYS' && daysElapsed > 7) return false;
+      if (policy === '15_DAYS' && daysElapsed > 15) return false;
+      return true;
+    });
+
+    if (!hasEligibleItem) {
+      showToast('error', 'Return Blocked', 'None of the items in this order are eligible for return (policy window expired or marked non-returnable).');
+      return;
+    }
+
     setRefundModalOrder(order);
     const rem = order.refundableBalance !== undefined ? order.refundableBalance : order.totalAmount;
     setRefundAmount(rem.toString());
@@ -91,6 +130,7 @@ export default function CustomerDashboard({
     setResolutionType('REFUND');
     setRefundReason('Defective or damaged item received');
     setCustomerNotes('');
+    setCustomerProofImage('');
     try {
       const res = await axios.get(`http://localhost:8080/api/payment/refund/${order.orderId}`);
       setOrderRefundHistory(res.data || []);
@@ -115,7 +155,8 @@ export default function CustomerDashboard({
         returnReasonCategory: returnReasonCategory,
         resolutionType: resolutionType,
         reason: refundReason.trim() || 'Customer requested return',
-        customerNotes: customerNotes.trim()
+        customerNotes: customerNotes.trim(),
+        customerProofImage: customerProofImage.trim()
       });
       showToast('success', 'Return Request Submitted!', `Your request is PENDING inspection. Once the item is returned and verified, your ${resolutionType.toLowerCase()} of ₹${amt} will be approved.`);
       setRefundModalOrder(null);
@@ -127,6 +168,47 @@ export default function CustomerDashboard({
       setIsSubmittingRefund(false);
     }
   };
+
+  useEffect(() => {
+    const fetchRefundsForOrders = async () => {
+      const returnOrders = (orders || []).filter(o => 
+        o.status === 'RETURN_REQUESTED' || 
+        o.paymentStatus === 'REFUND_PENDING' || 
+        o.paymentStatus === 'REFUNDED' || 
+        o.paymentStatus === 'PARTIALLY_REFUNDED'
+      );
+      
+      const newMap = { ...orderRefundsMap };
+      let changed = false;
+      
+      await Promise.all(returnOrders.map(async (o) => {
+        try {
+          const res = await axios.get(`http://localhost:8080/api/payment/refund/${o.orderId}`);
+          if (res.data && res.data.length > 0) {
+            const latestRefund = res.data[0];
+            const existingRefund = newMap[o.orderId];
+            if (!existingRefund || 
+                existingRefund.returnStage !== latestRefund.returnStage || 
+                existingRefund.status !== latestRefund.status || 
+                existingRefund.id !== latestRefund.id) {
+              newMap[o.orderId] = latestRefund;
+              changed = true;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load refund for " + o.orderId, e);
+        }
+      }));
+      
+      if (changed) {
+        setOrderRefundsMap(newMap);
+      }
+    };
+    
+    if (orders && orders.length > 0) {
+      fetchRefundsForOrders();
+    }
+  }, [orders]);
 
   const fetchProducts = async () => {
     try {
@@ -1236,22 +1318,176 @@ export default function CustomerDashboard({
                           )}
                         </div>
 
-                        {/* Order Items */}
-                        <div className="order-items-list" style={{ background: 'var(--bg-primary)', margin: '14px 0', borderRadius: '8px', padding: '12px' }}>
-                          {ord.items && ord.items.map((item, idx) => (
-                            <div key={idx} className="order-item-row" style={{ alignItems: 'center', gap: '12px', padding: '8px 0' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{ width: '28px', height: '28px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', background: 'var(--bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <ProductIcon name={item.productName || item.name} category={item.category} size={14} />
+                        {/* Order / Return Roadmap Progress Bar */}
+                        {(() => {
+                          const isReturnOrder = ord.status === 'RETURN_REQUESTED' || 
+                            ord.paymentStatus === 'REFUND_PENDING' || 
+                            ord.paymentStatus === 'REFUNDED' || 
+                            ord.paymentStatus === 'PARTIALLY_REFUNDED';
+                          
+                          if (isReturnOrder) {
+                            const refundObj = orderRefundsMap[ord.orderId];
+                            const returnStage = refundObj ? refundObj.returnStage : 'REQUESTED';
+                            const refundStatus = refundObj ? refundObj.status : 'PENDING';
+                            
+                            const isRefundedStatus = ord.status === 'REFUNDED' || ord.paymentStatus === 'REFUNDED';
+                            
+                            const isRequested = true;
+                            const isPickedUp = ['ITEM_RETURNED', 'QC_PASSED', 'QC_FAILED', 'REFUNDED', 'REJECTED'].includes(returnStage) || isRefundedStatus;
+                            const isQcInspected = ['QC_PASSED', 'QC_FAILED', 'REFUNDED', 'REJECTED'].includes(returnStage) || isRefundedStatus;
+                            const isResolved = ['PROCESSED', 'REFUNDED', 'REJECTED'].includes(refundStatus) || returnStage === 'REFUNDED' || isRefundedStatus;
+                            
+                            const qcLabel = returnStage === 'QC_FAILED' ? 'QC Failed' : 'QC Passed';
+                            const resolveLabel = refundStatus === 'REJECTED' ? 'Rejected' : 'Refunded';
+                            const resolveColor = refundStatus === 'REJECTED' ? 'var(--accent-rose)' : 'var(--accent-teal)';
+                            
+                            return (
+                              <div style={{ margin: '14px 0 10px 0', padding: '12px 14px', background: 'var(--bg-primary)', borderRadius: '10px', border: '1.5px dashed rgba(168, 85, 247, 0.25)' }}>
+                                <div style={{ fontSize: '11px', fontWeight: '800', color: '#c084fc', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <RotateCcw size={12} /> Return Progress Roadmap
                                 </div>
-                                <div>
-                                  <div style={{ fontWeight: '600', fontSize: '13px' }}>{item.productName || item.name}</div>
-                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Qty: {item.quantity} × ₹{item.price}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  {[
+                                    { label: 'Requested', done: isRequested, color: 'var(--accent-teal)' },
+                                    { label: 'Picked Up', done: isPickedUp, color: 'var(--accent-teal)' },
+                                    { label: qcLabel, done: isQcInspected, color: returnStage === 'QC_FAILED' ? 'var(--accent-rose)' : 'var(--accent-teal)' },
+                                    { label: resolveLabel, done: isResolved, color: resolveColor }
+                                  ].map((step, idx) => (
+                                    <React.Fragment key={idx}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                                        <div style={{
+                                          width: '20px',
+                                          height: '20px',
+                                          borderRadius: '50%',
+                                          background: step.done ? step.color : 'var(--border-light)',
+                                          color: step.done ? '#fff' : 'var(--text-muted)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          fontSize: '9px',
+                                          fontWeight: 'bold',
+                                          border: step.done ? 'none' : '1px solid var(--border-light)',
+                                          boxShadow: step.done ? `0 2px 6px ${step.color}30` : 'none'
+                                        }}>
+                                          {step.done ? '✓' : idx + 1}
+                                        </div>
+                                        <span style={{ fontSize: '9px', fontWeight: '700', marginTop: '4px', color: step.done ? 'var(--text-primary)' : 'var(--text-muted)', textAlign: 'center' }}>
+                                          {step.label}
+                                        </span>
+                                      </div>
+                                      {idx < 3 && (
+                                        <div style={{ 
+                                          flex: 1, 
+                                          height: '2px', 
+                                          background: [isPickedUp, isQcInspected, isResolved][idx] ? 'var(--accent-teal)' : 'var(--border-light)', 
+                                          margin: '0 4px', 
+                                          transform: 'translateY(-8px)' 
+                                        }} />
+                                      )}
+                                    </React.Fragment>
+                                  ))}
                                 </div>
                               </div>
-                              <strong style={{ fontSize: '13px' }}>₹{Math.round(item.price * item.quantity * 100) / 100}</strong>
-                            </div>
-                          ))}
+                            );
+                          } else {
+                            // Standard Order Road Map
+                            const isStep1 = ['CONFIRMED', 'ALLOCATED', 'PICKED', 'PACKED', 'READY_FOR_SHIPMENT', 'SHIPPED', 'DELIVERED'].includes(ord.status);
+                            const isStep2 = ['PACKED', 'READY_FOR_SHIPMENT', 'SHIPPED', 'DELIVERED'].includes(ord.status);
+                            const isStep3 = ['READY_FOR_SHIPMENT', 'SHIPPED', 'DELIVERED'].includes(ord.status);
+                            const isStep4 = ['DELIVERED'].includes(ord.status);
+                            
+                            return (
+                              <div style={{ margin: '14px 0 10px 0', padding: '12px 14px', background: 'var(--bg-primary)', borderRadius: '10px', border: '1px solid var(--border-light)' }}>
+                                <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Truck size={12} style={{ color: 'var(--accent-teal)' }} /> Order Progress Roadmap
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  {[
+                                    { label: 'Confirmed', done: isStep1 },
+                                    { label: 'Packed', done: isStep2 },
+                                    { label: 'Shipped', done: isStep3 },
+                                    { label: 'Delivered', done: isStep4 }
+                                  ].map((step, idx) => (
+                                    <React.Fragment key={idx}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                                        <div style={{
+                                          width: '20px',
+                                          height: '20px',
+                                          borderRadius: '50%',
+                                          background: step.done ? 'var(--accent-teal)' : 'var(--border-light)',
+                                          color: step.done ? '#fff' : 'var(--text-muted)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          fontSize: '9px',
+                                          fontWeight: 'bold',
+                                          border: step.done ? 'none' : '1px solid var(--border-light)',
+                                          boxShadow: step.done ? '0 2px 6px rgba(20, 184, 166, 0.2)' : 'none'
+                                        }}>
+                                          {step.done ? '✓' : idx + 1}
+                                        </div>
+                                        <span style={{ fontSize: '9px', fontWeight: '700', marginTop: '4px', color: step.done ? 'var(--text-primary)' : 'var(--text-muted)', textAlign: 'center' }}>
+                                          {step.label}
+                                        </span>
+                                      </div>
+                                      {idx < 3 && (
+                                        <div style={{ 
+                                          flex: 1, 
+                                          height: '2px', 
+                                          background: [isStep2, isStep3, isStep4][idx] ? 'var(--accent-teal)' : 'var(--border-light)', 
+                                          margin: '0 4px', 
+                                          transform: 'translateY(-8px)' 
+                                        }} />
+                                      )}
+                                    </React.Fragment>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          }
+                        })()}
+
+                        {/* Order Items */}
+                        <div className="order-items-list" style={{ background: 'var(--bg-primary)', margin: '14px 0', borderRadius: '8px', padding: '12px' }}>
+                          {ord.items && ord.items.map((item, idx) => {
+                            const policy = getProductReturnPolicy(item.productId);
+                            const daysElapsed = getDaysElapsed(ord.date);
+                            let isEligible = true;
+                            let policyText = '7-Day Return Policy';
+                            if (policy === 'NON_RETURNABLE') {
+                              isEligible = false;
+                              policyText = 'Non-Returnable';
+                            } else if (policy === '7_DAYS') {
+                              policyText = '7-Day Return';
+                              if (daysElapsed > 7) isEligible = false;
+                            } else if (policy === '15_DAYS') {
+                              policyText = '15-Day Return';
+                              if (daysElapsed > 15) isEligible = false;
+                            }
+
+                            return (
+                              <div key={idx} className="order-item-row" style={{ alignItems: 'center', gap: '12px', padding: '8px 0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <div style={{ width: '28px', height: '28px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', background: 'var(--bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <ProductIcon name={item.productName || item.name} category={item.category} size={14} />
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: '600', fontSize: '13px' }}>{item.productName || item.name}</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                      Qty: {item.quantity} × ₹{item.price}
+                                      <span 
+                                        className={`badge ${isEligible ? 'badge-approved' : 'badge-rejected'}`}
+                                        style={{ marginLeft: '10px', fontSize: '9px', padding: '1px 5px' }}
+                                      >
+                                        {policyText} {(!isEligible && policy !== 'NON_RETURNABLE') ? '(Expired)' : ''}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <strong style={{ fontSize: '13px' }}>₹{Math.round(item.price * item.quantity * 100) / 100}</strong>
+                              </div>
+                            );
+                          })}
                         </div>
 
                         {/* Delivery address snippet */}
@@ -1298,6 +1534,81 @@ export default function CustomerDashboard({
                             </button>
                           ) : null}
                         </div>
+
+                        {ord.status === 'DELIVERED' && (
+                          <div style={{
+                            marginTop: '12px',
+                            background: 'var(--bg-primary)',
+                            padding: '12px',
+                            borderRadius: '8px',
+                            border: '1.5px solid rgba(20, 184, 166, 0.25)'
+                          }}>
+                            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>Post-Fulfillment Experience Survey</h4>
+                            {ord.feedbackRating != null ? (
+                              <div style={{ fontSize: '13px' }}>
+                                <span style={{ color: '#f59e0b', fontSize: '16px' }}>
+                                  {'★'.repeat(ord.feedbackRating)}{'☆'.repeat(5 - ord.feedbackRating)}
+                                </span>
+                                <div style={{ color: 'var(--text-secondary)', marginTop: '4px', fontStyle: 'italic' }}>
+                                  "{ord.feedbackComment || 'No comment provided.'}"
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>Rate Delivery:</span>
+                                  <div style={{ display: 'flex', gap: '4px' }}>
+                                    {[1, 2, 3, 4, 5].map(star => {
+                                      const currentVal = feedbackRatingInput[ord.orderId] || 5;
+                                      return (
+                                        <span 
+                                          key={star}
+                                          onClick={() => setFeedbackRatingInput({
+                                            ...feedbackRatingInput,
+                                            [ord.orderId]: star
+                                          })}
+                                          style={{ cursor: 'pointer', fontSize: '18px', color: star <= currentVal ? '#f59e0b' : 'var(--text-muted)' }}
+                                        >
+                                          ★
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                  <input 
+                                    type="text"
+                                    placeholder="Tell us about the product and carrier delivery..."
+                                    value={feedbackCommentInput[ord.orderId] || ''}
+                                    onChange={(e) => setFeedbackCommentInput({
+                                      ...feedbackCommentInput,
+                                      [ord.orderId]: e.target.value
+                                    })}
+                                    className="form-input"
+                                    style={{ flex: 1, height: '32px', fontSize: '12px', padding: '4px 8px' }}
+                                  />
+                                  <button
+                                    onClick={async () => {
+                                      const rating = feedbackRatingInput[ord.orderId] || 5;
+                                      const comment = feedbackCommentInput[ord.orderId] || '';
+                                      try {
+                                        await axios.post(`http://localhost:8080/api/customer/orders/${ord.orderId}/feedback`, { rating, comment });
+                                        showToast('success', 'Thank you!', 'Your order feedback has been saved.');
+                                        if (fetchOrders) fetchOrders();
+                                      } catch (err) {
+                                        showToast('error', 'Submission Failed', 'Could not record feedback.');
+                                      }
+                                    }}
+                                    className="btn btn-primary"
+                                    style={{ padding: '4px 12px', fontSize: '12px', background: 'var(--accent-teal)', border: 'none', color: '#fff' }}
+                                  >
+                                    Submit
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2965,6 +3276,17 @@ export default function CustomerDashboard({
                 />
               </div>
 
+              <div className="form-group">
+                <label className="form-label">Attach Proof Photo URL (Optional)</label>
+                <input 
+                  type="url"
+                  placeholder="https://example.com/item-defect.jpg"
+                  value={customerProofImage}
+                  onChange={(e) => setCustomerProofImage(e.target.value)}
+                  className="form-input"
+                />
+              </div>
+
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
                 <button 
                   type="button" 
@@ -3088,6 +3410,18 @@ export default function CustomerDashboard({
                         <strong style={{ color: '#c084fc' }}>₹{rf.amount}</strong>
                       </div>
                       {rf.adminNotes && <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Admin/QC Note: {rf.adminNotes}</div>}
+                      {rf.customerProofImage && (
+                        <div style={{ marginTop: '6px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Customer Proof Photo:</span>
+                          <img src={rf.customerProofImage} alt="Customer Return Proof" style={{ width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '6px', marginTop: '4px', border: '1px solid var(--border-light)' }} />
+                        </div>
+                      )}
+                      {rf.warehouseInspectionImage && (
+                        <div style={{ marginTop: '6px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Warehouse QC Photo:</span>
+                          <img src={rf.warehouseInspectionImage} alt="Warehouse QC Proof" style={{ width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '6px', marginTop: '4px', border: '1px solid var(--border-light)' }} />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

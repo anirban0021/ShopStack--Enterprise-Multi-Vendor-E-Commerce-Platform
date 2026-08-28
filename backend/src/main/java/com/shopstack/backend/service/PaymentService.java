@@ -27,6 +27,11 @@ import com.shopstack.backend.model.OrderItem;
 import com.shopstack.backend.model.Product;
 import com.shopstack.backend.model.Refund;
 import com.shopstack.backend.model.Settlement;
+import com.shopstack.backend.model.Warehouse;
+import com.shopstack.backend.model.Inventory;
+import com.shopstack.backend.repository.WarehouseRepository;
+import com.shopstack.backend.repository.InventoryRepository;
+import com.shopstack.backend.service.WarehouseService;
 import com.shopstack.backend.repository.OrderItemRepository;
 import com.shopstack.backend.repository.OrderRepository;
 import com.shopstack.backend.repository.ProductRepository;
@@ -46,6 +51,15 @@ public class PaymentService {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private WarehouseRepository warehouseRepository;
+
+    @Autowired
+    private InventoryRepository inventoryRepository;
+
+    @Autowired
+    private WarehouseService warehouseService;
 
     @Autowired
     private OrderRepository orderRepository;
@@ -285,6 +299,12 @@ public class PaymentService {
     @Transactional
     public Refund requestReturn(String orderId, Double amount, String returnReasonCategory, 
                                  String resolutionType, String reason, String customerNotes) {
+        return requestReturn(orderId, amount, returnReasonCategory, resolutionType, reason, customerNotes, null);
+    }
+
+    @Transactional
+    public Refund requestReturn(String orderId, Double amount, String returnReasonCategory, 
+                                 String resolutionType, String reason, String customerNotes, String customerProofImage) {
         if (orderId == null || orderId.trim().isEmpty()) {
             throw new IllegalArgumentException("Order ID is required for return initiation.");
         }
@@ -302,6 +322,34 @@ public class PaymentService {
         }
 
         Order order = orderOpt.get();
+
+        // Enforce return policy rules automatically
+        List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
+        Date orderDate = null;
+        try {
+            orderDate = new SimpleDateFormat("MMM dd, yyyy").parse(order.getDate());
+        } catch (Exception e) {
+            orderDate = new Date();
+        }
+        long diffInMs = Math.abs(new Date().getTime() - orderDate.getTime());
+        long daysElapsed = java.util.concurrent.TimeUnit.DAYS.convert(diffInMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+
+        for (OrderItem item : orderItems) {
+            Optional<Product> prodOpt = productRepository.findById(item.getProductId());
+            if (prodOpt.isPresent()) {
+                Product p = prodOpt.get();
+                String policy = p.getReturnPolicy() != null ? p.getReturnPolicy() : "7_DAYS";
+                if ("NON_RETURNABLE".equalsIgnoreCase(policy)) {
+                    throw new IllegalStateException("Return Blocked: Product '" + p.getName() + "' is marked as Non-Returnable.");
+                }
+                if ("7_DAYS".equalsIgnoreCase(policy) && daysElapsed > 7) {
+                    throw new IllegalStateException("Return Blocked: Return window has expired for product '" + p.getName() + "' (Allowed: 7 days, Elapsed: " + daysElapsed + " days).");
+                }
+                if ("15_DAYS".equalsIgnoreCase(policy) && daysElapsed > 15) {
+                    throw new IllegalStateException("Return Blocked: Return window has expired for product '" + p.getName() + "' (Allowed: 15 days, Elapsed: " + daysElapsed + " days).");
+                }
+            }
+        }
 
         // Calculate remaining balance
         List<Refund> previousRefunds = refundRepository.findByOrderId(order.getOrderId());
@@ -343,6 +391,7 @@ public class PaymentService {
                 "REQUESTED",
                 timestamp
         );
+        refund.setCustomerProofImage(customerProofImage);
         refund = refundRepository.save(refund);
 
         // Transition Order status to indicate return requested
@@ -351,6 +400,197 @@ public class PaymentService {
         orderRepository.save(order);
 
         return refund;
+    }
+
+    /**
+     * Step 2 of Return Lifecycle: Vendor reviews the return request.
+     * Marks returnStage as VENDOR_APPROVED (proceed to pickup) or VENDOR_DISPUTED (escalate to admin).
+     */
+    @Transactional
+    public Refund reviewReturnRequest(Long refundId, String action, String notes) {
+        Refund refund = refundRepository.findById(refundId)
+                .orElseThrow(() -> new IllegalArgumentException("Refund request not found"));
+
+        if (!"PENDING".equalsIgnoreCase(refund.getStatus())) {
+            throw new IllegalStateException("Refund request is already processed or rejected.");
+        }
+
+        if ("APPROVE".equalsIgnoreCase(action)) {
+            refund.setReturnStage("VENDOR_APPROVED");
+            refund.setAdminNotes("Vendor Approved Return. Shipping label generated: AWB-RET-" + System.currentTimeMillis());
+        } else if ("DISPUTE".equalsIgnoreCase(action)) {
+            refund.setReturnStage("VENDOR_DISPUTED");
+            refund.setAdminNotes("Vendor Disputed: " + (notes != null ? notes : "Escalated to Administrator"));
+        } else {
+            throw new IllegalArgumentException("Invalid vendor action: " + action);
+        }
+
+        return refundRepository.save(refund);
+    }
+
+    /**
+     * Intermediate Step: Warehouse marks return package as received/picked up.
+     * Sets returnStage to ITEM_RETURNED.
+     */
+    @Transactional
+    public Refund markRefundPackageReceived(Long refundId) {
+        Refund refund = refundRepository.findById(refundId)
+                .orElseThrow(() -> new IllegalArgumentException("Refund request not found with ID: " + refundId));
+
+        if (!"PENDING".equalsIgnoreCase(refund.getStatus())) {
+            throw new IllegalStateException("Refund request is already resolved and not pending.");
+        }
+
+        refund.setReturnStage("ITEM_RETURNED");
+        refund.setAdminNotes("Return package received at warehouse. Awaiting QC Inspection.");
+        return refundRepository.save(refund);
+    }
+
+    /**
+     * Step 3 of Return Lifecycle: Warehouse staff receives and inspects returned items.
+     * Restocks inventory if resellable.
+     */
+    @Transactional
+    public Refund processReturnQcInspection(Long refundId, boolean passed, String restockOption, Long warehouseId, String notes) {
+        return processReturnQcInspection(refundId, passed, restockOption, warehouseId, notes, null);
+    }
+
+    @Transactional
+    public Refund processReturnQcInspection(Long refundId, boolean passed, String restockOption, Long warehouseId, String notes, String warehouseInspectionImage) {
+        Refund refund = refundRepository.findById(refundId)
+                .orElseThrow(() -> new IllegalArgumentException("Refund request not found"));
+
+        if (!"PENDING".equalsIgnoreCase(refund.getStatus())) {
+            throw new IllegalStateException("Refund request is already resolved.");
+        }
+
+        String timestamp = new SimpleDateFormat("MMM dd, yyyy HH:mm").format(new Date());
+
+        if (passed) {
+            refund.setReturnStage("QC_PASSED");
+            refund.setWarehouseInspectionImage(warehouseInspectionImage);
+            refund.setAdminNotes("QC Passed. Restock selection: " + restockOption + ". Inspection notes: " + notes);
+
+            // Handle restocking of inventory into selected warehouse
+            if ("RESELLABLE".equalsIgnoreCase(restockOption) && warehouseId != null) {
+                List<OrderItem> items = orderItemRepository.findByOrderId(refund.getOrderId());
+                Optional<Warehouse> whOpt = warehouseRepository.findById(warehouseId);
+                if (whOpt.isPresent()) {
+                    Warehouse wh = whOpt.get();
+                    for (OrderItem item : items) {
+                        Optional<Product> prodOpt = productRepository.findById(item.getProductId());
+                        if (prodOpt.isPresent()) {
+                            Product prod = prodOpt.get();
+                            Inventory inv = inventoryRepository.findByWarehouseIdAndProductId(warehouseId, prod.getId())
+                                    .orElseGet(() -> new Inventory(wh, prod, 0));
+                            inv.setQuantity(inv.getQuantity() + item.getQuantity());
+                            inventoryRepository.save(inv);
+                            
+                            // Synchronize product global stock representation
+                            warehouseService.syncProductGlobalStock(prod.getId());
+                        }
+                    }
+                }
+            }
+        } else {
+            refund.setReturnStage("QC_FAILED");
+            refund.setAdminNotes("QC Failed: " + (notes != null ? notes : "Item failed quality checks."));
+        }
+
+        refund.setProcessedAt(timestamp);
+        return refundRepository.save(refund);
+    }
+
+    /**
+     * Step 4 of Return Lifecycle: Admin resolves the return request.
+     * Options: REFUND (executes refund and voids payout), REPLACEMENT (ships a zero-price duplicate), EXCHANGE.
+     */
+    @Transactional
+    public Refund resolveReturnRequest(Long refundId, String resolution, String method, String adminNotes) throws Exception {
+        Refund refund = refundRepository.findById(refundId)
+                .orElseThrow(() -> new IllegalArgumentException("Refund request not found"));
+
+        if (!"PENDING".equalsIgnoreCase(refund.getStatus())) {
+            throw new IllegalStateException("Refund request is already resolved.");
+        }
+
+        Optional<Order> orderOpt = orderRepository.findByOrderId(refund.getOrderId());
+        if (orderOpt.isEmpty()) {
+            throw new IllegalArgumentException("Order not found: " + refund.getOrderId());
+        }
+        Order order = orderOpt.get();
+        String timestamp = new SimpleDateFormat("MMM dd, yyyy HH:mm").format(new Date());
+
+        if ("REFUND".equalsIgnoreCase(resolution)) {
+            // Apply Refund details
+            refund.setStatus("PROCESSED");
+            refund.setReturnStage("REFUNDED");
+            refund.setAdminNotes(adminNotes != null ? adminNotes : "Refund processed via " + method);
+            refund.setProcessedAt(timestamp);
+
+            // Execute test mode Razorpay refund or wallet refund simulation
+            String rzpRefundId = "rfnd_" + (method != null ? method.toLowerCase() : "original") + "_" + System.currentTimeMillis();
+            refund.setRazorpayRefundId(rzpRefundId);
+
+            // Update Order status
+            order.setPaymentStatus("REFUNDED");
+            order.setStatus("REFUNDED");
+            orderRepository.save(order);
+
+            // Void settlements
+            List<Settlement> settlements = settlementRepository.findByOrderId(order.getOrderId());
+            for (Settlement s : settlements) {
+                s.setStatus("REFUNDED");
+                settlementRepository.save(s);
+            }
+        } 
+        else if ("REPLACEMENT".equalsIgnoreCase(resolution) || "EXCHANGE".equalsIgnoreCase(resolution)) {
+            refund.setStatus("PROCESSED");
+            refund.setReturnStage("REPLACEMENT".equalsIgnoreCase(resolution) ? "REPLACEMENT_DISPATCHED" : "EXCHANGED");
+            refund.setAdminNotes(adminNotes != null ? adminNotes : "Replacement item dispatched.");
+            refund.setProcessedAt(timestamp);
+
+            // Create duplicate replacement order in confirmed status
+            String newOrderIdStr = ("REPLACEMENT".equalsIgnoreCase(resolution) ? "REP-" : "EXC-") + (int) (100000 + Math.random() * 900000);
+            Order newOrder = new Order(
+                    newOrderIdStr,
+                    order.getUserId(),
+                    new SimpleDateFormat("MMM dd, yyyy").format(new Date()),
+                    0.0,
+                    "CONFIRMED",
+                    order.getPaymentMethod(),
+                    null,
+                    null,
+                    order.getRecipientName(),
+                    order.getRecipientPhone(),
+                    order.getDeliveryAddress()
+            );
+            newOrder.setPaymentStatus("PAID");
+            orderRepository.save(newOrder);
+
+            // Copy items
+            List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
+            for (OrderItem item : items) {
+                OrderItem newItem = new OrderItem(
+                        newOrderIdStr,
+                        item.getProductId(),
+                        ("REPLACEMENT".equalsIgnoreCase(resolution) ? "REPLACEMENT: " : "EXCHANGE: ") + item.getProductName(),
+                        0.0,
+                        item.getQuantity(),
+                        item.getVendorId()
+                );
+                orderItemRepository.save(newItem);
+            }
+
+            // Allocate warehouse stock for replacement order
+            try {
+                warehouseService.allocateOrder(newOrderIdStr);
+            } catch (Exception e) {
+                System.err.println("Warehouse allocation failed for replacement: " + e.getMessage());
+            }
+        }
+
+        return refundRepository.save(refund);
     }
 
     /**

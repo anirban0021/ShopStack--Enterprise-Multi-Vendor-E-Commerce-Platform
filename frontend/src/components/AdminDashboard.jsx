@@ -103,6 +103,8 @@ export default function AdminDashboard({ user, onGoToHome }) {
   const [targetRejectRefund, setTargetRejectRefund] = useState(null);
   const [rejectReasonText, setRejectReasonText] = useState('');
   const [isProcessingReturnAction, setIsProcessingReturnAction] = useState(false);
+  const [resolutionChoice, setResolutionChoice] = useState('REFUND');
+  const [resolutionNotes, setResolutionNotes] = useState('Quality check approved.');
 
   // Payment Monitoring States
   const [monitoringMetrics, setMonitoringMetrics] = useState({
@@ -333,6 +335,81 @@ export default function AdminDashboard({ user, onGoToHome }) {
     });
     setIsEditingCoupon(true);
     setShowCouponModal(true);
+  };
+
+  const getReturnAnalytics = () => {
+    const productStats = {};
+    const vendorStats = {};
+    let totalRatings = 0;
+    let ratingCount = 0;
+
+    // Calculate rating stats
+    if (Array.isArray(monitoringOrders)) {
+      monitoringOrders.forEach(o => {
+        if (o.feedbackRating != null && o.feedbackRating > 0) {
+          totalRatings += o.feedbackRating;
+          ratingCount += 1;
+        }
+      });
+    }
+
+    const avgCsat = ratingCount > 0 ? (totalRatings / ratingCount).toFixed(1) : 'N/A';
+
+    // Calculate return count per product and vendor
+    if (Array.isArray(returnRequests) && Array.isArray(monitoringOrders)) {
+      returnRequests.forEach(r => {
+        const parentOrder = monitoringOrders.find(o => o.orderId === r.orderId);
+        if (parentOrder && parentOrder.items) {
+          parentOrder.items.forEach(item => {
+            const pName = item.productName || item.name || `Product #${item.productId}`;
+            if (!productStats[pName]) {
+              productStats[pName] = { name: pName, returns: 0, sales: 0 };
+            }
+            productStats[pName].returns += item.quantity;
+            
+            const vKey = item.vendorId || 'SYSTEM';
+            if (!vendorStats[vKey]) {
+              vendorStats[vKey] = { vendorId: vKey, returns: 0, sales: 0 };
+            }
+            vendorStats[vKey].returns += item.quantity;
+          });
+        }
+      });
+    }
+
+    // Calculate sales counts
+    if (Array.isArray(monitoringOrders)) {
+      monitoringOrders.forEach(o => {
+        if (o.items) {
+          o.items.forEach(item => {
+            const pName = item.productName || item.name || `Product #${item.productId}`;
+            if (!productStats[pName]) {
+              productStats[pName] = { name: pName, returns: 0, sales: 0 };
+            }
+            productStats[pName].sales += item.quantity;
+
+            const vKey = item.vendorId || 'SYSTEM';
+            if (!vendorStats[vKey]) {
+              vendorStats[vKey] = { vendorId: vKey, returns: 0, sales: 0 };
+            }
+            vendorStats[vKey].sales += item.quantity;
+          });
+        }
+      });
+    }
+
+    // Convert to arrays
+    const productList = Object.values(productStats).map(p => {
+      const rate = p.sales > 0 ? ((p.returns / p.sales) * 100).toFixed(1) : '0.0';
+      return { ...p, rate };
+    }).filter(p => p.returns > 0).sort((a, b) => b.returns - a.returns).slice(0, 5);
+
+    const vendorList = Object.values(vendorStats).map(v => {
+      const rate = v.sales > 0 ? ((v.returns / v.sales) * 100).toFixed(1) : '0.0';
+      return { ...v, rate };
+    }).filter(v => v.returns > 0).sort((a, b) => b.returns - a.returns).slice(0, 5);
+
+    return { avgCsat, ratingCount, productList, vendorList };
   };
 
   useEffect(() => {
@@ -1715,6 +1792,67 @@ export default function AdminDashboard({ user, onGoToHome }) {
                 </div>
               </div>
 
+              {/* Closed-loop Return Rate Analysis */}
+              {(() => {
+                const { avgCsat, ratingCount, productList, vendorList } = getReturnAnalytics();
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                    
+                    {/* CSAT Card */}
+                    <div className="analytics-card" style={{ padding: '16px', borderLeft: '4px solid var(--accent-teal)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div className="analytics-card-header">
+                        <span className="analytics-card-title" style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-secondary)' }}>Customer Satisfaction Score</span>
+                        <CheckCircle size={16} style={{ color: 'var(--accent-teal)' }} />
+                      </div>
+                      <div className="analytics-card-value" style={{ display: 'flex', alignItems: 'baseline', gap: '6px', margin: '10px 0 6px 0' }}>
+                        <span style={{ fontSize: '24px', fontWeight: '800' }}>{avgCsat}</span>
+                        <span style={{ color: '#f59e0b', fontSize: '18px' }}>★</span>
+                      </div>
+                      <div className="analytics-card-desc">Average rating from {ratingCount} satisfaction surveys</div>
+                    </div>
+
+                    {/* Return Rate by Product */}
+                    <div className="analytics-card" style={{ padding: '16px', borderLeft: '4px solid var(--accent-indigo)' }}>
+                      <div className="analytics-card-header" style={{ marginBottom: '8px' }}>
+                        <span className="analytics-card-title" style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-secondary)' }}>Return Analysis by Product</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px' }}>
+                        {productList.length === 0 ? (
+                          <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', padding: '10px 0' }}>No returned product trends found</div>
+                        ) : (
+                          productList.map((p, idx) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: '4px' }}>
+                              <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: '500' }}>{p.name}</span>
+                              <strong style={{ color: 'var(--accent-rose)' }}>{p.rate}% ({p.returns}/{p.sales} units)</strong>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Return Rate by Vendor */}
+                    <div className="analytics-card" style={{ padding: '16px', borderLeft: '4px solid var(--accent-rose)' }}>
+                      <div className="analytics-card-header" style={{ marginBottom: '8px' }}>
+                        <span className="analytics-card-title" style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-secondary)' }}>Return Analysis by Vendor</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px' }}>
+                        {vendorList.length === 0 ? (
+                          <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', padding: '10px 0' }}>No returned vendor trends found</div>
+                        ) : (
+                          vendorList.map((v, idx) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light)', paddingBottom: '4px' }}>
+                              <span style={{ fontWeight: '500' }}>Merchant #{v.vendorId}</span>
+                              <strong style={{ color: 'var(--accent-rose)' }}>{v.rate}% ({v.returns}/{v.sales} units)</strong>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })()}
+
               {/* Filters & Search Bar */}
               <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
@@ -1820,9 +1958,23 @@ export default function AdminDashboard({ user, onGoToHome }) {
                               </td>
                               <td>
                                 {isPending && (
-                                  <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                    <Clock size={11} /> PENDING QC
-                                  </span>
+                                  r.returnStage === 'QC_PASSED' ? (
+                                    <span className="badge badge-approved" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                      <Check size={11} /> QC PASSED (AWAITING RESOLUTION)
+                                    </span>
+                                  ) : r.returnStage === 'QC_FAILED' ? (
+                                    <span className="badge badge-rejected" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                      <X size={11} /> QC FAILED (AWAITING RESOLUTION)
+                                    </span>
+                                  ) : r.returnStage === 'ITEM_RETURNED' ? (
+                                    <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                      <Clock size={11} /> PENDING QC INSPECTION
+                                    </span>
+                                  ) : (
+                                    <span className="badge badge-customer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--accent-blue)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+                                      <Clock size={11} /> AWAITING PICKUP
+                                    </span>
+                                  )
                                 )}
                                 {isProcessed && (
                                   <span className="badge badge-approved" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -3047,16 +3199,65 @@ export default function AdminDashboard({ user, onGoToHome }) {
                 <button type="button" onClick={() => setSelectedReturnCase(null)} className="btn btn-secondary">
                   Close
                 </button>
-                {selectedReturnCase.status === 'PENDING' && (
-                  <button 
-                    type="button" 
-                    onClick={() => handleApproveReturn(selectedReturnCase.id, selectedReturnCase.orderId, selectedReturnCase.amount)}
-                    className="btn btn-success"
-                  >
-                    <Check size={14} /> Accept & Disburse Refund
-                  </button>
-                )}
               </div>
+
+              {selectedReturnCase.status === 'PENDING' && (
+                <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '12px', marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <h4 style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)' }}>Fulfillment Resolution Action</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label className="form-label" style={{ fontSize: '11px', fontWeight: 'bold' }}>Resolution Strategy</label>
+                      <select 
+                        value={resolutionChoice}
+                        onChange={(e) => setResolutionChoice(e.target.value)}
+                        className="form-input"
+                        style={{ height: '34px', fontSize: '12px' }}
+                      >
+                        <option value="REFUND">REFUND (Disburse money, void payout)</option>
+                        <option value="REPLACEMENT">REPLACEMENT (Create zero-cost order)</option>
+                        <option value="EXCHANGE">EXCHANGE (Create exchange order)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label" style={{ fontSize: '11px', fontWeight: 'bold' }}>Observations / Notes</label>
+                      <input 
+                        type="text"
+                        value={resolutionNotes}
+                        onChange={(e) => setResolutionNotes(e.target.value)}
+                        className="form-input"
+                        style={{ height: '34px', fontSize: '12px' }}
+                        placeholder="e.g. Approved after physical check."
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                    <button 
+                      type="button" 
+                      onClick={async () => {
+                        setIsProcessingReturnAction(true);
+                        try {
+                          await axios.post(`http://localhost:8080/api/payment/refunds/${selectedReturnCase.id}/resolve`, {
+                            resolution: resolutionChoice,
+                            method: 'ORIGINAL_PAYMENT',
+                            adminNotes: resolutionNotes
+                          });
+                          showFlash('success', `Return case resolved with strategy: ${resolutionChoice}!`);
+                          setSelectedReturnCase(null);
+                          fetchReturnRequests();
+                        } catch (err) {
+                          showFlash('error', err.response?.data || 'Failed to apply resolution.');
+                        } finally {
+                          setIsProcessingReturnAction(false);
+                        }
+                      }}
+                      className="btn btn-success"
+                      style={{ fontSize: '12px', padding: '6px 14px' }}
+                    >
+                      Apply Resolution
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

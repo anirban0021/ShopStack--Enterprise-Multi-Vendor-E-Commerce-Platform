@@ -27,6 +27,7 @@ import com.shopstack.backend.repository.OrderRepository;
 import com.shopstack.backend.repository.ProductRepository;
 import com.shopstack.backend.repository.SettlementRepository;
 import com.shopstack.backend.service.PaymentService;
+import com.shopstack.backend.service.WarehouseService;
 
 @RestController
 @RequestMapping("/api/vendor")
@@ -47,6 +48,9 @@ public class VendorController {
 
     @Autowired
     private PaymentService paymentService;
+
+    @Autowired
+    private WarehouseService warehouseService;
 
     // Get Analytics for a Vendor
     @GetMapping("/{vendorId}/analytics")
@@ -173,6 +177,13 @@ public class VendorController {
                             productRepository.save(prod);
                         }
                     }
+                }
+
+                // Release warehouse stock allocations
+                try {
+                    warehouseService.releaseAllocations(order.getOrderId());
+                } catch (Exception e) {
+                    System.err.println("Failed to release allocations for order: " + order.getOrderId() + ". Error: " + e.getMessage());
                 }
             }
 

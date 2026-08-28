@@ -122,4 +122,13 @@ public class Order {
 
     public double getCouponDiscount() { return couponDiscount; }
     public void setCouponDiscount(double couponDiscount) { this.couponDiscount = couponDiscount; }
+
+    private Integer feedbackRating;
+    private String feedbackComment;
+
+    public Integer getFeedbackRating() { return feedbackRating; }
+    public void setFeedbackRating(Integer feedbackRating) { this.feedbackRating = feedbackRating; }
+
+    public String getFeedbackComment() { return feedbackComment; }
+    public void setFeedbackComment(String feedbackComment) { this.feedbackComment = feedbackComment; }
 }

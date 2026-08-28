@@ -166,4 +166,9 @@ public class Product {
 
     public boolean isCouponsEnabled() { return couponsEnabled; }
     public void setCouponsEnabled(boolean couponsEnabled) { this.couponsEnabled = couponsEnabled; }
+
+    private String returnPolicy = "7_DAYS"; // 7_DAYS, 15_DAYS, NON_RETURNABLE
+
+    public String getReturnPolicy() { return returnPolicy; }
+    public void setReturnPolicy(String returnPolicy) { this.returnPolicy = returnPolicy; }
 }

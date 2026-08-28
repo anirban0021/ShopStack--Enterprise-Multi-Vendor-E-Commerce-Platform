@@ -34,6 +34,12 @@ public class Refund {
     @Column(length = 1000)
     private String adminNotes;
 
+    @Column(length = 2000)
+    private String customerProofImage;
+
+    @Column(length = 2000)
+    private String warehouseInspectionImage;
+
     private String returnStage; // REQUESTED, ITEM_RETURNED, QC_PASSED, QC_FAILED, REFUNDED, REJECTED
     private String status; // PENDING, PROCESSED, REJECTED, FAILED
     private String requestedAt;
@@ -110,4 +116,10 @@ public class Refund {
 
     public String getProcessedAt() { return processedAt; }
     public void setProcessedAt(String processedAt) { this.processedAt = processedAt; }
+
+    public String getCustomerProofImage() { return customerProofImage; }
+    public void setCustomerProofImage(String customerProofImage) { this.customerProofImage = customerProofImage; }
+
+    public String getWarehouseInspectionImage() { return warehouseInspectionImage; }
+    public void setWarehouseInspectionImage(String warehouseInspectionImage) { this.warehouseInspectionImage = warehouseInspectionImage; }
 }

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -151,8 +152,10 @@ public class PaymentController {
                     ? payload.get("reason").toString() : "Customer Requested Return";
             String customerNotes = payload.containsKey("customerNotes") && payload.get("customerNotes") != null 
                     ? payload.get("customerNotes").toString() : "";
+            String customerProofImage = payload.containsKey("customerProofImage") && payload.get("customerProofImage") != null 
+                    ? payload.get("customerProofImage").toString() : null;
 
-            Refund refund = paymentService.requestReturn(orderId, amount, returnReasonCategory, resolutionType, reason, customerNotes);
+            Refund refund = paymentService.requestReturn(orderId, amount, returnReasonCategory, resolutionType, reason, customerNotes, customerProofImage);
             return ResponseEntity.ok(refund);
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -204,6 +207,64 @@ public class PaymentController {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Failed to fetch refund history: " + e.getMessage());
+        }
+    }
+
+    // Vendor review return request
+    @PutMapping("/refunds/{refundId}/vendor-review")
+    public ResponseEntity<?> vendorReviewReturn(@PathVariable Long refundId, @RequestBody Map<String, String> payload) {
+        try {
+            String action = payload.get("action");
+            String notes = payload.get("notes");
+            Refund refund = paymentService.reviewReturnRequest(refundId, action, notes);
+            return ResponseEntity.ok(refund);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Vendor review failed: " + e.getMessage());
+        }
+    }
+
+    // Warehouse marks return package as received
+    @PutMapping("/refunds/{refundId}/receive")
+    public ResponseEntity<?> receiveReturnPackage(@PathVariable Long refundId) {
+        try {
+            Refund refund = paymentService.markRefundPackageReceived(refundId);
+            return ResponseEntity.ok(refund);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to mark package as received: " + e.getMessage());
+        }
+    }
+
+    // Warehouse return QC inspection
+    @PutMapping("/refunds/{refundId}/qc-inspection")
+    public ResponseEntity<?> warehouseQcInspection(@PathVariable Long refundId, @RequestBody Map<String, Object> payload) {
+        try {
+            boolean passed = (Boolean) payload.get("passed");
+            String restockOption = payload.containsKey("restockOption") ? payload.get("restockOption").toString() : "DAMAGED";
+            Long warehouseId = payload.containsKey("warehouseId") && payload.get("warehouseId") != null 
+                    ? Long.parseLong(payload.get("warehouseId").toString()) : null;
+            String notes = payload.containsKey("notes") ? payload.get("notes").toString() : "";
+            String warehouseInspectionImage = payload.containsKey("warehouseInspectionImage") && payload.get("warehouseInspectionImage") != null 
+                    ? payload.get("warehouseInspectionImage").toString() : null;
+            
+            Refund refund = paymentService.processReturnQcInspection(refundId, passed, restockOption, warehouseId, notes, warehouseInspectionImage);
+            return ResponseEntity.ok(refund);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("QC inspection failed: " + e.getMessage());
+        }
+    }
+
+    // Admin Resolve Return (disburse refund, dispatch replacement, or exchange)
+    @PostMapping("/refunds/{refundId}/resolve")
+    public ResponseEntity<?> resolveReturn(@PathVariable Long refundId, @RequestBody Map<String, String> payload) {
+        try {
+            String resolution = payload.get("resolution");
+            String method = payload.containsKey("method") ? payload.get("method") : "ORIGINAL_PAYMENT";
+            String adminNotes = payload.containsKey("adminNotes") ? payload.get("adminNotes") : "Resolved by Admin.";
+            
+            Refund refund = paymentService.resolveReturnRequest(refundId, resolution, method, adminNotes);
+            return ResponseEntity.ok(refund);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Fulfillment resolution failed: " + e.getMessage());
         }
     }
 

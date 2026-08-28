@@ -33,6 +33,7 @@ import com.shopstack.backend.repository.ProductRepository;
 import com.shopstack.backend.repository.UserRepository;
 import com.shopstack.backend.repository.WishlistItemRepository;
 import com.shopstack.backend.service.CouponService;
+import com.shopstack.backend.service.WarehouseService;
 
 @RestController
 @RequestMapping("/api/customer")
@@ -59,6 +60,9 @@ public class CustomerController {
 
     @Autowired
     private AddressRepository addressRepository;
+
+    @Autowired
+    private WarehouseService warehouseService;
 
     // Get Customer Profile Details
     @GetMapping("/{id}")
@@ -330,7 +334,7 @@ public class CustomerController {
         String orderIdStr = "ORD-" + (int) (100000 + Math.random() * 900000);
         String dateStr = new java.text.SimpleDateFormat("MMM dd, yyyy").format(new java.util.Date());
 
-        // Create and save Order Header
+        // Create and save Order Header. Automatically confirmed since stock verification passed.
         Order order = new Order(orderIdStr, id, dateStr, totalAmount, "CONFIRMED");
         order.setCouponCode(couponCode != null && !couponCode.trim().isEmpty() ? couponCode.trim().toUpperCase() : null);
         order.setCouponDiscount(couponDiscount);
@@ -369,6 +373,31 @@ public class CustomerController {
             couponService.recordUsage(couponCode, id, order.getOrderId(), couponDiscount);
         }
 
+        // Trigger automatic warehouse allocation
+        try {
+            warehouseService.allocateOrder(order.getOrderId());
+        } catch (Exception e) {
+            System.err.println("Automatic warehouse allocation failed for order: " + order.getOrderId() + ". Error: " + e.getMessage());
+        }
+
+        return ResponseEntity.ok(order);
+    }
+
+    // Customer submits post-fulfillment feedback/survey
+    @PostMapping("/orders/{orderId}/feedback")
+    public ResponseEntity<?> submitOrderFeedback(@PathVariable String orderId, @RequestBody Map<String, Object> payload) {
+        Optional<Order> orderOpt = orderRepository.findByOrderId(orderId);
+        if (orderOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        Order order = orderOpt.get();
+        if (payload.containsKey("rating")) {
+            order.setFeedbackRating(Integer.parseInt(payload.get("rating").toString()));
+        }
+        if (payload.containsKey("comment")) {
+            order.setFeedbackComment(payload.get("comment").toString());
+        }
+        orderRepository.save(order);
         return ResponseEntity.ok(order);
     }
 }

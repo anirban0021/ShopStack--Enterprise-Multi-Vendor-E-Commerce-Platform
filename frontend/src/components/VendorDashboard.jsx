@@ -3,7 +3,7 @@ import axios from 'axios';
 import { 
   TrendingUp, Package, AlertTriangle, IndianRupee, Plus, Edit2, 
   Trash2, X, Check, Save, Truck, Calendar, ShoppingBag, Eye, Layers,
-  DollarSign, RefreshCw, CheckCircle, Clock, ShieldCheck, FileText, Search, Ticket
+  DollarSign, RefreshCw, CheckCircle, Clock, ShieldCheck, FileText, Search, Ticket, RotateCcw
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
@@ -70,12 +70,18 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
   const [coupons, setCoupons] = useState([]);
   const [isLoadingCoupons, setIsLoadingCoupons] = useState(false);
 
+  // Return Disputes states
+  const [vendorReturns, setVendorReturns] = useState([]);
+  const [isLoadingReturns, setIsLoadingReturns] = useState(false);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+
   useEffect(() => {
     fetchAnalytics();
     fetchProducts();
     fetchVendorOrders();
     fetchSettlements();
     fetchVendorCoupons();
+    fetchReturns();
   }, []);
 
   const showFlash = (type, text) => {
@@ -92,6 +98,22 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       console.error("Failed to fetch vendor coupons", err);
     } finally {
       setIsLoadingCoupons(false);
+    }
+  };
+
+  const fetchReturns = async () => {
+    setIsLoadingReturns(true);
+    try {
+      const res = await axios.get('http://localhost:8080/api/admin/refunds');
+      // Filter returns belonging to orders containing vendor's items
+      const matchingReturns = res.data.filter(r => 
+        vendorOrders.some(vo => vo.orderId === r.orderId)
+      );
+      setVendorReturns(matchingReturns);
+    } catch (err) {
+      console.error("Failed to fetch return disputes", err);
+    } finally {
+      setIsLoadingReturns(false);
     }
   };
 
@@ -168,11 +190,14 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
   };
 
   const fetchVendorOrders = async () => {
+    setIsLoadingOrders(true);
     try {
       const res = await axios.get(`http://localhost:8080/api/vendor/${user.id}/orders`);
       setVendorOrders(res.data);
     } catch (err) {
       console.error("Failed to load vendor orders", err);
+    } finally {
+      setIsLoadingOrders(false);
     }
   };
 
@@ -209,6 +234,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       discountPercentage: 0,
       stock: '10',
       couponsEnabled: true,
+      returnPolicy: '7_DAYS',
       imageUrl: '📦',
       images: [],
       vendorId: user.id,
@@ -230,6 +256,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       discountPercentage: prod.discountPercentage != null ? prod.discountPercentage : 0,
       stock: prod.stock,
       couponsEnabled: prod.couponsEnabled !== false,
+      returnPolicy: prod.returnPolicy || '7_DAYS',
       imageUrl: prod.imageUrl || '📦',
       images: prod.images || [],
       vendorId: user.id,
@@ -482,7 +509,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
             <ShoppingBag size={18} /> Customer Orders ({vendorOrders.length})
           </div>
           <div 
-            onClick={() => setActiveTab('settlements')} 
+            onClick={() => { setActiveTab('settlements'); fetchSettlements(); }} 
             className={`sidebar-item ${activeTab === 'settlements' ? 'sidebar-item-active' : ''}`}
           >
             <IndianRupee size={18} /> Settlements & Payouts ({settlements.length})
@@ -492,6 +519,12 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
             className={`sidebar-item ${activeTab === 'coupons' ? 'sidebar-item-active' : ''}`}
           >
             <Ticket size={18} /> Promotions & Coupons
+          </div>
+          <div 
+            onClick={() => { setActiveTab('returns'); fetchReturns(); }} 
+            className={`sidebar-item ${activeTab === 'returns' ? 'sidebar-item-active' : ''}`}
+          >
+            <RotateCcw size={18} /> Return QC & Disputes ({vendorReturns.length})
           </div>
         </div>
 
@@ -761,7 +794,17 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
 
           {activeTab === 'orders' && (
             <div>
-              <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '20px' }}>Merchant Customer Orders</h2>
+              <div className="flex-between" style={{ marginBottom: '20px' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Merchant Customer Orders</h2>
+                <button 
+                  type="button" 
+                  onClick={fetchVendorOrders} 
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                >
+                  <RefreshCw size={13} className={isLoadingOrders ? "spin-animation" : ""} /> Refresh Orders
+                </button>
+              </div>
               
               {vendorOrders.length === 0 ? (
                 <div className="cart-empty-state">
@@ -804,17 +847,39 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                             </span>
                           </td>
                           <td>
-                            <select 
-                              value={ord.status} 
-                              onChange={(e) => handleUpdateOrderStatus(ord.orderId, e.target.value)}
-                              className="form-select"
-                              style={{ padding: '6px 10px', fontSize: '12px' }}
-                            >
-                              <option value="CONFIRMED">CONFIRMED</option>
-                              <option value="SHIPPED">SHIPPED</option>
-                              <option value="DELIVERED">DELIVERED</option>
-                              <option value="CANCELLED">CANCELLED</option>
-                            </select>
+                            {ord.status === 'PENDING_CONFIRMATION' ? (
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateOrderStatus(ord.orderId, 'CONFIRMED')}
+                                  className="btn btn-primary"
+                                  style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center' }}
+                                >
+                                  Accept Order
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateOrderStatus(ord.orderId, 'CANCELLED')}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--accent-rose)' }}
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            ) : ord.status === 'CONFIRMED' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateOrderStatus(ord.orderId, 'CANCELLED')}
+                                className="btn btn-secondary"
+                                style={{ padding: '6px 12px', fontSize: '11px', color: 'var(--accent-rose)', border: '1px solid rgba(239, 68, 68, 0.2)' }}
+                              >
+                                Cancel Order
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                Warehouse Controlled
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1107,6 +1172,116 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
               )}
             </div>
           )}
+
+          {/* TAB: RETURNS QC & GOVERNANCE */}
+          {activeTab === 'returns' && (
+            <div>
+              <div className="flex-between" style={{ marginBottom: '20px' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Customer Return Requests</h2>
+                <button 
+                  type="button" 
+                  onClick={async () => {
+                    await fetchVendorOrders();
+                    await fetchReturns();
+                  }} 
+                  className="btn btn-secondary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                >
+                  <RefreshCw size={13} className={isLoadingReturns || isLoadingOrders ? "spin-animation" : ""} /> Refresh Returns
+                </button>
+              </div>
+              {vendorReturns.length === 0 ? (
+                <div className="cart-empty-state">
+                  <RotateCcw className="cart-empty-icon" style={{ opacity: 0.2 }} />
+                  <p>No customer return requests found for your store.</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>Date Requested</th>
+                        <th>Order ID</th>
+                        <th>Reason Category</th>
+                        <th>Customer Notes</th>
+                        <th>Resolution Type</th>
+                        <th>Fulfillment Stage</th>
+                        <th style={{ width: '220px', textAlign: 'center' }}>Review Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vendorReturns.map((r) => {
+                        const canReview = r.status === 'PENDING' && r.returnStage === 'REQUESTED';
+                        return (
+                          <tr key={r.id}>
+                            <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{r.requestedAt}</td>
+                            <td style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>{r.orderId}</td>
+                            <td>
+                              <span className="badge badge-customer">{r.returnReasonCategory}</span>
+                              <div style={{ fontSize: '12px', marginTop: '2px' }}>{r.reason}</div>
+                            </td>
+                            <td>{r.customerNotes || 'No notes'}</td>
+                            <td>
+                              <span className="badge" style={{ background: 'var(--bg-input)' }}>{r.resolutionType}</span>
+                            </td>
+                            <td>
+                              <span className={`badge ${
+                                r.returnStage === 'REFUNDED' ? 'badge-approved' : 
+                                r.returnStage === 'QC_PASSED' ? 'badge-approved' : 
+                                r.returnStage === 'VENDOR_DISPUTED' ? 'badge-rejected' : 'badge-pending'
+                              }`}>
+                                {r.returnStage}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {canReview ? (
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await axios.put(`http://localhost:8080/api/payment/refunds/${r.id}/vendor-review`, { action: 'APPROVE' });
+                                        showFlash('success', 'Return request approved. Proceeding to courier pickup.');
+                                        fetchReturns();
+                                      } catch (err) {
+                                        showFlash('error', 'Action failed.');
+                                      }
+                                    }}
+                                    className="btn btn-primary"
+                                    style={{ padding: '4px 10px', fontSize: '12px' }}
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      const notes = window.prompt("Enter dispute notes for Administrator review:");
+                                      if (notes === null) return;
+                                      try {
+                                        await axios.put(`http://localhost:8080/api/payment/refunds/${r.id}/vendor-review`, { action: 'DISPUTE', notes: notes });
+                                        showFlash('success', 'Return disputed and escalated to Admin.');
+                                        fetchReturns();
+                                      } catch (err) {
+                                        showFlash('error', 'Action failed.');
+                                      }
+                                    }}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--accent-rose)' }}
+                                  >
+                                    Dispute
+                                  </button>
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No Action Required</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1250,6 +1425,20 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 <label htmlFor="couponsEnabled" style={{ fontSize: '13px', cursor: 'pointer', fontWeight: '500' }}>
                   Enable Promotional Coupons for this Product
                 </label>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: '600' }}>Return Policy Eligibility</label>
+                <select 
+                  value={productForm.returnPolicy || '7_DAYS'} 
+                  onChange={(e) => setProductForm({...productForm, returnPolicy: e.target.value})}
+                  className="form-select"
+                  style={{ padding: '8px', fontSize: '13px' }}
+                >
+                  <option value="7_DAYS">7 Days Return window</option>
+                  <option value="15_DAYS">15 Days Return window</option>
+                  <option value="NON_RETURNABLE">Non-Returnable / Final Sale</option>
+                </select>
               </div>
 
               {modalMode === 'edit' && (
