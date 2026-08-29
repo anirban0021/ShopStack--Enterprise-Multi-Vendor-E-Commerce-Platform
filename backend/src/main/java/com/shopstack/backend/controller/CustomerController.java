@@ -360,10 +360,6 @@ public class CustomerController {
                 discountPercentage = Double.parseDouble(itemData.get("discountPercentage").toString());
             }
 
-            // Reduce stock
-            product.setStock(product.getStock() - quantity);
-            productRepository.save(product);
-
             // Create and save Order Line Item with discounted price, original price and discount %
             OrderItem orderItem = new OrderItem(orderIdStr, productId, productName, price, originalPrice, discountPercentage, quantity, vendorId);
             orderItemRepository.save(orderItem);
@@ -373,13 +369,7 @@ public class CustomerController {
             couponService.recordUsage(couponCode, id, order.getOrderId(), couponDiscount);
         }
 
-        // Trigger automatic warehouse allocation
-        try {
-            warehouseService.allocateOrder(order.getOrderId());
-        } catch (Exception e) {
-            System.err.println("Automatic warehouse allocation failed for order: " + order.getOrderId() + ". Error: " + e.getMessage());
-        }
-
+        // Order is CONFIRMED and queued for Administrator warehouse allocation
         return ResponseEntity.ok(order);
     }
 

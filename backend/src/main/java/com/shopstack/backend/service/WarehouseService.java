@@ -60,10 +60,55 @@ public class WarehouseService {
     }
 
     /**
+     * Distributes a product's stock across specified warehouses (e.g. Kolkata, Mumbai, Delhi, Bangalore).
+     */
+    @Transactional
+    public List<Inventory> distributeProductStock(Long productId, List<Map<String, Object>> distributions) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new IllegalArgumentException("Product not found with ID: " + productId));
+
+        List<Inventory> updatedInventories = new ArrayList<>();
+
+        for (Map<String, Object> dist : distributions) {
+            if (!dist.containsKey("warehouseId") || !dist.containsKey("quantity")) {
+                continue;
+            }
+            Long warehouseId = Long.parseLong(dist.get("warehouseId").toString());
+            int quantity = Integer.parseInt(dist.get("quantity").toString());
+
+            Warehouse warehouse = warehouseRepository.findById(warehouseId)
+                    .orElseThrow(() -> new IllegalArgumentException("Warehouse not found with ID: " + warehouseId));
+
+            Inventory inv = inventoryRepository.findByWarehouseIdAndProductId(warehouseId, productId)
+                    .orElseGet(() -> new Inventory(warehouse, product, 0));
+
+            inv.setQuantity(Math.max(0, quantity));
+            updatedInventories.add(inventoryRepository.save(inv));
+        }
+
+        syncProductGlobalStock(productId);
+        return updatedInventories;
+    }
+
+    /**
      * Automatically allocates warehouse stock for all items in a confirmed order.
+     * Follows the rule: checks active warehouses with available stock (physical - allocated),
+     * selects a suitable warehouse with sufficient stock or splits across hubs,
+     * and reserves the stock (status: ALLOCATED) for Warehouse Staff picking & packing.
      */
     @Transactional
     public List<WarehouseAllocation> allocateOrder(String orderId) {
+        Optional<Order> orderOpt = orderRepository.findByOrderId(orderId);
+        if (orderOpt.isPresent()) {
+            Order order = orderOpt.get();
+            String st = order.getStatus() != null ? order.getStatus().toUpperCase() : "";
+            if ("DELIVERED".equals(st) || "SHIPPED".equals(st) || "OUT_FOR_DELIVERY".equals(st) || 
+                "PACKED".equals(st) || "PICKED".equals(st) || "COMPLETED".equals(st) || 
+                "CANCELLED".equals(st) || "REFUNDED".equals(st)) {
+                return allocationRepository.findByOrderId(orderId);
+            }
+        }
+
         List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
         List<WarehouseAllocation> allocations = new ArrayList<>();
 
@@ -76,10 +121,10 @@ public class WarehouseService {
 
             // Find all active warehouses with inventory for this product
             List<Inventory> activeInventories = inventoryRepository.findByProductId(productId).stream()
-                    .filter(inv -> inv.getWarehouse().isActive())
+                    .filter(inv -> inv.getWarehouse() != null && inv.getWarehouse().isActive())
                     .collect(Collectors.toList());
 
-            // 1. Try to find a single warehouse with enough available stock
+            // 1. Try to find a single warehouse with enough available stock (quantity - allocated)
             Optional<Inventory> singleFulfillmentWh = activeInventories.stream()
                     .filter(inv -> inv.getAvailableQuantity() >= qtyToAllocate)
                     .findFirst();
@@ -94,10 +139,9 @@ public class WarehouseService {
                 );
                 allocations.add(allocationRepository.save(alloc));
             } else {
-                // 2. If no single warehouse has enough stock, split across warehouses
+                // 2. If no single warehouse has enough stock, split across warehouses by highest available stock
                 int remaining = qtyToAllocate;
                 
-                // Sort warehouses by available stock descending to minimize splits
                 activeInventories.sort((a, b) -> Integer.compare(b.getAvailableQuantity(), a.getAvailableQuantity()));
 
                 for (Inventory inv : activeInventories) {
@@ -128,7 +172,83 @@ public class WarehouseService {
                 }
             }
         }
+
+        // Sync global available stock representation for all items in the order
+        for (OrderItem item : items) {
+            if (item.getProductId() != null) {
+                syncProductGlobalStock(item.getProductId());
+            }
+        }
+
         return allocations;
+    }
+
+    /**
+     * Allocates all items of an order to a specific designated warehouse chosen by the Admin.
+     */
+    @Transactional
+    public List<WarehouseAllocation> allocateEntireOrderToWarehouse(String orderId, Long warehouseId) {
+        Order order = orderRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("Order not found with ID: " + orderId));
+
+        String currentStatus = order.getStatus() != null ? order.getStatus().toUpperCase() : "";
+        if ("DELIVERED".equals(currentStatus) || "SHIPPED".equals(currentStatus) || 
+            "OUT_FOR_DELIVERY".equals(currentStatus) || "PACKED".equals(currentStatus) || 
+            "PICKED".equals(currentStatus) || "COMPLETED".equals(currentStatus) || 
+            "CANCELLED".equals(currentStatus) || "REFUNDED".equals(currentStatus)) {
+            throw new IllegalStateException("Order " + orderId + " is already in stage '" + currentStatus + "' and cannot be re-allocated.");
+        }
+
+        Warehouse warehouse = warehouseRepository.findById(warehouseId)
+                .orElseThrow(() -> new IllegalArgumentException("Warehouse not found with ID: " + warehouseId));
+
+        if (!warehouse.isActive()) {
+            throw new IllegalStateException("Cannot allocate order to an inactive warehouse.");
+        }
+
+        // Release any existing partial allocations for this order first
+        List<WarehouseAllocation> existingAllocs = allocationRepository.findByOrderId(orderId);
+        for (WarehouseAllocation existing : existingAllocs) {
+            if (existing.getWarehouse() != null) {
+                Optional<Inventory> invOpt = inventoryRepository.findByWarehouseIdAndProductId(
+                        existing.getWarehouse().getId(), existing.getProductId());
+                if (invOpt.isPresent()) {
+                    Inventory inv = invOpt.get();
+                    inv.setAllocated(Math.max(0, inv.getAllocated() - existing.getQuantity()));
+                    inventoryRepository.save(inv);
+                }
+            }
+            allocationRepository.delete(existing);
+        }
+
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        List<WarehouseAllocation> newAllocations = new ArrayList<>();
+
+        for (OrderItem item : items) {
+            Long productId = item.getProductId();
+            int qtyToAllocate = item.getQuantity();
+
+            Inventory inv = inventoryRepository.findByWarehouseIdAndProductId(warehouseId, productId)
+                    .orElseGet(() -> {
+                        Product product = productRepository.findById(productId)
+                                .orElseThrow(() -> new IllegalArgumentException("Product not found with ID: " + productId));
+                        return inventoryRepository.save(new Inventory(warehouse, product, 0));
+                    });
+
+            inv.setAllocated(inv.getAllocated() + qtyToAllocate);
+            inventoryRepository.save(inv);
+
+            WarehouseAllocation alloc = new WarehouseAllocation(
+                    orderId, item.getId(), productId, warehouse, qtyToAllocate, "ALLOCATED"
+            );
+            newAllocations.add(allocationRepository.save(alloc));
+            syncProductGlobalStock(productId);
+        }
+
+        order.setStatus("ALLOCATED");
+        orderRepository.save(order);
+
+        return newAllocations;
     }
 
     /**
@@ -136,6 +256,17 @@ public class WarehouseService {
      */
     @Transactional
     public WarehouseAllocation manualAllocate(String orderId, Long orderItemId, Long warehouseId, int qty) {
+        Optional<Order> orderOpt = orderRepository.findByOrderId(orderId);
+        if (orderOpt.isPresent()) {
+            String currentStatus = orderOpt.get().getStatus() != null ? orderOpt.get().getStatus().toUpperCase() : "";
+            if ("DELIVERED".equals(currentStatus) || "SHIPPED".equals(currentStatus) || 
+                "OUT_FOR_DELIVERY".equals(currentStatus) || "PACKED".equals(currentStatus) || 
+                "PICKED".equals(currentStatus) || "COMPLETED".equals(currentStatus) || 
+                "CANCELLED".equals(currentStatus) || "REFUNDED".equals(currentStatus)) {
+                throw new IllegalStateException("Order " + orderId + " is already in stage '" + currentStatus + "' and cannot be re-allocated.");
+            }
+        }
+
         // Find the item details
         OrderItem item = orderItemRepository.findById(orderItemId)
                 .orElseThrow(() -> new IllegalArgumentException("Order item not found"));
@@ -156,11 +287,11 @@ public class WarehouseService {
                     return inventoryRepository.save(new Inventory(warehouse, product, 0));
                 });
 
-        // Update inventory allocation
+        // Reserve allocated inventory
         inv.setAllocated(inv.getAllocated() + qty);
         inventoryRepository.save(inv);
 
-        // Save allocation log
+        // Save allocation record
         WarehouseAllocation alloc = new WarehouseAllocation(
                 orderId, orderItemId, item.getProductId(), warehouse, qty, "ALLOCATED"
         );
@@ -180,9 +311,9 @@ public class WarehouseService {
         List<WarehouseAllocation> allocations = allocationRepository.findByOrderId(orderId);
         for (WarehouseAllocation alloc : allocations) {
             if (alloc.getWarehouse() != null) {
-                // If it was already shipped (READY_FOR_SHIPMENT), physical quantity was already deducted
-                // and allocated stock was already released. So we only release if it is in ALLOCATED, PICKED, or PACKED stage.
+                // If not yet dispatched/shipped, release the allocated hold
                 if (!"READY_FOR_SHIPMENT".equalsIgnoreCase(alloc.getStatus()) 
+                        && !"READY_FOR_SHIPPING".equalsIgnoreCase(alloc.getStatus())
                         && !"DELIVERED".equalsIgnoreCase(alloc.getStatus())
                         && !"SHIPPED".equalsIgnoreCase(alloc.getStatus())) {
                     Optional<Inventory> invOpt = inventoryRepository.findByWarehouseIdAndProductId(
@@ -202,6 +333,8 @@ public class WarehouseService {
 
     /**
      * Advances the fulfillment workflow status of a specific warehouse allocation.
+     * Workflow: ALLOCATED -> PICKED (Pick products) -> PACKED (Pack products) -> READY_FOR_SHIPPING / SHIPPED (Prepare shipment & dispatch).
+     * Physical inventory movement is finalized at dispatch time.
      */
     @Transactional
     public WarehouseAllocation updateFulfillmentStatus(Long allocationId, String status, Map<String, Object> details) {
@@ -219,26 +352,34 @@ public class WarehouseService {
         alloc.setUpdatedAt(LocalDateTime.now());
 
         if ("PICKED".equals(newStatus)) {
-            // Picked - identified and verified. Simply change status.
+            // Picked - physically retrieved from storage bins by Warehouse Staff.
         } 
         else if ("PACKED".equals(newStatus)) {
-            // Packed - verify and containerize.
+            // Packed - verified, packaged, and containerized by Warehouse Staff.
             if (details != null && details.containsKey("packagingType")) {
                 alloc.setPackagingType(details.get("packagingType").toString());
             }
         } 
-        else if ("READY_FOR_SHIPMENT".equals(newStatus)) {
-            // Ship Prep - assign logistics details and deduct physical inventory.
+        else if ("READY_FOR_SHIPMENT".equals(newStatus) || "READY_FOR_SHIPPING".equals(newStatus) || "SHIPPED".equals(newStatus)) {
+            // Prepare Shipment - assign logistics details and deduct physical inventory.
             if (details != null) {
                 if (details.containsKey("courierPartner")) {
                     alloc.setCourierPartner(details.get("courierPartner").toString());
+                } else {
+                    alloc.setCourierPartner("ShopStack Express");
                 }
-                if (details.containsKey("trackingNumber")) {
+                if (details.containsKey("trackingNumber") && details.get("trackingNumber") != null && !details.get("trackingNumber").toString().trim().isEmpty()) {
                     alloc.setTrackingNumber(details.get("trackingNumber").toString());
                 }
             }
+            if (alloc.getCourierPartner() == null || alloc.getCourierPartner().trim().isEmpty()) {
+                alloc.setCourierPartner("ShopStack Express");
+            }
+            if (alloc.getTrackingNumber() == null || alloc.getTrackingNumber().trim().isEmpty()) {
+                alloc.setTrackingNumber("TRK-SSX-" + (int)(10000000 + Math.random() * 90000000));
+            }
 
-            // Deduct physical inventory stock since the item is prepared for carrier transit
+            // Finalize physical stock movement: deduct physical quantity and release allocated hold
             if (alloc.getWarehouse() != null) {
                 Optional<Inventory> invOpt = inventoryRepository.findByWarehouseIdAndProductId(
                         alloc.getWarehouse().getId(), alloc.getProductId()
@@ -248,13 +389,12 @@ public class WarehouseService {
                     inv.setQuantity(Math.max(0, inv.getQuantity() - alloc.getQuantity()));
                     inv.setAllocated(Math.max(0, inv.getAllocated() - alloc.getQuantity()));
                     inventoryRepository.save(inv);
-                    
-                    // Sync the product's global stock
                     syncProductGlobalStock(alloc.getProductId());
                 }
             }
         }
-        // Also update parent Order status to propagate to Customer Dashboard and other users
+
+        // Propagate Order status across the platform
         Optional<Order> orderOpt = orderRepository.findByOrderId(alloc.getOrderId());
         if (orderOpt.isPresent()) {
             Order order = orderOpt.get();
@@ -262,7 +402,7 @@ public class WarehouseService {
                 order.setStatus("PICKED");
             } else if ("PACKED".equals(newStatus)) {
                 order.setStatus("PACKED");
-            } else if ("READY_FOR_SHIPMENT".equals(newStatus) || "SHIPPED".equals(newStatus)) {
+            } else if ("READY_FOR_SHIPMENT".equals(newStatus) || "READY_FOR_SHIPPING".equals(newStatus) || "SHIPPED".equals(newStatus)) {
                 order.setStatus("SHIPPED");
             } else if ("DELIVERED".equals(newStatus)) {
                 order.setStatus("DELIVERED");
@@ -293,23 +433,32 @@ public class WarehouseService {
 
         int totalPhysicalStock = inventories.stream().mapToInt(Inventory::getQuantity).sum();
         int totalAllocatedStock = inventories.stream().mapToInt(Inventory::getAllocated).sum();
+        int totalDamagedStock = inventories.stream().mapToInt(Inventory::getDamagedQuantity).sum();
+        double totalDamagedValue = inventories.stream()
+                .mapToDouble(i -> i.getDamagedQuantity() * (i.getProduct() != null ? i.getProduct().getPrice() : 0.0))
+                .sum();
+
         metrics.put("totalPhysicalStock", totalPhysicalStock);
         metrics.put("totalAllocatedStock", totalAllocatedStock);
-        metrics.put("totalAvailableStock", totalPhysicalStock - totalAllocatedStock);
+        metrics.put("totalAvailableStock", Math.max(0, totalPhysicalStock - totalAllocatedStock));
+        metrics.put("totalDamagedStock", totalDamagedStock);
+        metrics.put("totalDamagedValue", Math.round(totalDamagedValue * 100.0) / 100.0);
 
-        // Status breakdown
+        // Status breakdown (null-safe)
         Map<String, Long> statusCounts = allocations.stream()
+                .filter(a -> a.getStatus() != null)
                 .collect(Collectors.groupingBy(WarehouseAllocation::getStatus, Collectors.counting()));
         metrics.put("statusBreakdown", statusCounts);
 
-        // Warehouse capacity metrics
+        // Warehouse capacity metrics (null-safe)
         List<Map<String, Object>> whDetails = warehouses.stream().map(wh -> {
             List<Inventory> whInv = inventories.stream()
-                    .filter(i -> i.getWarehouse().getId().equals(wh.getId()))
+                    .filter(i -> i.getWarehouse() != null && wh.getId().equals(i.getWarehouse().getId()))
                     .collect(Collectors.toList());
 
             int whQty = whInv.stream().mapToInt(Inventory::getQuantity).sum();
             int whAlloc = whInv.stream().mapToInt(Inventory::getAllocated).sum();
+            int whDamaged = whInv.stream().mapToInt(Inventory::getDamagedQuantity).sum();
 
             Map<String, Object> whMap = new HashMap<>();
             whMap.put("id", wh.getId());
@@ -318,10 +467,40 @@ public class WarehouseService {
             whMap.put("physicalStock", whQty);
             whMap.put("allocatedStock", whAlloc);
             whMap.put("availableStock", whQty - whAlloc);
+            whMap.put("damagedStock", whDamaged);
             return whMap;
         }).collect(Collectors.toList());
 
         metrics.put("warehouseDetails", whDetails);
         return metrics;
+    }
+
+    /**
+     * Disposition action on quarantined damaged stock (WRITE_OFF, RETURN_TO_VENDOR, REFURBISHED).
+     */
+    @Transactional
+    public Inventory handleDamagedStockAction(Long inventoryId, String action, int qty, String notes) {
+        Inventory inv = inventoryRepository.findById(inventoryId)
+                .orElseThrow(() -> new IllegalArgumentException("Inventory record not found"));
+
+        int currentDamaged = inv.getDamagedQuantity();
+        int processQty = qty > 0 ? Math.min(qty, currentDamaged) : currentDamaged;
+
+        if ("WRITE_OFF".equalsIgnoreCase(action) || "SCRAP".equalsIgnoreCase(action) || "RETURN_TO_VENDOR".equalsIgnoreCase(action)) {
+            // Deduct from damaged quarantine stock
+            inv.setDamagedQuantity(Math.max(0, currentDamaged - processQty));
+            inventoryRepository.save(inv);
+        } else if ("REFURBISHED".equalsIgnoreCase(action)) {
+            // Item repaired: move from damaged quarantine to active sellable stock
+            inv.setDamagedQuantity(Math.max(0, currentDamaged - processQty));
+            inv.setQuantity(inv.getQuantity() + processQty);
+            inventoryRepository.save(inv);
+            
+            // Sync main stock globally
+            if (inv.getProduct() != null) {
+                syncProductGlobalStock(inv.getProduct().getId());
+            }
+        }
+        return inv;
     }
 }

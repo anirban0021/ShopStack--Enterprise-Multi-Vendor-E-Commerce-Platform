@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
-  Truck, Calendar, ShoppingBag, Check, X, ShieldAlert, Package, CheckCircle2, 
+  Truck, Calendar, ShoppingBag, Check, X, ShieldAlert, ShieldCheck, Package, CheckCircle2, 
   RotateCcw, Clock, RefreshCw, Eye, Plus, Edit, PlusCircle, Trash, Box, 
-  MapPin, CheckCircle, BarChart3, AlertCircle, PlayCircle, Loader2
+  MapPin, CheckCircle, BarChart3, AlertCircle, PlayCircle, Loader2, Bell,
+  Layers, Repeat, ArrowRightLeft, FileText, ArrowRight, Store, Search, AlertTriangle
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
@@ -22,6 +23,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
   // Fulfillment Pipeline Sub-tabs: 'allocate' | 'pick' | 'pack' | 'ship'
   const [fulfillmentSubTab, setFulfillmentSubTab] = useState('allocate');
   
+  const [showNotifications, setShowNotifications] = useState(false);
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
   const [selectedReturnDetails, setSelectedReturnDetails] = useState(null);
 
@@ -31,6 +33,11 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
   const [showRestockModal, setShowRestockModal] = useState(false);
   const [showManualAllocModal, setShowManualAllocModal] = useState(false);
   const [showQcModal, setShowQcModal] = useState(false);
+  const [showDamagedActionModal, setShowDamagedActionModal] = useState(false);
+  const [selectedDamagedItem, setSelectedDamagedItem] = useState(null);
+  const [damagedActionForm, setDamagedActionForm] = useState({ action: 'WRITE_OFF', quantity: 1, notes: '' });
+  const [damagedSearchTerm, setDamagedSearchTerm] = useState('');
+  const [damagedWhFilter, setDamagedWhFilter] = useState('ALL');
 
   const [whForm, setWhForm] = useState({ name: '', code: '', address: '', city: '', active: true });
   const [editingWhId, setEditingWhId] = useState(null);
@@ -44,9 +51,41 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
   const [courierSelections, setCourierSelections] = useState({});
   const [trackingNumbers, setTrackingNumbers] = useState({});
 
+  // Facility filter (defaults to user's assigned warehouse if set)
+  const [facilityFilter, setFacilityFilter] = useState(user.warehouseId ? String(user.warehouseId) : 'ALL');
+
   useEffect(() => {
     fetchData();
   }, []);
+
+  const getFilteredAllocations = () => {
+    if (facilityFilter === 'ALL') return allocations;
+    return allocations.filter(a => String(a.warehouseId) === String(facilityFilter) || (a.warehouse && String(a.warehouse.id) === String(facilityFilter)));
+  };
+
+  const displayedAllocations = getFilteredAllocations();
+  const displayedInventories = facilityFilter === 'ALL'
+    ? inventories
+    : inventories.filter(i => String(i.warehouseId) === String(facilityFilter) || (i.warehouse && String(i.warehouse.id) === String(facilityFilter)));
+
+  const activeReturnsList = facilityFilter === 'ALL'
+    ? returnsList
+    : returnsList.filter(r => {
+        const orderAllocs = allocations.filter(a => a.orderId === r.orderId);
+        if (orderAllocs.length === 0) return true;
+        return orderAllocs.some(a => String(a.warehouseId) === String(facilityFilter) || (a.warehouse && String(a.warehouse.id) === String(facilityFilter)));
+      });
+
+  const pendingReturns = activeReturnsList.filter(r => r.status === 'PENDING');
+  const damagedInventories = facilityFilter === 'ALL'
+    ? inventories.filter(i => (i.damagedQuantity || 0) > 0)
+    : inventories.filter(i => (i.damagedQuantity || 0) > 0 && (String(i.warehouseId) === String(facilityFilter) || (i.warehouse && String(i.warehouse.id) === String(facilityFilter))));
+
+  const staffPendingAllocations = allocations.filter(a => 
+    a.status === 'ALLOCATED' && (
+      !user.warehouseId || String(a.warehouseId) === String(user.warehouseId) || (a.warehouse && String(a.warehouse.id) === String(user.warehouseId))
+    )
+  );
 
   const showFlash = (type, text) => {
     setFlashMessage({ type, text });
@@ -247,13 +286,23 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
     return trackingNumbers[allocId] || '';
   };
 
+  const handleReceivePackage = async (refundId) => {
+    try {
+      await axios.put(`http://localhost:8080/api/payment/refunds/${refundId}/receive`);
+      showFlash('success', 'Return package marked as received at warehouse facility. Ready for QC inspection.');
+      fetchData();
+    } catch (err) {
+      showFlash('error', err.response?.data || 'Failed to mark return package as received.');
+    }
+  };
+
   const handleQcSubmit = async (e) => {
     e.preventDefault();
     try {
       await axios.put(`http://localhost:8080/api/payment/refunds/${qcForm.refundId}/qc-inspection`, {
         passed: qcForm.passed,
         restockOption: qcForm.restockOption,
-        warehouseId: qcForm.passed && qcForm.restockOption === 'RESELLABLE' ? qcForm.warehouseId : null,
+        warehouseId: qcForm.warehouseId || (warehouses.length > 0 ? warehouses[0].id : null),
         notes: qcForm.notes,
         warehouseInspectionImage: qcForm.warehouseInspectionImage
       });
@@ -265,17 +314,44 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
     }
   };
 
-  const handleReceivePackage = async (refundId) => {
+  const handleOpenDamagedActionModal = (inv) => {
+    setSelectedDamagedItem(inv);
+    setDamagedActionForm({
+      action: 'WRITE_OFF',
+      quantity: inv.damagedQuantity || 1,
+      notes: ''
+    });
+    setShowDamagedActionModal(true);
+  };
+
+  const submitDamagedAction = async (e) => {
+    e.preventDefault();
+    if (!selectedDamagedItem) return;
     try {
-      await axios.put(`http://localhost:8080/api/payment/refunds/${refundId}/receive`);
-      showFlash('success', 'Return package marked as received.');
+      await axios.post(`http://localhost:8080/api/warehouses/damaged-stock/${selectedDamagedItem.id}/action`, {
+        action: damagedActionForm.action,
+        quantity: parseInt(damagedActionForm.quantity) || 1,
+        notes: damagedActionForm.notes
+      });
+      showFlash('success', `Disposition action (${damagedActionForm.action}) executed successfully.`);
+      setShowDamagedActionModal(false);
+      setSelectedDamagedItem(null);
       fetchData();
     } catch (err) {
-      showFlash('error', err.response?.data || 'Failed to mark package as received.');
+      showFlash('error', err.response?.data || 'Failed to process damaged stock action.');
     }
   };
 
-  const pendingReturns = returnsList.filter(r => r.status === 'PENDING');
+
+  const filteredDamagedInventories = damagedInventories.filter(i => {
+    const matchesSearch = !damagedSearchTerm || 
+      (i.productName && i.productName.toLowerCase().includes(damagedSearchTerm.toLowerCase())) ||
+      (i.productCategory && i.productCategory.toLowerCase().includes(damagedSearchTerm.toLowerCase())) ||
+      (i.warehouseName && i.warehouseName.toLowerCase().includes(damagedSearchTerm.toLowerCase())) ||
+      (i.warehouseCode && i.warehouseCode.toLowerCase().includes(damagedSearchTerm.toLowerCase()));
+    const matchesWh = damagedWhFilter === 'ALL' || String(i.warehouseId) === String(damagedWhFilter);
+    return matchesSearch && matchesWh;
+  });
 
   // Compute pending allocations or partially allocated items
   const getAllocationStatus = (orderId, orderItems) => {
@@ -283,8 +359,8 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
     if (orderAllocs.length === 0) return { label: 'Unallocated', class: 'badge-rejected', code: 0 };
     
     // Check total quantities
-    const totalAllocatedQty = orderAllocs.stream ? 0 : orderAllocs.reduce((sum, a) => sum + a.quantity, 0);
-    const totalRequiredQty = orderItems.reduce((sum, item) => sum + item.quantity, 0);
+    const totalAllocatedQty = orderAllocs.reduce((sum, a) => sum + (a.quantity || 0), 0);
+    const totalRequiredQty = orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
     const hasUnallocated = orderAllocs.some(a => a.status === 'UNALLOCATED');
     
@@ -321,11 +397,73 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
           </button>
         </div>
 
-        <div className="nav-right">
-          <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-            Warehouse Supervisor: <strong style={{ color: 'var(--text-primary)' }}>{user.fullName}</strong>
-            <span className="badge badge-pending" style={{ marginLeft: '10px' }}>LOGISTICS HUB</span>
-          </span>
+        <div className="nav-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {/* Allocation Notification Bell */}
+          <div className="notification-bell-container" style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setShowNotifications(!showNotifications)} 
+              className="btn-icon-only" 
+              style={{ position: 'relative', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              title="Allocation Alerts"
+            >
+              <Bell size={18} />
+              {staffPendingAllocations.length > 0 && (
+                <span className="notification-badge">
+                  {staffPendingAllocations.length}
+                </span>
+              )}
+            </button>
+            
+            {showNotifications && (
+              <div className="notifications-dropdown" style={{ right: 0, left: 'auto', width: '360px' }}>
+                <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-light)', fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Admin Allocation Alerts</span>
+                  <span className="badge badge-vendor" style={{ fontSize: '10px' }}>{staffPendingAllocations.length} Orders</span>
+                </div>
+                <div style={{ overflowY: 'auto', flex: 1, maxHeight: '320px' }}>
+                  {staffPendingAllocations.length === 0 ? (
+                    <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)' }}>
+                      No new order allocations pending for your facility.
+                    </div>
+                  ) : (
+                    staffPendingAllocations.map(alloc => (
+                      <div 
+                        key={alloc.id}
+                        onClick={() => {
+                          setActiveTab('fulfillment');
+                          setFulfillmentSubTab('pick');
+                          setShowNotifications(false);
+                        }}
+                        className="dropdown-item-notification"
+                        style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-light)', cursor: 'pointer', display: 'flex', gap: '10px', alignItems: 'flex-start' }}
+                      >
+                        <Package size={18} style={{ color: 'var(--accent-indigo)', flexShrink: 0, marginTop: '2px' }} />
+                        <div>
+                          <strong style={{ fontSize: '12px', color: 'var(--text-primary)' }}>Order #{alloc.orderId}</strong>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            {alloc.quantity}x {alloc.productName}
+                          </div>
+                          <div style={{ fontSize: '10px', color: 'var(--accent-teal)', marginTop: '4px', fontWeight: '700' }}>
+                            ✓ Allocated by Admin • Ready for Picking
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+              Supervisor: <strong style={{ color: 'var(--text-primary)' }}>{user.fullName}</strong>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--accent-teal)', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', marginTop: '2px' }}>
+              <MapPin size={12} />
+              <span>Assigned: <strong>{user.warehouseName || (user.warehouseId ? `Facility #${user.warehouseId}` : 'Central Hub (All Facilities)')}</strong></span>
+            </div>
+          </div>
           <button onClick={fetchData} className="btn btn-secondary" style={{ padding: '6px 12px', display: 'flex', gap: '6px', alignItems: 'center' }}>
             {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             Reload
@@ -362,17 +500,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
           style={{ padding: '14px 18px', background: 'transparent', borderBottom: activeTab === 'fulfillment' ? '2px solid var(--accent-indigo)' : 'none' }}
         >
           <Truck size={17} style={{ color: activeTab === 'fulfillment' ? 'var(--accent-indigo)' : 'var(--text-muted)' }} />
-          <span>Fulfillment Workflow Pipeline</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('warehouses')}
-          className={`sidebar-item ${activeTab === 'warehouses' ? 'sidebar-item-active' : ''}`}
-          style={{ padding: '14px 18px', background: 'transparent', borderBottom: activeTab === 'warehouses' ? '2px solid var(--accent-indigo)' : 'none' }}
-        >
-          <MapPin size={17} style={{ color: activeTab === 'warehouses' ? 'var(--accent-indigo)' : 'var(--text-muted)' }} />
-          <span>Warehouse Bins ({warehouses.length})</span>
+          <span>Fulfillment Pipeline</span>
         </button>
 
         <button
@@ -382,7 +510,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
           style={{ padding: '14px 18px', background: 'transparent', borderBottom: activeTab === 'inventory' ? '2px solid var(--accent-indigo)' : 'none' }}
         >
           <Package size={17} style={{ color: activeTab === 'inventory' ? 'var(--accent-indigo)' : 'var(--text-muted)' }} />
-          <span>Inventory Audit ({inventories.length})</span>
+          <span>Warehouse Stock ({displayedInventories.length})</span>
         </button>
 
         <button
@@ -392,9 +520,70 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
           style={{ padding: '14px 18px', background: 'transparent', borderBottom: activeTab === 'returns' ? '2px solid var(--accent-indigo)' : 'none' }}
         >
           <RotateCcw size={17} style={{ color: activeTab === 'returns' ? 'var(--accent-indigo)' : 'var(--text-muted)' }} />
-          <span>Inward Returns QC ({pendingReturns.length})</span>
+          <span>Inward Returns & QC ({pendingReturns.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('damaged')}
+          className={`sidebar-item ${activeTab === 'damaged' ? 'sidebar-item-active' : ''}`}
+          style={{ padding: '14px 18px', background: 'transparent', borderBottom: activeTab === 'damaged' ? '2px solid var(--accent-rose, #ef4444)' : 'none' }}
+        >
+          <ShieldAlert size={17} style={{ color: activeTab === 'damaged' ? 'var(--accent-rose, #ef4444)' : 'var(--text-muted)' }} />
+          <span>Damaged & Quarantine ({damagedInventories.length})</span>
         </button>
       </div>
+
+      {/* Staff Allocation Notification Alert Banner */}
+      {staffPendingAllocations.length > 0 && (
+        <div style={{
+          margin: '16px 24px 0 24px',
+          padding: '14px 20px',
+          borderRadius: '10px',
+          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(99, 102, 241, 0.12) 100%)',
+          border: '1px solid rgba(99, 102, 241, 0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '16px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: 'var(--accent-indigo)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              flexShrink: 0
+            }}>
+              <Bell size={18} />
+            </div>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                New Order Allocation Alert
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                Administrator allocated <strong>{staffPendingAllocations.length}</strong> new order item(s) to <strong>{user.warehouseName || 'your facility'}</strong>. Ready for physical picking and packing.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('fulfillment');
+              setFulfillmentSubTab('pick');
+            }}
+            className="btn btn-primary"
+            style={{ padding: '6px 16px', fontSize: '12px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            Open Picking Queue ({staffPendingAllocations.length}) →
+          </button>
+        </div>
+      )}
 
       <div className="dashboard-layout" style={{ flexDirection: 'column', padding: '24px' }}>
         <div className="main-content" style={{ width: '100%' }}>
@@ -402,95 +591,148 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
           {/* TAB 1: ANALYTICS OVERVIEW */}
           {activeTab === 'analytics' && (
             <div>
-              <h2 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '4px' }}>Fulfillment Logistics Center</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
-                Operational dashboard and key efficiency metrics for physical warehouse capacities and order queues.
-              </p>
-
-              {/* Analytics Cards Grid */}
-              <div className="dashboard-metrics" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '30px' }}>
-                <div className="metric-card">
-                  <div className="flex-between">
-                    <span className="metric-label">Operational Warehouses</span>
-                    <MapPin size={18} style={{ color: 'var(--accent-indigo)' }} />
-                  </div>
-                  <div className="metric-value">{analytics.totalWarehouses || 0}</div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    {analytics.activeWarehouses || 0} active, { (analytics.totalWarehouses || 0) - (analytics.activeWarehouses || 0) } inactive
-                  </span>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '22px', fontWeight: '800', margin: 0 }}>Fulfillment Logistics Center</h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: '4px 0 0 0' }}>
+                    Operational dashboard and key efficiency metrics for physical warehouse capacities and order queues.
+                  </p>
                 </div>
 
-                <div className="metric-card">
-                  <div className="flex-between">
-                    <span className="metric-label">Physical Stock Stored</span>
-                    <Package size={18} style={{ color: 'var(--accent-teal)' }} />
-                  </div>
-                  <div className="metric-value">{analytics.totalPhysicalStock || 0} units</div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Total items residing physically inside warehouse bins.
-                  </span>
-                </div>
-
-                <div className="metric-card">
-                  <div className="flex-between">
-                    <span className="metric-label">Allocated/Reserved Stock</span>
-                    <Clock size={18} style={{ color: 'var(--accent-amber)' }} />
-                  </div>
-                  <div className="metric-value">{analytics.totalAllocatedStock || 0} units</div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Items reserved for confirmed orders being packaged.
-                  </span>
-                </div>
-
-                <div className="metric-card">
-                  <div className="flex-between">
-                    <span className="metric-label">Available for Sale</span>
-                    <CheckCircle size={18} style={{ color: 'var(--accent-emerald)' }} />
-                  </div>
-                  <div className="metric-value" style={{ color: 'var(--accent-emerald)' }}>{analytics.totalAvailableStock || 0} units</div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Unreserved warehouse stock ready for retail order matching.
-                  </span>
+                {/* Facility Scope Switcher */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600' }}>Scope:</span>
+                  <select
+                    value={facilityFilter}
+                    onChange={(e) => setFacilityFilter(e.target.value)}
+                    className="form-input"
+                    style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '6px', minWidth: '220px' }}
+                  >
+                    <option value="ALL">🌐 Network-Wide (All 3 Hubs)</option>
+                    {warehouses.map(wh => (
+                      <option key={wh.id} value={String(wh.id)}>
+                        {wh.name} ({wh.code})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              {/* Status Breakdown Tracker */}
-              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px', marginBottom: '30px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px' }}>Pipeline Distribution Tracker</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', textAlign: 'center' }}>
-                  <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>1. STOCK ALLOCATED</div>
-                    <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-blue)' }}>
-                      {analytics.statusBreakdown?.ALLOCATED || 0}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Awaiting Pick list check</div>
-                  </div>
+              {/* Analytics Summary Cards - Dynamically scoped to selected facility */}
+              {(() => {
+                const activeWhInventories = facilityFilter === 'ALL'
+                  ? inventories
+                  : inventories.filter(i => String(i.warehouseId) === String(facilityFilter) || (i.warehouse && String(i.warehouse.id) === String(facilityFilter)));
+                const facilityPhysicalStock = activeWhInventories.reduce((s, i) => s + (i.quantity || 0), 0);
+                const facilityAllocatedStock = activeWhInventories.reduce((s, i) => s + (i.allocated || 0), 0);
+                const facilityAvailableStock = Math.max(0, facilityPhysicalStock - facilityAllocatedStock);
+                const facilityDamagedStock = activeWhInventories.reduce((s, i) => s + (i.damagedQuantity || 0), 0);
+                const facilityDamagedValue = activeWhInventories.reduce((s, i) => s + ((i.damagedQuantity || 0) * (i.productPrice || 0)), 0);
 
-                  <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>2. PRODUCT PICKED</div>
-                    <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-teal)' }}>
-                      {analytics.statusBreakdown?.PICKED || 0}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pending carton packing</div>
-                  </div>
+                const facilityStatusAllocated = facilityFilter === 'ALL' ? (analytics.statusBreakdown?.ALLOCATED || 0) : displayedAllocations.filter(a => a.status === 'ALLOCATED').length;
+                const facilityStatusPicked = facilityFilter === 'ALL' ? (analytics.statusBreakdown?.PICKED || 0) : displayedAllocations.filter(a => a.status === 'PICKED').length;
+                const facilityStatusPacked = facilityFilter === 'ALL' ? (analytics.statusBreakdown?.PACKED || 0) : displayedAllocations.filter(a => a.status === 'PACKED').length;
+                const facilityStatusShipped = facilityFilter === 'ALL' ? (analytics.statusBreakdown?.READY_FOR_SHIPMENT || 0) : displayedAllocations.filter(a => a.status === 'READY_FOR_SHIPMENT' || a.status === 'SHIPPED').length;
 
-                  <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>3. ORDER PACKED</div>
-                    <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-indigo)' }}>
-                      {analytics.statusBreakdown?.PACKED || 0}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pending courier shipment</div>
-                  </div>
+                return (
+                  <>
+                    <div className="analytics-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+                      <div className="metric-card">
+                        <div className="flex-between">
+                          <span className="metric-label">{facilityFilter === 'ALL' ? 'Active Facilities' : 'Facility Status'}</span>
+                          <MapPin size={18} style={{ color: 'var(--accent-indigo)' }} />
+                        </div>
+                        <div className="metric-value">{facilityFilter === 'ALL' ? `${warehouses.filter(w => w.active).length} Hubs` : 'OPERATIONAL'}</div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          {facilityFilter === 'ALL' ? `${warehouses.length} registered fulfillment facilities` : `${warehouses.find(w => String(w.id) === String(facilityFilter))?.name || 'Dedicated fulfillment hub'}`}
+                        </span>
+                      </div>
 
-                  <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>4. READY FOR SHIPMENT</div>
-                    <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-emerald)' }}>
-                      {analytics.statusBreakdown?.READY_FOR_SHIPMENT || 0}
+                      <div className="metric-card">
+                        <div className="flex-between">
+                          <span className="metric-label">Physical Stock Stored</span>
+                          <Package size={18} style={{ color: 'var(--accent-teal)' }} />
+                        </div>
+                        <div className="metric-value">{facilityPhysicalStock} units</div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          Total items residing physically inside warehouse bins.
+                        </span>
+                      </div>
+
+                      <div className="metric-card">
+                        <div className="flex-between">
+                          <span className="metric-label">Allocated/Reserved Stock</span>
+                          <Clock size={18} style={{ color: 'var(--accent-amber)' }} />
+                        </div>
+                        <div className="metric-value">{facilityAllocatedStock} units</div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          Items reserved for confirmed orders being packaged.
+                        </span>
+                      </div>
+
+                      <div className="metric-card">
+                        <div className="flex-between">
+                          <span className="metric-label">Available for Sale</span>
+                          <CheckCircle size={18} style={{ color: 'var(--accent-emerald)' }} />
+                        </div>
+                        <div className="metric-value" style={{ color: 'var(--accent-emerald)' }}>{facilityAvailableStock} units</div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          Unreserved warehouse stock ready for retail order matching.
+                        </span>
+                      </div>
+
+                      <div className="metric-card" style={{ border: '1px solid rgba(239, 68, 68, 0.25)', background: 'linear-gradient(135deg, var(--bg-card) 0%, rgba(239, 68, 68, 0.04) 100%)' }}>
+                        <div className="flex-between">
+                          <span className="metric-label" style={{ color: '#ef4444' }}>Damaged & Quarantine</span>
+                          <ShieldAlert size={18} style={{ color: '#ef4444' }} />
+                        </div>
+                        <div className="metric-value" style={{ color: '#ef4444' }}>{facilityDamagedStock} units</div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          ₹{Math.round(facilityDamagedValue).toLocaleString('en-IN')} loss valuation quarantined from active catalog.
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Deducted from physically stored</div>
-                  </div>
-                </div>
-              </div>
+
+                    {/* Status Breakdown Tracker */}
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px', marginBottom: '30px' }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px' }}>Pipeline Distribution Tracker</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', textAlign: 'center' }}>
+                        <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>1. STOCK ALLOCATED</div>
+                          <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-blue)' }}>
+                            {facilityStatusAllocated}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Awaiting Pick list check</div>
+                        </div>
+
+                        <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>2. PRODUCT PICKED</div>
+                          <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-teal)' }}>
+                            {facilityStatusPicked}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pending carton packing</div>
+                        </div>
+
+                        <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>3. ORDER PACKED</div>
+                          <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-indigo)' }}>
+                            {facilityStatusPacked}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pending courier shipment</div>
+                        </div>
+
+                        <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>4. READY FOR SHIPMENT</div>
+                          <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-emerald)' }}>
+                            {facilityStatusShipped}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Deducted from physically stored</div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* Warehouse Occupancy Capacities */}
               <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
@@ -507,6 +749,11 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                             <strong style={{ fontSize: '14px' }}>{wh.name} ({wh.code})</strong>
                             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '12px' }}>
                               Available Stock: <strong style={{ color: 'var(--accent-emerald)' }}>{wh.availableStock}</strong> | Reserved: <strong>{wh.allocatedStock}</strong>
+                              {wh.damagedStock > 0 && (
+                                <span style={{ color: 'var(--accent-rose, #ef4444)', marginLeft: '8px', fontWeight: '700' }}>
+                                  • ⚠️ Quarantined: {wh.damagedStock} unit{wh.damagedStock > 1 ? 's' : ''}
+                                </span>
+                              )}
                             </span>
                           </div>
                           <span style={{ fontSize: '13px', fontWeight: '600' }}>{totalWhStock} / {limit} Units ({pct}%)</span>
@@ -531,51 +778,72 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
           {/* TAB 2: FULFILLMENT WORKFLOW PIPELINE */}
           {activeTab === 'fulfillment' && (
             <div>
-              <div className="flex-between" style={{ marginBottom: '20px' }}>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
-                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Logistics Fulfillment Pipeline</h2>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Truck size={22} style={{ color: 'var(--accent-indigo)' }} />
+                    Logistics Fulfillment Pipeline
+                  </h2>
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    Track, allocate, pack and ship incoming customer orders through physical fulfillment phases.
+                    Process assigned customer orders through physical Pick → Pack → Dispatch & Ship → Delivery phases.
                   </p>
+                </div>
+
+                {/* Facility Scope Selector */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Facility Filter:</span>
+                  <select
+                    value={facilityFilter}
+                    onChange={(e) => setFacilityFilter(e.target.value)}
+                    className="form-select"
+                    style={{ fontSize: '12px', padding: '6px 12px', minWidth: '180px' }}
+                  >
+                    <option value="ALL">All Facilities Hub ({allocations.length})</option>
+                    {warehouses.map(wh => (
+                      <option key={wh.id} value={String(wh.id)}>
+                        {wh.name} ({wh.code})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               {/* Sub-tab Navigation */}
-              <div style={{ display: 'flex', borderBottom: '1px solid var(--border-light)', marginBottom: '20px', gap: '4px' }}>
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--border-light)', marginBottom: '20px', gap: '4px', overflowX: 'auto' }}>
                 <button 
                   onClick={() => setFulfillmentSubTab('allocate')}
                   className={`btn ${fulfillmentSubTab === 'allocate' ? 'btn-primary' : 'btn-secondary'}`}
                   style={{ borderRadius: '6px 6px 0 0', padding: '8px 16px', fontSize: '13px', borderBottom: 'none' }}
                 >
-                  1. Warehouse Allocation ({allOrders.filter(o => o.status === 'CONFIRMED').length})
+                  1. Allocation Review ({allOrders.filter(o => o.status === 'CONFIRMED').length})
                 </button>
                 <button 
                   onClick={() => setFulfillmentSubTab('pick')}
                   className={`btn ${fulfillmentSubTab === 'pick' ? 'btn-primary' : 'btn-secondary'}`}
                   style={{ borderRadius: '6px 6px 0 0', padding: '8px 16px', fontSize: '13px', borderBottom: 'none' }}
                 >
-                  2. Picking Queue ({allocations.filter(a => a.status === 'ALLOCATED').length})
+                  2. Picking Queue ({displayedAllocations.filter(a => a.status === 'ALLOCATED').length})
                 </button>
                 <button 
                   onClick={() => setFulfillmentSubTab('pack')}
                   className={`btn ${fulfillmentSubTab === 'pack' ? 'btn-primary' : 'btn-secondary'}`}
                   style={{ borderRadius: '6px 6px 0 0', padding: '8px 16px', fontSize: '13px', borderBottom: 'none' }}
                 >
-                  3. Packing Queue ({allocations.filter(a => a.status === 'PICKED').length})
+                  3. Packing Queue ({displayedAllocations.filter(a => a.status === 'PICKED').length})
                 </button>
                 <button 
                   onClick={() => setFulfillmentSubTab('ship')}
                   className={`btn ${fulfillmentSubTab === 'ship' ? 'btn-primary' : 'btn-secondary'}`}
                   style={{ borderRadius: '6px 6px 0 0', padding: '8px 16px', fontSize: '13px', borderBottom: 'none' }}
                 >
-                  4. Carrier Dispatch ({allocations.filter(a => a.status === 'PACKED').length})
+                  4. Carrier Dispatch ({displayedAllocations.filter(a => a.status === 'PACKED').length})
                 </button>
                 <button 
                   onClick={() => setFulfillmentSubTab('transit')}
                   className={`btn ${fulfillmentSubTab === 'transit' ? 'btn-primary' : 'btn-secondary'}`}
                   style={{ borderRadius: '6px 6px 0 0', padding: '8px 16px', fontSize: '13px', borderBottom: 'none' }}
                 >
-                  5. In Transit ({allocations.filter(a => a.status === 'READY_FOR_SHIPMENT' || a.status === 'SHIPPED').length})
+                  5. In Transit & Delivered ({displayedAllocations.filter(a => a.status === 'READY_FOR_SHIPMENT' || a.status === 'SHIPPED').length})
                 </button>
               </div>
 
@@ -660,7 +928,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
               {/* SUBTAB 2: PICKING QUEUE */}
               {fulfillmentSubTab === 'pick' && (
                 <div>
-                  {allocations.filter(a => a.status === 'ALLOCATED').length === 0 ? (
+                  {displayedAllocations.filter(a => a.status === 'ALLOCATED').length === 0 ? (
                     <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '12px' }}>
                       <CheckCircle2 className="cart-empty-icon" style={{ opacity: 0.2, color: 'var(--accent-emerald)' }} />
                       <p>Picking queues are clear. No pending items to pull from bins.</p>
@@ -678,7 +946,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {allocations.filter(a => a.status === 'ALLOCATED').map((alloc) => (
+                          {displayedAllocations.filter(a => a.status === 'ALLOCATED').map((alloc) => (
                             <tr key={alloc.id}>
                               <td style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>{alloc.orderId}</td>
                               <td style={{ fontWeight: '600' }}>{alloc.productName}</td>
@@ -708,7 +976,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
               {/* SUBTAB 3: PACKING QUEUE */}
               {fulfillmentSubTab === 'pack' && (
                 <div>
-                  {allocations.filter(a => a.status === 'PICKED').length === 0 ? (
+                  {displayedAllocations.filter(a => a.status === 'PICKED').length === 0 ? (
                     <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '12px' }}>
                       <CheckCircle2 className="cart-empty-icon" style={{ opacity: 0.2, color: 'var(--accent-emerald)' }} />
                       <p>Packaging tables are clear. No picked items require boxing.</p>
@@ -727,7 +995,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {allocations.filter(a => a.status === 'PICKED').map((alloc) => (
+                          {displayedAllocations.filter(a => a.status === 'PICKED').map((alloc) => (
                             <tr key={alloc.id}>
                               <td style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>{alloc.orderId}</td>
                               <td style={{ fontWeight: '600' }}>{alloc.productName}</td>
@@ -770,7 +1038,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
               {/* SUBTAB 4: CARRIER DISPATCH */}
               {fulfillmentSubTab === 'ship' && (
                 <div>
-                  {allocations.filter(a => a.status === 'PACKED').length === 0 ? (
+                  {displayedAllocations.filter(a => a.status === 'PACKED').length === 0 ? (
                     <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '12px' }}>
                       <CheckCircle2 className="cart-empty-icon" style={{ opacity: 0.2, color: 'var(--accent-emerald)' }} />
                       <p>All packed items have been dispatched to shipping carriers.</p>
@@ -789,7 +1057,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {allocations.filter(a => a.status === 'PACKED').map((alloc) => (
+                          {displayedAllocations.filter(a => a.status === 'PACKED').map((alloc) => (
                             <tr key={alloc.id}>
                               <td style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>{alloc.orderId}</td>
                               <td>{alloc.productName} <span style={{ color: 'var(--text-secondary)' }}>x{alloc.quantity}</span></td>
@@ -798,18 +1066,12 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                               </td>
                               <td>
                                 <select
-                                  value={courierSelections[alloc.id] || 'ShopStack Express'}
-                                  onChange={(e) => setCourierSelections({
-                                    ...courierSelections,
-                                    [alloc.id]: e.target.value
-                                  })}
+                                  value="ShopStack Express"
+                                  disabled
                                   className="form-select"
-                                  style={{ padding: '6px', fontSize: '12px', width: '150px' }}
+                                  style={{ padding: '6px', fontSize: '12px', width: '150px', background: 'var(--bg-card)' }}
                                 >
                                   <option value="ShopStack Express">ShopStack Express</option>
-                                  <option value="BlueDart Logistics">BlueDart Logistics</option>
-                                  <option value="Delhivery Courier">Delhivery Courier</option>
-                                  <option value="DHL Express International">DHL Express</option>
                                 </select>
                               </td>
                               <td>
@@ -858,7 +1120,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
               {/* SUBTAB 5: IN TRANSIT QUEUE */}
               {fulfillmentSubTab === 'transit' && (
                 <div>
-                  {allocations.filter(a => a.status === 'READY_FOR_SHIPMENT' || a.status === 'SHIPPED').length === 0 ? (
+                  {displayedAllocations.filter(a => a.status === 'READY_FOR_SHIPMENT' || a.status === 'SHIPPED').length === 0 ? (
                     <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '12px' }}>
                       <CheckCircle2 className="cart-empty-icon" style={{ opacity: 0.2, color: 'var(--accent-emerald)' }} />
                       <p>No packages currently in transit.</p>
@@ -876,7 +1138,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {allocations.filter(a => a.status === 'READY_FOR_SHIPMENT' || a.status === 'SHIPPED').map((alloc) => (
+                          {displayedAllocations.filter(a => a.status === 'READY_FOR_SHIPMENT' || a.status === 'SHIPPED').map((alloc) => (
                             <tr key={alloc.id}>
                               <td style={{ fontWeight: 'bold', fontFamily: 'monospace' }}>{alloc.orderId}</td>
                               <td>{alloc.productName} <span style={{ color: 'var(--text-secondary)' }}>x{alloc.quantity}</span></td>
@@ -908,144 +1170,117 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
             </div>
           )}
 
-          {/* TAB 3: WAREHOUSE BINS CRUD */}
-          {activeTab === 'warehouses' && (
-            <div>
-              <div className="flex-between" style={{ marginBottom: '20px' }}>
-                <div>
-                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Warehouse Storage Locations</h2>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    Configure physical structures and toggle status mappings of logistically operational warehouses.
-                  </p>
-                </div>
-                <button onClick={() => setShowAddWhModal(true)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Plus size={16} /> Register New Bin
-                </button>
-              </div>
-
-              <div className="table-container">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Code</th>
-                      <th>Warehouse Name</th>
-                      <th>Location City</th>
-                      <th>Street Address</th>
-                      <th>Logistics Status</th>
-                      <th style={{ textAlign: 'center', width: '180px' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {warehouses.map((wh) => (
-                      <tr key={wh.id}>
-                        <td style={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--accent-blue)' }}>{wh.code}</td>
-                        <td style={{ fontWeight: '600' }}>{wh.name}</td>
-                        <td>{wh.city}</td>
-                        <td style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{wh.address}</td>
-                        <td>
-                          <span className={`badge ${wh.active ? 'badge-approved' : 'badge-rejected'}`}>
-                            {wh.active ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                            <button onClick={() => handleEditWarehouse(wh)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                              <Edit size={12} /> Edit
-                            </button>
-                            <button 
-                              onClick={() => handleToggleWarehouseStatus(wh)} 
-                              className={`btn ${wh.active ? 'btn-secondary' : 'btn-primary'}`}
-                              style={{ padding: '4px 8px', fontSize: '11px' }}
-                            >
-                              {wh.active ? 'Disable' : 'Activate'}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: INVENTORY AUDIT & replenishment */}
+          {/* TAB 3: WAREHOUSE LOCAL STOCK */}
           {activeTab === 'inventory' && (
             <div>
-              <div className="flex-between" style={{ marginBottom: '20px' }}>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
-                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0 }}>Warehouse Inventory Audit Ledger</h2>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    Track exact unit bins, view reservations, and manually replenish catalog stocks directly.
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Package size={22} style={{ color: 'var(--accent-indigo)' }} />
+                    Warehouse Inventory & Stock
+                  </h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Physical stock located in this facility with real-time allocated reservations and available quantities.
                   </p>
                 </div>
-                <button onClick={() => setShowRestockModal(true)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <PlusCircle size={16} /> Replenish Stock
-                </button>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => setShowRestockModal(true)}
+                    className="btn btn-primary"
+                    style={{ fontSize: '12px', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Plus size={14} /> Replenish Stock
+                  </button>
+                  <button
+                    onClick={fetchData}
+                    className="btn btn-secondary"
+                    style={{ fontSize: '12px', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
+                  </button>
+                </div>
               </div>
 
-              <div className="table-container">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Warehouse</th>
-                      <th>Product Stored</th>
-                      <th>Category</th>
-                      <th>Physical Stock</th>
-                      <th>Allocated / Reserved</th>
-                      <th>Available stock</th>
-                      <th style={{ textAlign: 'center', width: '120px' }}>Direct Adjust</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inventories.map((inv) => (
-                      <tr key={inv.id}>
-                        <td>
-                          <strong>{inv.warehouseName}</strong>
-                          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Code: {inv.warehouseCode}</div>
-                        </td>
-                        <td style={{ fontWeight: '600' }}>{inv.productName}</td>
-                        <td>
-                          <span className="badge badge-customer">{inv.productCategory}</span>
-                        </td>
-                        <td style={{ fontWeight: 'bold' }}>{inv.quantity}</td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{inv.allocated}</td>
-                        <td style={{ color: inv.available < 5 ? 'var(--accent-rose)' : 'var(--accent-emerald)', fontWeight: 'bold' }}>
-                          {inv.available}
-                          {inv.available < 5 && (
-                            <span style={{ fontSize: '9px', display: 'block', color: 'var(--accent-rose)' }}>
-                              Low Units Alert
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                            <button 
-                              onClick={() => handleUpdateInventoryDirect(inv.id, inv.quantity - 1)}
-                              className="btn btn-secondary" 
-                              style={{ padding: '2px 8px', fontSize: '12px' }}
-                              disabled={inv.quantity <= inv.allocated}
-                              title="Decrease physical stock (limited by allocation)"
-                            >
-                              -
-                            </button>
-                            <button 
-                              onClick={() => handleUpdateInventoryDirect(inv.id, inv.quantity + 1)}
-                              className="btn btn-secondary" 
-                              style={{ padding: '2px 8px', fontSize: '12px' }}
-                              title="Increase physical stock"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </td>
+              {displayedInventories.length === 0 ? (
+                <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '12px' }}>
+                  <Package className="cart-empty-icon" style={{ opacity: 0.2 }} />
+                  <p>No inventory records found for the selected facility.</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>Product Details</th>
+                        <th>Category</th>
+                        <th>Facility / Hub</th>
+                        <th style={{ textAlign: 'center' }}>Physical Count</th>
+                        <th style={{ textAlign: 'center' }}>Allocated Hold</th>
+                        <th style={{ textAlign: 'center' }}>Available to Pick</th>
+                        <th style={{ textAlign: 'center' }}>Quick Stock Adjustment</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {displayedInventories.map((inv) => (
+                        <tr key={inv.id}>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ width: '32px', height: '32px', borderRadius: '6px', overflow: 'hidden', background: 'var(--bg-input)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {inv.productImageUrl ? (
+                                  <img src={inv.productImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <ProductIcon name={inv.productName} category={inv.productCategory} size={16} />
+                                )}
+                              </div>
+                              <div>
+                                <strong>{inv.productName}</strong>
+                                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{inv.productPrice}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td><span className="badge badge-customer">{inv.productCategory}</span></td>
+                          <td>
+                            <strong>{inv.warehouseName}</strong>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Code: {inv.warehouseCode}</div>
+                          </td>
+                          <td style={{ textAlign: 'center', fontWeight: '800' }}>{inv.quantity} units</td>
+                          <td style={{ textAlign: 'center', color: 'var(--accent-blue)', fontWeight: '700' }}>{inv.allocated || 0}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <strong style={{ color: (inv.available || 0) < 5 ? '#ef4444' : '#10b981', fontSize: '14px' }}>
+                              {inv.available || 0} units
+                            </strong>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                              <button
+                                onClick={() => handleUpdateInventoryDirect(inv.id, (inv.quantity || 0) - 1)}
+                                className="btn btn-secondary"
+                                style={{ padding: '2px 8px', fontSize: '12px' }}
+                                disabled={inv.quantity <= (inv.allocated || 0)}
+                              >
+                                -
+                              </button>
+                              <span style={{ minWidth: '30px', fontWeight: '700', textAlign: 'center' }}>{inv.quantity}</span>
+                              <button
+                                onClick={() => handleUpdateInventoryDirect(inv.id, (inv.quantity || 0) + 1)}
+                                className="btn btn-secondary"
+                                style={{ padding: '2px 8px', fontSize: '12px' }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
+
+
 
           {/* TAB 5: INWARD RETURNS & QC */}
           {activeTab === 'returns' && (
@@ -1061,7 +1296,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                 </div>
               </div>
 
-              {returnsList.length === 0 ? (
+              {activeReturnsList.length === 0 ? (
                 <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '12px' }}>
                   <RotateCcw className="cart-empty-icon" style={{ opacity: 0.2 }} />
                   <p>No customer return packages registered.</p>
@@ -1081,7 +1316,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {returnsList.map((r) => (
+                      {activeReturnsList.map((r) => (
                         <tr key={r.id}>
                           <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{r.requestedAt}</td>
                           <td style={{ fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--accent-blue)' }}>{r.orderId}</td>
@@ -1132,7 +1367,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                               >
                                 <Eye size={12} /> Details
                               </button>
-                              {r.status === 'PENDING' && (r.returnStage === 'REQUESTED' || r.returnStage === 'VENDOR_APPROVED' || r.returnStage === 'VENDOR_DISPUTED') && (
+                              {r.status === 'PENDING' && (r.returnStage === 'REQUESTED' || r.returnStage === 'VENDOR_APPROVED' || r.returnStage === 'VENDOR_DISPUTED' || r.returnStage === 'ADMIN_APPROVED') && (
                                 <button
                                   type="button"
                                   onClick={() => handleReceivePackage(r.id)}
@@ -1146,12 +1381,26 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    const isDamaged = (r.returnReasonCategory && (r.returnReasonCategory.toUpperCase().includes('DEFECT') || r.returnReasonCategory.toUpperCase().includes('DAMAGE'))) ||
+                                      (r.reason && (r.reason.toLowerCase().includes('defect') || r.reason.toLowerCase().includes('damage')));
+
+                                    // Find originating allocated warehouse for this specific order
+                                    const orderAllocs = allocations.filter(a => a.orderId === r.orderId);
+                                    const allocatedWhId = orderAllocs.find(a => a.warehouseId || a.warehouse)?.warehouseId 
+                                      || (orderAllocs.find(a => a.warehouse)?.warehouse?.id)
+                                      || (user.warehouseId ? String(user.warehouseId) : '')
+                                      || (warehouses.length > 0 ? String(warehouses[0].id) : '');
+
                                     setQcForm({
                                       refundId: r.id,
+                                      orderId: r.orderId,
+                                      customerReason: r.reason,
+                                      category: r.returnReasonCategory,
+                                      isDamagedCategory: isDamaged,
                                       passed: true,
-                                      restockOption: 'RESELLABLE',
-                                      warehouseId: warehouses.length > 0 ? warehouses[0].id.toString() : '',
-                                      notes: '',
+                                      restockOption: isDamaged ? 'DAMAGED_QUARANTINE' : 'RESELLABLE',
+                                      warehouseId: String(allocatedWhId),
+                                      notes: isDamaged ? 'Customer reported defective/damaged. Quarantining unit in originating warehouse.' : 'Inspected in resellable condition.',
                                       warehouseInspectionImage: ''
                                     });
                                     setShowQcModal(true);
@@ -1173,206 +1422,166 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
             </div>
           )}
 
-        </div>
-      </div>
+          {/* TAB 6: DAMAGED GOODS & QUARANTINE SECTION */}
+          {activeTab === 'damaged' && (
+            <div>
+              <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ShieldAlert size={22} style={{ color: 'var(--accent-rose, #ef4444)' }} /> 
+                    Quarantine & Damaged Goods Facility
+                  </h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Segregated inventory holding for defective customer returns or failed QC items. Strictly isolated from main retail stock.
+                  </p>
+                </div>
+              </div>
 
-      {/* MODAL 1: REGISTER WAREHOUSE */}
-      {showAddWhModal && (
-        <div className="modal-overlay">
-          <div className="dialog-content" style={{ maxWidth: '480px' }}>
-            <div className="modal-header">
-              <h2 className="modal-title">Register Warehouse Storage Bin</h2>
-              <button onClick={() => setShowAddWhModal(false)} className="btn-icon-only"><X size={18} /></button>
-            </div>
-            <form onSubmit={handleCreateWarehouse}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <label className="form-label">Warehouse Name</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={whForm.name}
-                    onChange={(e) => setWhForm({...whForm, name: e.target.value})}
-                    placeholder="e.g. Mumbai Main Hub" 
-                    className="form-input" 
-                  />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label className="form-label">Location Code</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={whForm.code}
-                      onChange={(e) => setWhForm({...whForm, code: e.target.value})}
-                      placeholder="e.g. WH-MUM-01" 
-                      className="form-input" 
-                    />
+              {/* Damaged KPI Cards */}
+              <div className="dashboard-metrics" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                <div className="metric-card" style={{ borderLeft: '4px solid #ef4444' }}>
+                  <div className="flex-between">
+                    <span className="metric-label" style={{ color: '#ef4444' }}>Total Quarantined Items</span>
+                    <ShieldAlert size={18} style={{ color: '#ef4444' }} />
                   </div>
-                  <div>
-                    <label className="form-label">City</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={whForm.city}
-                      onChange={(e) => setWhForm({...whForm, city: e.target.value})}
-                      placeholder="e.g. Mumbai" 
-                      className="form-input" 
-                    />
+                  <div className="metric-value" style={{ color: '#ef4444' }}>
+                    {damagedInventories.reduce((acc, curr) => acc + (curr.damagedQuantity || 0), 0)} units
                   </div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Across all warehouse bins</span>
                 </div>
-                <div>
-                  <label className="form-label">Full Street Address</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={whForm.address}
-                    onChange={(e) => setWhForm({...whForm, address: e.target.value})}
-                    placeholder="e.g. Sector-7 Industrial Lane" 
-                    className="form-input" 
-                  />
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                <button type="button" onClick={() => setShowAddWhModal(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Bin</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* MODAL 2: EDIT WAREHOUSE */}
-      {showEditWhModal && (
-        <div className="modal-overlay">
-          <div className="dialog-content" style={{ maxWidth: '480px' }}>
-            <div className="modal-header">
-              <h2 className="modal-title">Edit Warehouse Bin Details</h2>
-              <button onClick={() => setShowEditWhModal(false)} className="btn-icon-only"><X size={18} /></button>
-            </div>
-            <form onSubmit={handleUpdateWarehouse}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <label className="form-label">Warehouse Name</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={whForm.name}
-                    onChange={(e) => setWhForm({...whForm, name: e.target.value})}
-                    className="form-input" 
-                  />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label className="form-label">Location Code</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={whForm.code}
-                      onChange={(e) => setWhForm({...whForm, code: e.target.value})}
-                      className="form-input" 
-                    />
+                <div className="metric-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+                  <div className="flex-between">
+                    <span className="metric-label">Quarantined Loss Valuation</span>
+                    <Package size={18} style={{ color: '#f59e0b' }} />
                   </div>
-                  <div>
-                    <label className="form-label">City</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={whForm.city}
-                      onChange={(e) => setWhForm({...whForm, city: e.target.value})}
-                      className="form-input" 
-                    />
+                  <div className="metric-value" style={{ color: '#f59e0b' }}>
+                    ₹{damagedInventories.reduce((acc, curr) => acc + ((curr.damagedQuantity || 0) * (curr.productPrice || 0)), 0).toLocaleString('en-IN')}
                   </div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Estimated damaged asset value</span>
                 </div>
-                <div>
-                  <label className="form-label">Full Street Address</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={whForm.address}
-                    onChange={(e) => setWhForm({...whForm, address: e.target.value})}
-                    className="form-input" 
-                  />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                  <input 
-                    type="checkbox" 
-                    id="editWhActive" 
-                    checked={whForm.active}
-                    onChange={(e) => setWhForm({...whForm, active: e.target.checked})}
-                  />
-                  <label htmlFor="editWhActive" style={{ fontSize: '13px', fontWeight: '500' }}>Operational Active Status</label>
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                <button type="button" onClick={() => setShowEditWhModal(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Changes</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* MODAL 3: INVENTORY REPLENISHMENT */}
-      {showRestockModal && (
-        <div className="modal-overlay">
-          <div className="dialog-content" style={{ maxWidth: '480px' }}>
-            <div className="modal-header">
-              <h2 className="modal-title">Replenish Product Warehouse Inventory</h2>
-              <button onClick={() => setShowRestockModal(false)} className="btn-icon-only"><X size={18} /></button>
-            </div>
-            <form onSubmit={handleRestockStock}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <label className="form-label">Select Storage Destination</label>
-                  <select 
-                    required
-                    value={restockForm.warehouseId}
-                    onChange={(e) => setRestockForm({...restockForm, warehouseId: e.target.value})}
+                <div className="metric-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                  <div className="flex-between">
+                    <span className="metric-label">Affected SKUs</span>
+                    <Box size={18} style={{ color: '#8b5cf6' }} />
+                  </div>
+                  <div className="metric-value" style={{ color: '#8b5cf6' }}>{damagedInventories.length}</div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Distinct products in quarantine</span>
+                </div>
+              </div>
+
+              {/* Filter and Search Toolbar */}
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '10px', padding: '14px 18px', marginBottom: '20px', display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '220px' }}>
+                  <input
+                    type="text"
+                    placeholder="Search damaged goods by product, category, or warehouse..."
+                    value={damagedSearchTerm}
+                    onChange={(e) => setDamagedSearchTerm(e.target.value)}
+                    className="form-input"
+                    style={{ height: '36px', fontSize: '12px' }}
+                  />
+                </div>
+                <div style={{ minWidth: '200px' }}>
+                  <select
+                    value={damagedWhFilter}
+                    onChange={(e) => setDamagedWhFilter(e.target.value)}
                     className="form-select"
+                    style={{ height: '36px', fontSize: '12px' }}
                   >
-                    <option value="">-- Choose Warehouse --</option>
-                    {warehouses.filter(w => w.active).map(w => (
+                    <option value="ALL">All Warehouses ({warehouses.length})</option>
+                    {warehouses.map(w => (
                       <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
                     ))}
                   </select>
                 </div>
-
-                <div>
-                  <label className="form-label">Select Catalog Product</label>
-                  <select 
-                    required
-                    value={restockForm.productId}
-                    onChange={(e) => setRestockForm({...restockForm, productId: e.target.value})}
-                    className="form-select"
-                  >
-                    <option value="">-- Choose Product --</option>
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} (ID: {p.id})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="form-label">Replenishment Quantity</label>
-                  <input 
-                    type="number" 
-                    required 
-                    min="1"
-                    value={restockForm.quantity}
-                    onChange={(e) => setRestockForm({...restockForm, quantity: parseInt(e.target.value) || 0})}
-                    className="form-input" 
-                  />
-                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                <button type="button" onClick={() => setShowRestockModal(false)} className="btn btn-secondary">Cancel</button>
-                <button type="submit" className="btn btn-primary">Replenish</button>
-              </div>
-            </form>
-          </div>
+
+              {/* Damaged Stock Table */}
+              {filteredDamagedInventories.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '50px 20px', background: 'var(--bg-card)', borderRadius: '12px', border: '1px dashed var(--border-light)' }}>
+                  <CheckCircle2 size={40} style={{ color: 'var(--accent-emerald)', margin: '0 auto 12px' }} />
+                  <h3 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 6px 0' }}>No Damaged Items in Quarantine</h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0 }}>
+                    Any customer returns with defective/damaged issues routed during QC inspection will appear here for disposition.
+                  </p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>Product Details</th>
+                        <th>Quarantine Warehouse</th>
+                        <th>Unit Price</th>
+                        <th>Damaged Units</th>
+                        <th>Total Quarantine Valuation</th>
+                        <th style={{ textAlign: 'center', width: '220px' }}>Disposition Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredDamagedInventories.map((item) => {
+                        const val = (item.damagedQuantity || 0) * (item.productPrice || 0);
+                        return (
+                          <tr key={item.id}>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                {item.productImageUrl ? (
+                                  <img 
+                                    src={item.productImageUrl} 
+                                    alt={item.productName} 
+                                    style={{ width: '38px', height: '38px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border-light)' }} 
+                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                  />
+                                ) : (
+                                  <div style={{ width: '38px', height: '38px', borderRadius: '6px', background: 'var(--bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Package size={18} style={{ color: 'var(--text-muted)' }} />
+                                  </div>
+                                )}
+                                <div>
+                                  <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{item.productName}</strong>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                    Category: <span className="badge badge-customer" style={{ fontSize: '10px', padding: '1px 5px' }}>{item.productCategory}</span> • SKU: PROD-{item.productId}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <strong>{item.warehouseName}</strong>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Bin: {item.warehouseCode}</div>
+                            </td>
+                            <td style={{ fontWeight: '600' }}>₹{(item.productPrice || 0).toLocaleString('en-IN')}</td>
+                            <td>
+                              <span className="badge badge-rejected" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', padding: '4px 8px' }}>
+                                <ShieldAlert size={12} /> {item.damagedQuantity} units quarantined
+                              </span>
+                            </td>
+                            <td style={{ fontWeight: '700', color: 'var(--accent-rose, #ef4444)' }}>
+                              ₹{val.toLocaleString('en-IN')}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDamagedActionModal(item)}
+                                className="btn btn-secondary"
+                                style={{ fontSize: '11px', padding: '5px 10px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                              >
+                                <Edit size={12} /> Manage Disposition
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
-      )}
+      </div>
 
       {/* MODAL 4: MANUAL ALLOCATION FOR AN ORDER ITEM */}
       {showManualAllocModal && (
@@ -1516,38 +1725,43 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                 </div>
 
                 {qcForm.passed && (
-                  <>
-                    <div>
-                      <label className="form-label">Restocking Category Choice</label>
-                      <select 
-                        required
-                        value={qcForm.restockOption}
-                        onChange={(e) => setQcForm({...qcForm, restockOption: e.target.value})}
-                        className="form-select"
-                      >
-                        <option value="RESELLABLE">Resellable Item (Restock to Bin)</option>
-                        <option value="DAMAGED">Damaged / Write-off (Do Not Restock)</option>
-                      </select>
-                    </div>
-
-                    {qcForm.restockOption === 'RESELLABLE' && (
-                      <div>
-                        <label className="form-label">Restock Destination Warehouse Bin</label>
-                        <select 
-                          required
-                          value={qcForm.warehouseId}
-                          onChange={(e) => setQcForm({...qcForm, warehouseId: e.target.value})}
-                          className="form-select"
-                        >
-                          <option value="">-- Choose Warehouse --</option>
-                          {warehouses.filter(w => w.active).map(w => (
-                            <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </>
+                  <div>
+                    <label className="form-label">Restocking Category Choice</label>
+                    <select 
+                      required
+                      value={qcForm.restockOption}
+                      onChange={(e) => setQcForm({...qcForm, restockOption: e.target.value})}
+                      className="form-select"
+                    >
+                      <option value="RESELLABLE">Resellable Item (Restock to Active Main Bin)</option>
+                      <option value="DAMAGED">Damaged / Defective (Route to Damaged Quarantine Section)</option>
+                    </select>
+                  </div>
                 )}
+
+                <div>
+                  <label className="form-label">
+                    {qcForm.passed && qcForm.restockOption === 'RESELLABLE' 
+                      ? "Restock Destination Warehouse Bin (Adds to Main Stock)" 
+                      : "Quarantine Warehouse Section (Damaged Stock - Main Stock Unaffected)"}
+                  </label>
+                  <select 
+                    required
+                    value={qcForm.warehouseId}
+                    onChange={(e) => setQcForm({...qcForm, warehouseId: e.target.value})}
+                    className="form-select"
+                  >
+                    <option value="">-- Choose Warehouse Location --</option>
+                    {warehouses.filter(w => w.active).map(w => (
+                      <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
+                    ))}
+                  </select>
+                  {qcForm.orderId && (
+                    <div style={{ fontSize: '11px', color: 'var(--accent-teal)', marginTop: '4px', fontWeight: '600' }}>
+                      ✓ Pre-routed to originating dispatch facility for Order {qcForm.orderId}.
+                    </div>
+                  )}
+                </div>
 
                 <div>
                   <label className="form-label">QC Observations / Notes</label>
@@ -1575,6 +1789,178 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
                 <button type="button" onClick={() => setShowQcModal(false)} className="btn btn-secondary">Cancel</button>
                 <button type="submit" className="btn btn-primary">Submit QC Log</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* MODAL 6: DAMAGED GOODS DISPOSITION ACTION */}
+      {showDamagedActionModal && selectedDamagedItem && (
+        <div className="modal-overlay">
+          <div className="dialog-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShieldAlert size={20} style={{ color: 'var(--accent-rose, #ef4444)' }} />
+                <h2 className="modal-title">Damaged Stock Disposition</h2>
+              </div>
+              <button onClick={() => setShowDamagedActionModal(false)} className="btn-icon-only"><X size={18} /></button>
+            </div>
+            <form onSubmit={submitDamagedAction}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px' }}>
+                <div style={{ background: 'var(--bg-input)', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div>Product: <strong>{selectedDamagedItem.productName}</strong></div>
+                  <div>Warehouse: <strong>{selectedDamagedItem.warehouseName} ({selectedDamagedItem.warehouseCode})</strong></div>
+                  <div>Currently Quarantined: <strong style={{ color: '#ef4444' }}>{selectedDamagedItem.damagedQuantity} units</strong></div>
+                  <div>Unit Price: <strong>₹{selectedDamagedItem.productPrice || 0}</strong></div>
+                </div>
+
+                <div>
+                  <label className="form-label">Select Disposition Strategy *</label>
+                  <select
+                    value={damagedActionForm.action}
+                    onChange={(e) => setDamagedActionForm({...damagedActionForm, action: e.target.value})}
+                    className="form-select"
+                  >
+                    <option value="WRITE_OFF">Write-off / Scrap (Deduct from quarantine, destroy item)</option>
+                    <option value="RETURN_TO_VENDOR">Return to Vendor / RTV (Deduct from quarantine, dispatch to supplier)</option>
+                    <option value="REFURBISHED">Refurbished / Repaired (Move from quarantine to active main stock)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="form-label">Units to Process (Max: {selectedDamagedItem.damagedQuantity}) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={selectedDamagedItem.damagedQuantity}
+                    required
+                    value={damagedActionForm.quantity}
+                    onChange={(e) => setDamagedActionForm({...damagedActionForm, quantity: Math.min(selectedDamagedItem.damagedQuantity, Math.max(1, parseInt(e.target.value) || 1))})}
+                    className="form-input"
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Inspection & Action Notes</label>
+                  <textarea
+                    placeholder="e.g. Scrapped item per vendor RMA warranty policy."
+                    value={damagedActionForm.notes}
+                    onChange={(e) => setDamagedActionForm({...damagedActionForm, notes: e.target.value})}
+                    className="form-input"
+                    style={{ minHeight: '60px', fontSize: '12px' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                <button type="button" onClick={() => setShowDamagedActionModal(false)} className="btn btn-secondary">Cancel</button>
+                <button type="submit" className="btn btn-primary">Apply Action</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RETURN PACKAGE QC INSPECTION */}
+      {showQcModal && (
+        <div className="modal-overlay" onClick={() => setShowQcModal(false)}>
+          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RotateCcw size={20} style={{ color: 'var(--accent-indigo)' }} />
+                Return Quality Control (QC) Inspection
+              </h2>
+              <button onClick={() => setShowQcModal(false)} className="btn-icon-only"><X size={18} /></button>
+            </div>
+
+            <form onSubmit={handleQcSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '8px 0' }}>
+              <div style={{ background: 'var(--bg-input)', padding: '12px 16px', borderRadius: '8px', fontSize: '12px' }}>
+                <div><strong>Order Reference:</strong> <span style={{ fontFamily: 'monospace', color: 'var(--accent-indigo)' }}>{qcForm.orderId}</span></div>
+                <div style={{ marginTop: '4px' }}>
+                  <strong>Return Reason Category:</strong> <span className={`badge ${qcForm.isDamagedCategory ? 'badge-rejected' : 'badge-customer'}`}>{qcForm.category || 'DEFECTIVE_DAMAGED'}</span>
+                </div>
+                <div style={{ marginTop: '4px' }}><strong>Customer Reason:</strong> {qcForm.customerReason}</div>
+              </div>
+
+              {qcForm.isDamagedCategory ? (
+                <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '12px', borderRadius: '8px', fontSize: '12px', color: '#ef4444' }}>
+                  <strong>⚠️ Defective / Damaged Return:</strong> This item was returned due to defect or damage. It will be routed to <strong>Damaged & Quarantine Stock</strong> and will <strong>NOT</strong> be restored to main sellable retail inventory.
+                </div>
+              ) : (
+                <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '12px', borderRadius: '8px', fontSize: '12px', color: '#10b981' }}>
+                  <strong>✓ Resellable Return:</strong> This item was returned for non-defective reasons (e.g. wrong item / changed mind). Upon QC approval, it will be restored to <strong>Main Sellable Stock</strong> in the warehouse.
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: '700' }}>Inspection Outcome *</label>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="passed"
+                      checked={qcForm.passed === true}
+                      onChange={() => setQcForm({ ...qcForm, passed: true })}
+                    />
+                    <span>QC Inspection Passed</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="passed"
+                      checked={qcForm.passed === false}
+                      onChange={() => setQcForm({ ...qcForm, passed: false, restockOption: 'DAMAGED_QUARANTINE' })}
+                    />
+                    <span>QC Inspection Failed</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: '700' }}>Inventory Routing *</label>
+                <select
+                  value={qcForm.restockOption}
+                  onChange={(e) => setQcForm({ ...qcForm, restockOption: e.target.value })}
+                  className="form-select"
+                >
+                  <option value="DAMAGED_QUARANTINE">Route to Damaged & Quarantine (Main Stock Remains Reduced)</option>
+                  <option value="RESELLABLE">Restore to Main Sellable Stock (Available for Resale)</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: '700' }}>Warehouse Facility *</label>
+                <select
+                  value={qcForm.warehouseId}
+                  onChange={(e) => setQcForm({ ...qcForm, warehouseId: e.target.value })}
+                  className="form-select"
+                  required
+                >
+                  <option value="">Select Warehouse Hub...</option>
+                  {warehouses.map(w => (
+                    <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Staff QC Verification Notes</label>
+                <textarea
+                  rows="2"
+                  value={qcForm.notes}
+                  onChange={(e) => setQcForm({ ...qcForm, notes: e.target.value })}
+                  className="form-input"
+                  placeholder="Enter condition notes or inspection findings..."
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                <button type="button" onClick={() => setShowQcModal(false)} className="btn btn-secondary" style={{ flex: 1 }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 2 }}>
+                  Submit QC Inspection
+                </button>
               </div>
             </form>
           </div>

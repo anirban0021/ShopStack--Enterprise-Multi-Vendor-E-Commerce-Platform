@@ -88,18 +88,60 @@ public class WarehouseController {
         List<Map<String, Object>> response = inventories.stream().map(inv -> {
             Map<String, Object> map = new HashMap<>();
             map.put("id", inv.getId());
-            map.put("warehouseId", inv.getWarehouse().getId());
-            map.put("warehouseName", inv.getWarehouse().getName());
-            map.put("warehouseCode", inv.getWarehouse().getCode());
-            map.put("productId", inv.getProduct().getId());
-            map.put("productName", inv.getProduct().getName());
-            map.put("productCategory", inv.getProduct().getCategory());
+            map.put("warehouseId", inv.getWarehouse() != null ? inv.getWarehouse().getId() : null);
+            map.put("warehouseName", inv.getWarehouse() != null ? inv.getWarehouse().getName() : "Unknown Warehouse");
+            map.put("warehouseCode", inv.getWarehouse() != null ? inv.getWarehouse().getCode() : "N/A");
+            map.put("productId", inv.getProduct() != null ? inv.getProduct().getId() : null);
+            map.put("productName", inv.getProduct() != null ? inv.getProduct().getName() : "Unknown Product");
+            map.put("productCategory", inv.getProduct() != null ? inv.getProduct().getCategory() : "General");
+            map.put("productPrice", inv.getProduct() != null ? inv.getProduct().getPrice() : 0.0);
+            map.put("productImageUrl", inv.getProduct() != null ? inv.getProduct().getImageUrl() : "");
             map.put("quantity", inv.getQuantity());
             map.put("allocated", inv.getAllocated());
             map.put("available", inv.getAvailableQuantity());
+            map.put("damagedQuantity", inv.getDamagedQuantity());
             return map;
         }).collect(Collectors.toList());
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/damaged-stock")
+    public ResponseEntity<?> getDamagedStock() {
+        List<Inventory> inventories = inventoryRepository.findAll();
+        List<Map<String, Object>> response = inventories.stream()
+                .filter(inv -> inv.getDamagedQuantity() > 0)
+                .map(inv -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", inv.getId());
+                    map.put("warehouseId", inv.getWarehouse() != null ? inv.getWarehouse().getId() : null);
+                    map.put("warehouseName", inv.getWarehouse() != null ? inv.getWarehouse().getName() : "Unknown Warehouse");
+                    map.put("warehouseCode", inv.getWarehouse() != null ? inv.getWarehouse().getCode() : "N/A");
+                    map.put("warehouseLocation", inv.getWarehouse() != null ? inv.getWarehouse().getCity() : "N/A");
+                    map.put("productId", inv.getProduct() != null ? inv.getProduct().getId() : null);
+                    map.put("productName", inv.getProduct() != null ? inv.getProduct().getName() : "Unknown Product");
+                    map.put("productCategory", inv.getProduct() != null ? inv.getProduct().getCategory() : "General");
+                    double price = inv.getProduct() != null ? inv.getProduct().getPrice() : 0.0;
+                    map.put("productPrice", price);
+                    map.put("productImageUrl", inv.getProduct() != null ? inv.getProduct().getImageUrl() : "");
+                    map.put("damagedQuantity", inv.getDamagedQuantity());
+                    map.put("totalDamagedValue", Math.round(inv.getDamagedQuantity() * price * 100.0) / 100.0);
+                    return map;
+                }).collect(Collectors.toList());
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/damaged-stock/{inventoryId}/action")
+    public ResponseEntity<?> handleDamagedAction(@PathVariable Long inventoryId, @RequestBody Map<String, Object> payload) {
+        String action = payload.getOrDefault("action", "WRITE_OFF").toString();
+        int qty = payload.containsKey("quantity") ? Integer.parseInt(payload.get("quantity").toString()) : 0;
+        String notes = payload.getOrDefault("notes", "").toString();
+
+        try {
+            Inventory updated = warehouseService.handleDamagedStockAction(inventoryId, action, qty, notes);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @GetMapping("/{id}/inventory")
@@ -155,6 +197,22 @@ public class WarehouseController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    @PostMapping("/distribute-stock")
+    public ResponseEntity<?> distributeStock(@RequestBody Map<String, Object> payload) {
+        if (!payload.containsKey("productId") || !payload.containsKey("distributions")) {
+            return ResponseEntity.badRequest().body("productId and distributions are required");
+        }
+        try {
+            Long productId = Long.parseLong(payload.get("productId").toString());
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> distributions = (List<Map<String, Object>>) payload.get("distributions");
+            List<Inventory> updated = warehouseService.distributeProductStock(productId, distributions);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to distribute stock: " + e.getMessage());
+        }
+    }
+
     // --- ALLOCATION WORKFLOW ---
 
     @GetMapping("/allocations")
@@ -206,6 +264,20 @@ public class WarehouseController {
         }
     }
 
+    @PostMapping("/orders/{orderId}/allocate-warehouse")
+    public ResponseEntity<?> allocateOrderToWarehouse(@PathVariable String orderId, @RequestBody Map<String, Object> payload) {
+        if (!payload.containsKey("warehouseId")) {
+            return ResponseEntity.badRequest().body("warehouseId is required");
+        }
+        try {
+            Long warehouseId = Long.parseLong(payload.get("warehouseId").toString());
+            List<WarehouseAllocation> allocations = warehouseService.allocateEntireOrderToWarehouse(orderId, warehouseId);
+            return ResponseEntity.ok(allocations);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Allocation failed: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/allocations/manual")
     public ResponseEntity<?> manualAllocateStock(@RequestBody Map<String, Object> payload) {
         try {
@@ -226,7 +298,7 @@ public class WarehouseController {
                             old.getWarehouse().getId(), old.getProductId()
                     );
                     if (inv.isPresent()) {
-                        inv.get().setAllocated(Math.max(0, inv.get().getAllocated() - old.getQuantity()));
+                        inv.get().setQuantity(inv.get().getQuantity() + old.getQuantity());
                         inventoryRepository.save(inv.get());
                     }
                 }

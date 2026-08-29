@@ -6,11 +6,18 @@ import com.shopstack.backend.model.Warehouse;
 import com.shopstack.backend.repository.InventoryRepository;
 import com.shopstack.backend.repository.ProductRepository;
 import com.shopstack.backend.repository.WarehouseRepository;
+import com.shopstack.backend.model.Refund;
+import com.shopstack.backend.model.OrderItem;
+import com.shopstack.backend.model.WarehouseAllocation;
+import com.shopstack.backend.repository.RefundRepository;
+import com.shopstack.backend.repository.OrderItemRepository;
+import com.shopstack.backend.repository.WarehouseAllocationRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 
 @Component
 public class DataLoader implements CommandLineRunner {
@@ -24,31 +31,56 @@ public class DataLoader implements CommandLineRunner {
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private RefundRepository refundRepository;
+
+    @Autowired
+    private WarehouseAllocationRepository warehouseAllocationRepository;
+
+    @Autowired
+    private OrderItemRepository orderItemRepository;
+
     @Override
     public void run(String... args) throws Exception {
-        // Seed default warehouses if none exist
-        if (warehouseRepository.count() == 0) {
-            Warehouse whMumbai = new Warehouse("Mumbai Central Warehouse", "WH-MUM-01", "12 Industrial Area, Andheri East", "Mumbai");
-            Warehouse whDelhi = new Warehouse("Delhi NCR Fulfillment Center", "WH-DEL-02", "45 Sector Road, Gurugram", "Delhi");
-            Warehouse whBangalore = new Warehouse("Bangalore Logistics Hub", "WH-BLR-03", "88 Electronics City Phase 1", "Bangalore");
+        // Seed or ensure all 4 default warehouses exist (Kolkata, Mumbai, Delhi, Bangalore)
+        List<Warehouse> existingWarehouses = warehouseRepository.findAll();
+        Warehouse whKolkata = existingWarehouses.stream().filter(w -> "Kolkata".equalsIgnoreCase(w.getCity()) || (w.getCode() != null && w.getCode().contains("KOL"))).findFirst().orElse(null);
+        Warehouse whMumbai = existingWarehouses.stream().filter(w -> "Mumbai".equalsIgnoreCase(w.getCity()) || (w.getCode() != null && w.getCode().contains("MUM"))).findFirst().orElse(null);
+        Warehouse whDelhi = existingWarehouses.stream().filter(w -> "Delhi".equalsIgnoreCase(w.getCity()) || (w.getCode() != null && w.getCode().contains("DEL"))).findFirst().orElse(null);
+        Warehouse whBangalore = existingWarehouses.stream().filter(w -> "Bangalore".equalsIgnoreCase(w.getCity()) || (w.getCode() != null && w.getCode().contains("BLR"))).findFirst().orElse(null);
 
-            whMumbai = warehouseRepository.save(whMumbai);
-            whDelhi = warehouseRepository.save(whDelhi);
-            whBangalore = warehouseRepository.save(whBangalore);
+        if (whKolkata == null) {
+            whKolkata = warehouseRepository.save(new Warehouse("Kolkata Regional Fulfillment Hub", "WH-KOL-01", "Salt Lake Sector V, Bidhannagar", "Kolkata"));
+        }
+        if (whMumbai == null) {
+            whMumbai = warehouseRepository.save(new Warehouse("Mumbai Central Warehouse", "WH-MUM-02", "12 Industrial Area, Andheri East", "Mumbai"));
+        }
+        if (whDelhi == null) {
+            whDelhi = warehouseRepository.save(new Warehouse("Delhi NCR Fulfillment Center", "WH-DEL-03", "45 Sector Road, Gurugram", "Delhi"));
+        }
+        if (whBangalore == null) {
+            whBangalore = warehouseRepository.save(new Warehouse("Bangalore Logistics Hub", "WH-BLR-04", "88 Electronics City Phase 1", "Bangalore"));
+        }
 
-            System.out.println("Default warehouses seeded successfully.");
+        System.out.println("Default warehouses (Kolkata, Mumbai, Delhi, Bangalore) verified.");
 
-            // Distribute existing product stock into warehouse inventories
-            List<Product> products = productRepository.findAll();
-            for (Product product : products) {
+        // Distribute stock for any product that has no warehouse inventory yet
+        List<Product> products = productRepository.findAll();
+        for (Product product : products) {
+            List<Inventory> existingInv = inventoryRepository.findByProductId(product.getId());
+            if (existingInv == null || existingInv.isEmpty()) {
                 int totalStock = product.getStock() != null ? product.getStock() : 10;
                 
-                // Distribute stock: 50% to Mumbai, 30% to Delhi, 20% to Bangalore
-                int mumQty = (int) Math.round(totalStock * 0.5);
-                int delQty = (int) Math.round(totalStock * 0.3);
-                int blrQty = Math.max(0, totalStock - (mumQty + delQty));
+                // Distribute stock: 40% Kolkata, 30% Mumbai, 20% Delhi, 10% Bangalore
+                int kolQty = (int) Math.round(totalStock * 0.4);
+                int mumQty = (int) Math.round(totalStock * 0.3);
+                int delQty = (int) Math.round(totalStock * 0.2);
+                int blrQty = Math.max(0, totalStock - (kolQty + mumQty + delQty));
 
-                if (mumQty > 0 || totalStock == 0) {
+                if (kolQty > 0 || totalStock == 0) {
+                    inventoryRepository.save(new Inventory(whKolkata, product, kolQty));
+                }
+                if (mumQty > 0) {
                     inventoryRepository.save(new Inventory(whMumbai, product, mumQty));
                 }
                 if (delQty > 0) {
@@ -58,7 +90,42 @@ public class DataLoader implements CommandLineRunner {
                     inventoryRepository.save(new Inventory(whBangalore, product, blrQty));
                 }
             }
-            System.out.println("Distributed product stocks into warehouse inventories successfully.");
+        }
+
+        // Reconcile any return damaged stock to match the order's allocated warehouse
+        try {
+            List<Refund> refunds = refundRepository.findAll();
+            for (Refund r : refunds) {
+                if ("QC_PASSED".equalsIgnoreCase(r.getReturnStage()) || "QC_FAILED".equalsIgnoreCase(r.getReturnStage()) || "REFUNDED".equalsIgnoreCase(r.getStatus())) {
+                    List<WarehouseAllocation> allocs = warehouseAllocationRepository.findByOrderId(r.getOrderId());
+                    if (allocs != null && !allocs.isEmpty() && allocs.get(0).getWarehouse() != null) {
+                        Long allocWhId = allocs.get(0).getWarehouse().getId();
+                        List<OrderItem> items = orderItemRepository.findByOrderId(r.getOrderId());
+                        for (OrderItem item : items) {
+                            if (item.getProductId() != null) {
+                                // If damaged inventory was placed in Mumbai (1) instead of allocated Wh (e.g. Delhi 2)
+                                Optional<Inventory> mumInv = inventoryRepository.findByWarehouseIdAndProductId(1L, item.getProductId());
+                                if (mumInv.isPresent() && mumInv.get().getDamagedQuantity() > 0 && !allocWhId.equals(1L)) {
+                                    int damaged = mumInv.get().getDamagedQuantity();
+                                    mumInv.get().setDamagedQuantity(0);
+                                    inventoryRepository.save(mumInv.get());
+
+                                    Optional<Inventory> targetInv = inventoryRepository.findByWarehouseIdAndProductId(allocWhId, item.getProductId());
+                                    Warehouse targetWh = warehouseRepository.findById(allocWhId).orElse(null);
+                                    Product prod = productRepository.findById(item.getProductId()).orElse(null);
+                                    if (targetWh != null && prod != null) {
+                                        Inventory target = targetInv.orElseGet(() -> new Inventory(targetWh, prod, 0));
+                                        target.setDamagedQuantity(target.getDamagedQuantity() + damaged);
+                                        inventoryRepository.save(target);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Note: Return stock reconciliation skipped: " + e.getMessage());
         }
     }
 }

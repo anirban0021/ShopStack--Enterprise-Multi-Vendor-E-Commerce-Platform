@@ -28,8 +28,10 @@ import com.shopstack.backend.model.Product;
 import com.shopstack.backend.model.Refund;
 import com.shopstack.backend.model.Settlement;
 import com.shopstack.backend.model.Warehouse;
+import com.shopstack.backend.model.WarehouseAllocation;
 import com.shopstack.backend.model.Inventory;
 import com.shopstack.backend.repository.WarehouseRepository;
+import com.shopstack.backend.repository.WarehouseAllocationRepository;
 import com.shopstack.backend.repository.InventoryRepository;
 import com.shopstack.backend.service.WarehouseService;
 import com.shopstack.backend.repository.OrderItemRepository;
@@ -54,6 +56,9 @@ public class PaymentService {
 
     @Autowired
     private WarehouseRepository warehouseRepository;
+
+    @Autowired
+    private WarehouseAllocationRepository warehouseAllocationRepository;
 
     @Autowired
     private InventoryRepository inventoryRepository;
@@ -237,10 +242,6 @@ public class PaymentService {
                 discountPercentage = Double.parseDouble(itemData.get("discountPercentage").toString());
             }
 
-            // Reduce stock
-            product.setStock(product.getStock() - quantity);
-            productRepository.save(product);
-
             // Create and save Order Line Item
             OrderItem orderItem = new OrderItem(orderIdStr, productId, productName, price, originalPrice, discountPercentage, quantity, vendorId);
             OrderItem savedItem = orderItemRepository.save(orderItem);
@@ -256,6 +257,7 @@ public class PaymentService {
             createSettlementsForOrder(order, savedItems);
         }
 
+        // Order is CONFIRMED and queued for Administrator warehouse allocation
         return order;
     }
 
@@ -429,6 +431,36 @@ public class PaymentService {
     }
 
     /**
+     * Admin accepts the return request (Step 1.5 of Return Lifecycle).
+     * This moves the returnStage to ADMIN_APPROVED.
+     */
+    @Transactional
+    public Refund acceptReturnRequest(Long refundId, String notes) {
+        Refund refund = refundRepository.findById(refundId)
+                .orElseThrow(() -> new IllegalArgumentException("Refund request not found with ID: " + refundId));
+
+        if (!"PENDING".equalsIgnoreCase(refund.getStatus())) {
+            throw new IllegalStateException("Refund request is already resolved.");
+        }
+
+        if (!"REQUESTED".equalsIgnoreCase(refund.getReturnStage())) {
+            throw new IllegalStateException("Refund request is already reviewed/approved.");
+        }
+
+        refund.setReturnStage("ADMIN_APPROVED");
+        refund.setAdminNotes(notes != null && !notes.trim().isEmpty() ? notes.trim() : "Admin accepted the return request. Awaiting pickup and QC check.");
+        
+        Optional<Order> orderOpt = orderRepository.findByOrderId(refund.getOrderId());
+        if (orderOpt.isPresent()) {
+            Order order = orderOpt.get();
+            order.setStatus("RETURN_APPROVED");
+            orderRepository.save(order);
+        }
+
+        return refundRepository.save(refund);
+    }
+
+    /**
      * Intermediate Step: Warehouse marks return package as received/picked up.
      * Sets returnStage to ITEM_RETURNED.
      */
@@ -466,13 +498,81 @@ public class PaymentService {
 
         String timestamp = new SimpleDateFormat("MMM dd, yyyy HH:mm").format(new Date());
 
+        // Resolve warehouseId if not supplied
+        if (warehouseId == null) {
+            List<WarehouseAllocation> allocs = warehouseAllocationRepository.findByOrderId(refund.getOrderId());
+            if (allocs != null && !allocs.isEmpty() && allocs.get(0).getWarehouse() != null) {
+                warehouseId = allocs.get(0).getWarehouse().getId();
+            } else {
+                List<Warehouse> activeWhs = warehouseRepository.findByActiveTrue();
+                if (!activeWhs.isEmpty()) {
+                    warehouseId = activeWhs.get(0).getId();
+                }
+            }
+        }
+
+        boolean isDefectiveDamaged = (refund.getReturnReasonCategory() != null && 
+                (refund.getReturnReasonCategory().toUpperCase().contains("DEFECT") || 
+                 refund.getReturnReasonCategory().toUpperCase().contains("DAMAGE")))
+                || (refund.getReason() != null && 
+                (refund.getReason().toUpperCase().contains("DEFECT") || 
+                 refund.getReason().toUpperCase().contains("DAMAGE")))
+                || "DAMAGED_QUARANTINE".equalsIgnoreCase(restockOption)
+                || !passed;
+
         if (passed) {
             refund.setReturnStage("QC_PASSED");
             refund.setWarehouseInspectionImage(warehouseInspectionImage);
-            refund.setAdminNotes("QC Passed. Restock selection: " + restockOption + ". Inspection notes: " + notes);
 
-            // Handle restocking of inventory into selected warehouse
-            if ("RESELLABLE".equalsIgnoreCase(restockOption) && warehouseId != null) {
+            if (isDefectiveDamaged) {
+                // Route to Warehouse Damaged & Quarantine Stock (Main sellable stock remains reduced)
+                refund.setAdminNotes("QC Passed: Item returned as Defective/Damaged. Routed to Damaged & Quarantine stock (sellable inventory remains reduced). " + (notes != null ? notes : ""));
+                if (warehouseId != null) {
+                    List<OrderItem> items = orderItemRepository.findByOrderId(refund.getOrderId());
+                    Optional<Warehouse> whOpt = warehouseRepository.findById(warehouseId);
+                    if (whOpt.isPresent()) {
+                        Warehouse wh = whOpt.get();
+                        for (OrderItem item : items) {
+                            Optional<Product> prodOpt = productRepository.findById(item.getProductId());
+                            if (prodOpt.isPresent()) {
+                                Product prod = prodOpt.get();
+                                Inventory inv = inventoryRepository.findByWarehouseIdAndProductId(warehouseId, prod.getId())
+                                        .orElseGet(() -> new Inventory(wh, prod, 0));
+                                inv.setDamagedQuantity(inv.getDamagedQuantity() + item.getQuantity());
+                                inventoryRepository.save(inv);
+                                warehouseService.syncProductGlobalStock(prod.getId());
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Return reason was non-damaged (e.g. wrong item, changed mind) -> restore sellable stock
+                refund.setAdminNotes("QC Passed: Non-defective return. Main sellable stock restored to warehouse. " + (notes != null ? notes : ""));
+                if (warehouseId != null) {
+                    List<OrderItem> items = orderItemRepository.findByOrderId(refund.getOrderId());
+                    Optional<Warehouse> whOpt = warehouseRepository.findById(warehouseId);
+                    if (whOpt.isPresent()) {
+                        Warehouse wh = whOpt.get();
+                        for (OrderItem item : items) {
+                            Optional<Product> prodOpt = productRepository.findById(item.getProductId());
+                            if (prodOpt.isPresent()) {
+                                Product prod = prodOpt.get();
+                                Inventory inv = inventoryRepository.findByWarehouseIdAndProductId(warehouseId, prod.getId())
+                                        .orElseGet(() -> new Inventory(wh, prod, 0));
+                                inv.setQuantity(inv.getQuantity() + item.getQuantity());
+                                inventoryRepository.save(inv);
+                                warehouseService.syncProductGlobalStock(prod.getId());
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            refund.setReturnStage("QC_FAILED");
+            refund.setAdminNotes("QC Failed: Defective / damaged condition verified. Moved to Damaged & Quarantine. " + (notes != null ? notes : ""));
+
+            // On QC failure, automatically route items into Warehouse Damaged & Quarantine Stock
+            if (warehouseId != null) {
                 List<OrderItem> items = orderItemRepository.findByOrderId(refund.getOrderId());
                 Optional<Warehouse> whOpt = warehouseRepository.findById(warehouseId);
                 if (whOpt.isPresent()) {
@@ -483,18 +583,13 @@ public class PaymentService {
                             Product prod = prodOpt.get();
                             Inventory inv = inventoryRepository.findByWarehouseIdAndProductId(warehouseId, prod.getId())
                                     .orElseGet(() -> new Inventory(wh, prod, 0));
-                            inv.setQuantity(inv.getQuantity() + item.getQuantity());
+                            inv.setDamagedQuantity(inv.getDamagedQuantity() + item.getQuantity());
                             inventoryRepository.save(inv);
-                            
-                            // Synchronize product global stock representation
                             warehouseService.syncProductGlobalStock(prod.getId());
                         }
                     }
                 }
             }
-        } else {
-            refund.setReturnStage("QC_FAILED");
-            refund.setAdminNotes("QC Failed: " + (notes != null ? notes : "Item failed quality checks."));
         }
 
         refund.setProcessedAt(timestamp);
@@ -609,6 +704,10 @@ public class PaymentService {
             throw new IllegalStateException("Refund request #" + refundId + " is already in status: " + refund.getStatus());
         }
 
+        if (!"QC_PASSED".equalsIgnoreCase(refund.getReturnStage())) {
+            throw new IllegalStateException("Cannot disburse refund: The returned product has not passed the warehouse Quality Control (QC) check yet.");
+        }
+
         Optional<Order> orderOpt = orderRepository.findByOrderId(refund.getOrderId());
         if (orderOpt.isEmpty()) {
             throw new IllegalArgumentException("Associated order " + refund.getOrderId() + " not found.");
@@ -664,8 +763,16 @@ public class PaymentService {
         }
         orderRepository.save(order);
 
-        // Restock inventory for returned order items upon QC approval & refund execution
-        restockOrderItems(order.getOrderId());
+        // Update vendor settlements to REFUNDED so profits/commissions are properly deducted
+        List<Settlement> settlements = settlementRepository.findByOrderId(order.getOrderId());
+        for (Settlement s : settlements) {
+            if ("REFUNDED".equalsIgnoreCase(order.getPaymentStatus())) {
+                s.setStatus("REFUNDED");
+            } else if ("PARTIALLY_REFUNDED".equalsIgnoreCase(order.getPaymentStatus())) {
+                s.setStatus("PARTIALLY_REFUNDED");
+            }
+            settlementRepository.save(s);
+        }
 
         return refund;
     }
@@ -802,8 +909,23 @@ public class PaymentService {
         }
         orderRepository.save(order);
 
-        // Restock inventory for refunded order items
-        restockOrderItems(order.getOrderId());
+        // Update vendor settlements to REFUNDED so profits/commissions are properly deducted
+        List<Settlement> settlements = settlementRepository.findByOrderId(order.getOrderId());
+        for (Settlement s : settlements) {
+            if ("REFUNDED".equalsIgnoreCase(order.getPaymentStatus())) {
+                s.setStatus("REFUNDED");
+            } else if ("PARTIALLY_REFUNDED".equalsIgnoreCase(order.getPaymentStatus())) {
+                s.setStatus("PARTIALLY_REFUNDED");
+            }
+            settlementRepository.save(s);
+        }
+
+        // Release warehouse allocations to restore stock and sync global stock representation
+        try {
+            warehouseService.releaseAllocations(order.getOrderId());
+        } catch (Exception e) {
+            System.err.println("Failed to release allocations for order direct refund: " + order.getOrderId() + ". Error: " + e.getMessage());
+        }
 
         return refund;
     }

@@ -2,6 +2,7 @@ package com.shopstack.backend.controller;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,10 +22,12 @@ import org.springframework.web.bind.annotation.RestController;
 import com.shopstack.backend.model.Order;
 import com.shopstack.backend.model.OrderItem;
 import com.shopstack.backend.model.Product;
+import com.shopstack.backend.model.Refund;
 import com.shopstack.backend.model.Settlement;
 import com.shopstack.backend.repository.OrderItemRepository;
 import com.shopstack.backend.repository.OrderRepository;
 import com.shopstack.backend.repository.ProductRepository;
+import com.shopstack.backend.repository.RefundRepository;
 import com.shopstack.backend.repository.SettlementRepository;
 import com.shopstack.backend.service.PaymentService;
 import com.shopstack.backend.service.WarehouseService;
@@ -47,6 +50,9 @@ public class VendorController {
     private SettlementRepository settlementRepository;
 
     @Autowired
+    private RefundRepository refundRepository;
+
+    @Autowired
     private PaymentService paymentService;
 
     @Autowired
@@ -63,26 +69,49 @@ public class VendorController {
         // 2. Fetch vendor's order line items
         List<OrderItem> orderItems = orderItemRepository.findByVendorId(vendorId);
 
-        // 3. Perform aggregate calculations
+        // 3. Perform aggregate calculations (excluding refunded & cancelled transactions)
         double totalRevenue = 0;
         int totalItemsSold = 0;
-        Set<String> distinctOrderIds = orderItems.stream().map(OrderItem::getOrderId).collect(Collectors.toSet());
+        Set<String> distinctOrderIds = new HashSet<>();
+        Map<String, Integer> productSales = new HashMap<>();
         
         for (OrderItem item : orderItems) {
-            totalRevenue += item.getPrice() * item.getQuantity();
-            totalItemsSold += item.getQuantity();
+            Optional<Order> orderOpt = orderRepository.findByOrderId(item.getOrderId());
+            if (orderOpt.isPresent()) {
+                Order ord = orderOpt.get();
+                // Exclude cancelled and fully refunded orders
+                if ("CANCELLED".equalsIgnoreCase(ord.getStatus()) || 
+                    "REFUNDED".equalsIgnoreCase(ord.getStatus()) || 
+                    "REFUNDED".equalsIgnoreCase(ord.getPaymentStatus()) ||
+                    "FAILED".equalsIgnoreCase(ord.getPaymentStatus())) {
+                    continue;
+                }
+                
+                // If partially refunded, deduct refunded proportion
+                if ("PARTIALLY_REFUNDED".equalsIgnoreCase(ord.getPaymentStatus())) {
+                    double itemTotal = item.getPrice() * item.getQuantity();
+                    double refundSum = refundRepository.findByOrderId(ord.getOrderId()).stream()
+                            .filter(r -> "PROCESSED".equalsIgnoreCase(r.getStatus()))
+                            .mapToDouble(Refund::getAmount)
+                            .sum();
+                    double ratio = ord.getTotalAmount() > 0 ? Math.max(0, 1.0 - (refundSum / ord.getTotalAmount())) : 0.0;
+                    totalRevenue += itemTotal * ratio;
+                    totalItemsSold += item.getQuantity();
+                    distinctOrderIds.add(item.getOrderId());
+                    productSales.put(item.getProductName(), productSales.getOrDefault(item.getProductName(), 0) + item.getQuantity());
+                } else {
+                    totalRevenue += item.getPrice() * item.getQuantity();
+                    totalItemsSold += item.getQuantity();
+                    distinctOrderIds.add(item.getOrderId());
+                    productSales.put(item.getProductName(), productSales.getOrDefault(item.getProductName(), 0) + item.getQuantity());
+                }
+            }
         }
 
         double averageOrderValue = distinctOrderIds.isEmpty() ? 0 : (totalRevenue / distinctOrderIds.size());
         
         // Count products with stock < 5
-        long lowStockCount = products.stream().filter(p -> p.getStock() < 5).count();
-
-        // Find top selling products
-        Map<String, Integer> productSales = new HashMap<>();
-        for (OrderItem item : orderItems) {
-            productSales.put(item.getProductName(), productSales.getOrDefault(item.getProductName(), 0) + item.getQuantity());
-        }
+        long lowStockCount = products.stream().filter(p -> p.getStock() != null && p.getStock() < 5).count();
 
         List<Map<String, Object>> topSellers = productSales.entrySet().stream()
                 .sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
@@ -91,7 +120,7 @@ public class VendorController {
                 .collect(Collectors.toList());
 
         Map<String, Object> analytics = new HashMap<>();
-        analytics.put("totalRevenue", totalRevenue);
+        analytics.put("totalRevenue", Math.round(totalRevenue * 100.0) / 100.0);
         analytics.put("totalOrders", distinctOrderIds.size());
         analytics.put("totalItemsSold", totalItemsSold);
         analytics.put("averageOrderValue", Math.round(averageOrderValue * 100.0) / 100.0);
@@ -166,20 +195,7 @@ public class VendorController {
             // Restore product stock inventory if status transitions to CANCELLED or REFUNDED
             if (("CANCELLED".equalsIgnoreCase(newStatus) || "REFUNDED".equalsIgnoreCase(newStatus))
                     && !"CANCELLED".equalsIgnoreCase(oldStatus) && !"REFUNDED".equalsIgnoreCase(oldStatus)) {
-                List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
-                for (OrderItem item : items) {
-                    if (item.getProductId() != null && item.getQuantity() > 0) {
-                        Optional<Product> prodOpt = productRepository.findById(item.getProductId());
-                        if (prodOpt.isPresent()) {
-                            Product prod = prodOpt.get();
-                            int currentStock = prod.getStock() != null ? prod.getStock() : 0;
-                            prod.setStock(currentStock + item.getQuantity());
-                            productRepository.save(prod);
-                        }
-                    }
-                }
-
-                // Release warehouse stock allocations
+                // Release warehouse stock allocations and sync stock representation
                 try {
                     warehouseService.releaseAllocations(order.getOrderId());
                 } catch (Exception e) {
@@ -197,6 +213,9 @@ public class VendorController {
     @GetMapping("/{vendorId}/settlements")
     public ResponseEntity<?> getVendorSettlements(@PathVariable Long vendorId) {
         List<Settlement> settlements = settlementRepository.findByVendorIdOrderByIdDesc(vendorId);
+        List<Order> orders = orderRepository.findAll();
+        Map<String, String> orderStatusMap = orders.stream()
+                .collect(Collectors.toMap(Order::getOrderId, o -> o.getStatus() != null ? o.getStatus().toUpperCase() : "", (a, b) -> a));
 
         double totalGross = 0;
         double totalCommission = 0;
@@ -205,13 +224,33 @@ public class VendorController {
         double settledPayout = 0;
 
         for (Settlement s : settlements) {
-            totalGross += s.getGrossAmount();
-            totalCommission += s.getCommissionAmount();
-            totalNetPayout += s.getNetPayoutAmount();
-            if ("SETTLED".equalsIgnoreCase(s.getStatus())) {
-                settledPayout += s.getNetPayoutAmount();
-            } else {
-                pendingPayout += s.getNetPayoutAmount();
+            String ordSt = orderStatusMap.getOrDefault(s.getOrderId(), "");
+            
+            // If order is refunded or cancelled, sync settlement status to REFUNDED / CANCELLED and zero out net payout
+            if ("REFUNDED".equalsIgnoreCase(ordSt) || "CANCELLED".equalsIgnoreCase(ordSt)) {
+                if (!"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())) {
+                    if (!"SETTLED".equalsIgnoreCase(s.getStatus())) {
+                        s.setStatus("REFUNDED".equalsIgnoreCase(ordSt) ? "REFUNDED" : "CANCELLED");
+                        s.setNetPayoutAmount(0.0);
+                        try { settlementRepository.save(s); } catch (Exception ignored) {}
+                    }
+                }
+            }
+
+            // 1. Gross Volume includes all non-void order sales
+            if (!"VOID".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())) {
+                totalGross += Math.abs(s.getGrossAmount());
+            }
+
+            // 2. Refunded orders contribute 0 to Platform Revenue, Pending Payouts, and Settled Payouts
+            if (!"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus()) && !"VOID".equalsIgnoreCase(s.getStatus()) && !"REFUNDED".equalsIgnoreCase(ordSt) && !"CANCELLED".equalsIgnoreCase(ordSt)) {
+                totalCommission += s.getCommissionAmount();
+                totalNetPayout += s.getNetPayoutAmount();
+                if ("SETTLED".equalsIgnoreCase(s.getStatus())) {
+                    settledPayout += s.getNetPayoutAmount();
+                } else if ("PENDING".equalsIgnoreCase(s.getStatus())) {
+                    pendingPayout += s.getNetPayoutAmount();
+                }
             }
         }
 

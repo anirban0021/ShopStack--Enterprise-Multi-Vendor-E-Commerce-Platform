@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
   Check, X, ShieldAlert, AlertCircle, Bell, Store, Mail, Phone, MapPin, User,
-  Activity, Receipt, IndianRupee, RefreshCw, Search, RotateCcw, CheckCircle, 
+  Activity, Receipt, IndianRupee, RefreshCw, Search, RotateCcw, CheckCircle, CheckCircle2,
   Clock, AlertTriangle, Eye, DollarSign, Package, ShieldCheck, ArrowRight,
   Truck, CornerUpLeft, ThumbsUp, ThumbsDown, Users, BarChart3, Settings, 
-  FileSpreadsheet, HardDrive, Database, TrendingUp, Ticket
+  FileSpreadsheet, HardDrive, Database, TrendingUp, Ticket, ArrowRightLeft, Plus, FileText,
+  Trash2, Layers, Tag, ExternalLink, Power, Ban
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 
@@ -66,6 +67,10 @@ export default function AdminDashboard({ user, onGoToHome }) {
   const [vendorSearch, setVendorSearch] = useState('');
   const [selectedVendorDetail, setSelectedVendorDetail] = useState(null);
   const [tempCommissionRate, setTempCommissionRate] = useState('');
+  const [vendorProducts, setVendorProducts] = useState([]);
+  const [isLoadingVendorProducts, setIsLoadingVendorProducts] = useState(false);
+  const [inspectingProductDetail, setInspectingProductDetail] = useState(null);
+  const [vendorDetailTab, setVendorDetailTab] = useState('products'); // 'products' | 'overview'
 
   // System Diagnostics States
   const [systemStatus, setSystemStatus] = useState({
@@ -149,7 +154,143 @@ export default function AdminDashboard({ user, onGoToHome }) {
   const [refundReason, setRefundReason] = useState('');
   const [isProcessingRefund, setIsProcessingRefund] = useState(false);
 
+  // Warehouse Logistics & Order Allocation States
+  const [warehousesList, setWarehousesList] = useState([]);
+  const [warehouseInventories, setWarehouseInventories] = useState([]);
+  const [warehouseAllocations, setWarehouseAllocations] = useState([]);
+  const [warehouseAnalytics, setWarehouseAnalytics] = useState({});
+  const [adminOrders, setAdminOrders] = useState([]);
+  const [isLoadingWarehouses, setIsLoadingWarehouses] = useState(false);
+  const [allocWhSelection, setAllocWhSelection] = useState({});
+  const [allocSearchTerm, setAllocSearchTerm] = useState('');
+  const [allocFilterStatus, setAllocFilterStatus] = useState('UNALLOCATED'); // 'ALL' | 'UNALLOCATED' | 'ALLOCATED' | 'DELIVERED'
+  const [showAddWhAdminModal, setShowAddWhAdminModal] = useState(false);
+  const [showEditWhAdminModal, setShowEditWhAdminModal] = useState(false);
+  const [adminWhForm, setAdminWhForm] = useState({ id: null, name: '', code: '', address: '', city: '', active: true });
+  const [selectedAdminWhId, setSelectedAdminWhId] = useState('ALL');
+
+  // Multi-Warehouse Module Sub-Tabs ('allocation_desk' | 'facilities' | 'inventory' | 'transfers' | 'inbound_audit')
+  const [adminWhModuleSubTab, setAdminWhModuleSubTab] = useState('allocation_desk');
+
+  // Product Stock Distribution across Warehouses States
+  const [showDistributeStockModal, setShowDistributeStockModal] = useState(false);
+  const [distributeTargetProduct, setDistributeTargetProduct] = useState(null);
+  const [distributeInputs, setDistributeInputs] = useState({}); // { [warehouseId]: quantity }
+  const [isSubmittingDistribute, setIsSubmittingDistribute] = useState(false);
+
+  // Stock Transfer & Distribution Control States
+  const [adminStockTransfers, setAdminStockTransfers] = useState([]);
+  const [isLoadingAdminTransfers, setIsLoadingAdminTransfers] = useState(false);
+  const [showCreateTransferAdminModal, setShowCreateTransferAdminModal] = useState(false);
+  const [adminTransferForm, setAdminTransferForm] = useState({
+    sourceOrigin: 'VENDOR',
+    sourceWarehouseId: 'VENDOR',
+    destinationWarehouseId: 'ALL',
+    productId: '',
+    quantity: 10,
+    distributions: {},
+    transferReason: 'VENDOR_STOCK_DISTRIBUTION',
+    notes: ''
+  });
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
+  const [allProductsList, setAllProductsList] = useState([]);
+
   const dropdownRef = useRef(null);
+
+  const fetchAdminStockTransfers = async () => {
+    setIsLoadingAdminTransfers(true);
+    try {
+      const res = await axios.get('http://localhost:8080/api/stock-transfers/all');
+      setAdminStockTransfers(res.data || []);
+    } catch (err) {
+      console.error("Failed to fetch stock transfers", err);
+    } finally {
+      setIsLoadingAdminTransfers(false);
+    }
+  };
+
+  const handleCreateAdminStockTransfer = async (e) => {
+    e.preventDefault();
+    if (!adminTransferForm.productId) {
+      showFlash('error', 'Please select a product listed by the vendor.');
+      return;
+    }
+
+    setIsSubmittingTransfer(true);
+    try {
+      if (adminTransferForm.destinationWarehouseId === 'ALL') {
+        // Multi-warehouse distribution across all regional hubs
+        const activeWhs = warehousesList.filter(w => w.active);
+        const distList = activeWhs.map(w => ({
+          warehouseId: w.id,
+          quantity: parseInt(adminTransferForm.distributions[w.id]) || 0
+        }));
+        const totalUnits = distList.reduce((sum, d) => sum + d.quantity, 0);
+
+        if (totalUnits <= 0) {
+          showFlash('error', 'Please enter at least 1 unit to distribute across regional warehouses.');
+          setIsSubmittingTransfer(false);
+          return;
+        }
+
+        // 1. Distribute stock to warehouses inventory
+        await axios.post('http://localhost:8080/api/warehouses/distribute-stock', {
+          productId: parseInt(adminTransferForm.productId),
+          distributions: distList
+        });
+
+        // 2. Create distribution records for tracking
+        for (const dist of distList) {
+          if (dist.quantity > 0) {
+            try {
+              await axios.post('http://localhost:8080/api/stock-transfers/create', {
+                sourceWarehouseId: null,
+                destinationWarehouseId: dist.warehouseId,
+                productId: parseInt(adminTransferForm.productId),
+                quantity: dist.quantity,
+                transferReason: adminTransferForm.transferReason || 'VENDOR_STOCK_DISTRIBUTION',
+                notes: adminTransferForm.notes || 'Vendor listed stock distributed across regional fulfillment hubs.'
+              });
+            } catch (ignore) {}
+          }
+        }
+        showFlash('success', `Vendor stock (${totalUnits} units) distributed across regional warehouses successfully!`);
+      } else {
+        // Single warehouse allocation
+        const targetWhId = parseInt(adminTransferForm.destinationWarehouseId);
+        const qty = parseInt(adminTransferForm.quantity) || 1;
+        const isFromVendor = adminTransferForm.sourceWarehouseId === 'VENDOR' || !adminTransferForm.sourceWarehouseId;
+
+        await axios.post('http://localhost:8080/api/stock-transfers/create', {
+          sourceWarehouseId: isFromVendor ? null : parseInt(adminTransferForm.sourceWarehouseId),
+          destinationWarehouseId: targetWhId,
+          productId: parseInt(adminTransferForm.productId),
+          quantity: qty,
+          transferReason: adminTransferForm.transferReason || 'VENDOR_STOCK_DISTRIBUTION',
+          notes: adminTransferForm.notes || 'Stock allocated from vendor to warehouse.'
+        });
+        showFlash('success', `Stock (${qty} units) allocated to destination warehouse successfully.`);
+      }
+
+      setShowCreateTransferAdminModal(false);
+      setAdminTransferForm({
+        sourceOrigin: 'VENDOR',
+        sourceWarehouseId: 'VENDOR',
+        destinationWarehouseId: 'ALL',
+        productId: '',
+        quantity: 10,
+        distributions: {},
+        transferReason: 'VENDOR_STOCK_DISTRIBUTION',
+        notes: ''
+      });
+      fetchAdminStockTransfers();
+      fetchWarehousesAndAllocations();
+    } catch (err) {
+      showFlash('error', err.response?.data || 'Failed to distribute stock.');
+    } finally {
+      setIsSubmittingTransfer(false);
+    }
+  };
 
   const fetchDashboardSummary = async () => {
     setIsLoadingSummary(true);
@@ -172,6 +313,53 @@ export default function AdminDashboard({ user, onGoToHome }) {
       console.error("Failed to load vendors stats", err);
     } finally {
       setIsLoadingVendors(false);
+    }
+  };
+
+  const handleInspectVendor = (vendor) => {
+    setSelectedVendorDetail(vendor);
+    setTempCommissionRate(vendor.commissionRate !== null && vendor.commissionRate !== undefined ? vendor.commissionRate.toString() : '');
+    setVendorDetailTab('products');
+    fetchVendorProducts(vendor.id);
+  };
+
+  const fetchVendorProducts = async (vendorId) => {
+    setIsLoadingVendorProducts(true);
+    try {
+      const res = await axios.get(`http://localhost:8080/api/admin/vendors/${vendorId}/products`);
+      setVendorProducts(res.data || []);
+    } catch (err) {
+      console.error("Failed to load vendor products", err);
+      try {
+        const fallbackRes = await axios.get(`http://localhost:8080/api/products/vendor/${vendorId}`);
+        setVendorProducts(fallbackRes.data || []);
+      } catch (e) {
+        setVendorProducts([]);
+      }
+    } finally {
+      setIsLoadingVendorProducts(false);
+    }
+  };
+
+  const handleAdminDeleteProduct = async (productId, productName = 'Product') => {
+    if (!window.confirm(`⚠️ PERMANENT PRODUCT DELETION:\n\nAre you sure you want to permanently delete "${productName}" (Product #${productId})?\n\nThis will remove the product, all catalog media, reviews, and inventory allocations. This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await axios.delete(`http://localhost:8080/api/admin/products/${productId}`);
+      showFlash('success', `Product "${productName}" was permanently deleted by Admin.`);
+      if (selectedVendorDetail) {
+        fetchVendorProducts(selectedVendorDetail.id);
+      }
+      if (inspectingProductDetail && inspectingProductDetail.id === productId) {
+        setInspectingProductDetail(null);
+      }
+      fetchVendorsList();
+      fetchDashboardSummary();
+      fetchPendingProducts();
+    } catch (err) {
+      console.error("Failed to delete product", err);
+      showFlash('error', err.response?.data?.message || err.response?.data || 'Failed to delete product.');
     }
   };
 
@@ -546,6 +734,26 @@ export default function AdminDashboard({ user, onGoToHome }) {
   };
 
   // Return Lifecycle Decisions
+  const handleAcceptReturnRequest = async (refundId) => {
+    setIsProcessingReturnAction(true);
+    try {
+      await axios.post(`http://localhost:8080/api/admin/refunds/${refundId}/accept`, {
+        adminNotes: 'Return accepted by admin. Awaiting customer pickup and warehouse QC inspection.'
+      });
+      showFlash('success', 'Return request accepted. Sent to warehouse dashboard for pickup and QC.');
+      fetchReturnRequests();
+      fetchMonitoring();
+      fetchTransactions();
+      if (selectedReturnCase && selectedReturnCase.id === refundId) {
+        setSelectedReturnCase(null);
+      }
+    } catch (err) {
+      showFlash('error', err.response?.data || 'Failed to accept return request.');
+    } finally {
+      setIsProcessingReturnAction(false);
+    }
+  };
+
   const handleApproveReturn = async (refundId, orderId, amount) => {
     setIsProcessingReturnAction(true);
     try {
@@ -651,6 +859,115 @@ export default function AdminDashboard({ user, onGoToHome }) {
       showFlash('error', 'Could not fetch status details for ' + orderId);
     }
   };
+
+  // Warehouse Logistics API Handlers
+  const fetchWarehousesAndAllocations = async () => {
+    setIsLoadingWarehouses(true);
+    try {
+      const [whRes, invRes, allocRes, analRes, ordRes, prodRes] = await Promise.allSettled([
+        axios.get('http://localhost:8080/api/warehouses'),
+        axios.get('http://localhost:8080/api/warehouses/inventory/all'),
+        axios.get('http://localhost:8080/api/warehouses/allocations'),
+        axios.get('http://localhost:8080/api/warehouses/analytics'),
+        axios.get('http://localhost:8080/api/customer/orders/all'),
+        axios.get('http://localhost:8080/api/products')
+      ]);
+
+      if (whRes.status === 'fulfilled') setWarehousesList(whRes.value.data || []);
+      if (invRes.status === 'fulfilled') setWarehouseInventories(invRes.value.data || []);
+      if (allocRes.status === 'fulfilled') setWarehouseAllocations(allocRes.value.data || []);
+      if (analRes.status === 'fulfilled') setWarehouseAnalytics(analRes.value.data || {});
+      if (ordRes.status === 'fulfilled') setAdminOrders(ordRes.value.data || []);
+      if (prodRes.status === 'fulfilled') setAllProductsList(prodRes.value.data || []);
+    } catch (err) {
+      console.error("Failed to load warehouse logistics data", err);
+    } finally {
+      setIsLoadingWarehouses(false);
+    }
+  };
+
+  const handleOpenDistributeModal = (productId, productName) => {
+    const activeWhs = warehousesList.filter(w => w.active);
+    const initialDist = {};
+    activeWhs.forEach(w => {
+      const existingInv = warehouseInventories.find(i => String(i.productId) === String(productId) && (String(i.warehouseId) === String(w.id) || (i.warehouse && String(i.warehouse.id) === String(w.id))));
+      initialDist[w.id] = existingInv ? existingInv.quantity : 0;
+    });
+
+    setAdminTransferForm({
+      sourceOrigin: 'VENDOR',
+      sourceWarehouseId: 'VENDOR',
+      destinationWarehouseId: 'ALL',
+      productId: String(productId),
+      quantity: 10,
+      distributions: initialDist,
+      transferReason: 'VENDOR_STOCK_DISTRIBUTION',
+      notes: `Distribution of ${productName} stock from vendor to regional fulfillment hubs.`
+    });
+    setShowCreateTransferAdminModal(true);
+  };
+
+  const handleAdminAllocateOrder = async (orderId, targetWarehouseId) => {
+    if (!targetWarehouseId) {
+      showFlash('error', 'Please select a warehouse facility from the dropdown first.');
+      return;
+    }
+    try {
+      await axios.post(`http://localhost:8080/api/warehouses/orders/${orderId}/allocate-warehouse`, {
+        warehouseId: parseInt(targetWarehouseId)
+      });
+      showFlash('success', `Order ${orderId} successfully allocated to warehouse.`);
+      fetchWarehousesAndAllocations();
+    } catch (err) {
+      showFlash('error', err.response?.data || 'Failed to allocate warehouse for order.');
+    }
+  };
+
+  const handleAdminAutoAllocateOrder = async (orderId) => {
+    try {
+      await axios.post(`http://localhost:8080/api/warehouses/allocations/allocate/${orderId}`);
+      showFlash('success', `Order ${orderId} auto-allocated to warehouse with highest available stock.`);
+      fetchWarehousesAndAllocations();
+    } catch (err) {
+      showFlash('error', err.response?.data || 'Auto-allocation failed.');
+    }
+  };
+
+  const handleSaveAdminWarehouse = async (e) => {
+    e.preventDefault();
+    try {
+      if (adminWhForm.id) {
+        await axios.put(`http://localhost:8080/api/warehouses/${adminWhForm.id}`, adminWhForm);
+        showFlash('success', `Warehouse ${adminWhForm.code} updated successfully.`);
+      } else {
+        await axios.post('http://localhost:8080/api/warehouses', adminWhForm);
+        showFlash('success', `New warehouse ${adminWhForm.name} registered.`);
+      }
+      setShowAddWhAdminModal(false);
+      setShowEditWhAdminModal(false);
+      fetchWarehousesAndAllocations();
+    } catch (err) {
+      showFlash('error', err.response?.data || 'Failed to save warehouse information.');
+    }
+  };
+
+  const handleToggleAdminWhStatus = async (wh) => {
+    try {
+      await axios.put(`http://localhost:8080/api/warehouses/${wh.id}`, {
+        name: wh.name,
+        code: wh.code,
+        address: wh.address,
+        city: wh.city,
+        active: !wh.active
+      });
+      showFlash('success', `Warehouse ${wh.code} is now ${!wh.active ? 'Active' : 'Inactive'}.`);
+      fetchWarehousesAndAllocations();
+    } catch (err) {
+      showFlash('error', 'Failed to toggle warehouse status.');
+    }
+  };
+
+
 
   const pendingReturnsCount = returnRequests.filter(r => r.status === 'PENDING').length;
 
@@ -829,6 +1146,22 @@ export default function AdminDashboard({ user, onGoToHome }) {
           )}
         </button>
 
+        {/* Warehouse Logistics & Allocations Tab */}
+        <button
+          type="button"
+          onClick={() => { setActiveTab('warehouses'); fetchWarehousesAndAllocations(); }}
+          className={`sidebar-item ${activeTab === 'warehouses' ? 'sidebar-item-active' : ''}`}
+          style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: activeTab === 'warehouses' ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
+        >
+          <Truck size={17} style={{ color: activeTab === 'warehouses' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
+          <span>Warehouses & Allocation</span>
+          {adminOrders.filter(o => o.status === 'CONFIRMED' || o.status === 'PAID').length > 0 && (
+            <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#3b82f6', fontSize: '10px', padding: '2px 6px', fontWeight: '800' }}>
+              {adminOrders.filter(o => o.status === 'CONFIRMED' || o.status === 'PAID').length} Awaiting Alloc
+            </span>
+          )}
+        </button>
+
         <button
           type="button"
           onClick={() => { setActiveTab('monitoring'); fetchMonitoring(); }}
@@ -936,9 +1269,13 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     <TrendingUp size={18} style={{ color: 'var(--accent-teal)' }} />
                   </div>
                   <div className="analytics-card-value" style={{ color: 'var(--text-primary)' }}>
-                    ₹{dashboardSummary.totalSalesVolume?.toLocaleString('en-IN')}
+                    ₹{dashboardSummary.totalSalesVolume?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
-                  <div className="analytics-card-desc">Verified transactions volume</div>
+                  <div className="analytics-card-desc">
+                    {dashboardSummary.totalRefunded > 0 
+                      ? `Verified volume (₹${dashboardSummary.totalRefunded?.toLocaleString('en-IN')} refunded)` 
+                      : 'Verified transaction volume'}
+                  </div>
                 </div>
 
                 <div className="analytics-card" style={{ borderLeft: '4px solid var(--accent-rose)', background: 'linear-gradient(to right, rgba(239, 68, 68, 0.03), transparent)' }}>
@@ -947,9 +1284,13 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     <DollarSign size={18} style={{ color: 'var(--accent-rose)' }} />
                   </div>
                   <div className="analytics-card-value" style={{ color: 'var(--accent-rose)' }}>
-                    ₹{dashboardSummary.totalCommission?.toLocaleString('en-IN')}
+                    ₹{dashboardSummary.totalCommission?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
-                  <div className="analytics-card-desc">Commission fee collected</div>
+                  <div className="analytics-card-desc">
+                    {dashboardSummary.totalRefunded > 0 
+                      ? `Net fees (₹${(dashboardSummary.totalRefunded * 0.1).toFixed(2)} reversed)` 
+                      : 'Commission fee collected'}
+                  </div>
                 </div>
 
                 <div className="analytics-card" style={{ borderLeft: '4px solid var(--accent-indigo)' }}>
@@ -958,9 +1299,13 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     <IndianRupee size={18} style={{ color: 'var(--accent-indigo)' }} />
                   </div>
                   <div className="analytics-card-value" style={{ color: 'var(--text-primary)' }}>
-                    ₹{dashboardSummary.totalPayouts?.toLocaleString('en-IN')}
+                    ₹{dashboardSummary.totalPayouts?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
-                  <div className="analytics-card-desc">Disbursed & pending transfers</div>
+                  <div className="analytics-card-desc">
+                    {dashboardSummary.totalRefunded > 0 
+                      ? `Net transfers (deducted ₹${dashboardSummary.totalRefunded?.toLocaleString('en-IN')})` 
+                      : 'Disbursed & pending transfers'}
+                  </div>
                 </div>
 
                 <div className="analytics-card" style={{ borderLeft: '4px solid var(--accent-blue)' }}>
@@ -1090,9 +1435,19 @@ export default function AdminDashboard({ user, onGoToHome }) {
                             <td>{ord.date}</td>
                             <td style={{ fontFamily: 'monospace', fontWeight: '700', color: 'var(--accent-blue)' }}>{ord.orderId}</td>
                             <td>{ord.recipientName}</td>
-                            <td><span className="badge badge-customer">{ord.paymentMethod}</span></td>
-                            <td><span className="order-status-badge">{ord.status}</span></td>
-                            <td style={{ fontWeight: '800' }}>₹{ord.totalAmount}</td>
+                            <td>
+                              <span className={`badge ${
+                                ord.status === 'REFUNDED' ? 'badge-rejected' : 
+                                ord.status === 'DELIVERED' ? 'badge-approved' : 
+                                ord.status === 'SHIPPED' ? 'badge-customer' : 'badge-pending'
+                              }`} style={{ 
+                                fontWeight: '700',
+                                ...(ord.status === 'REFUNDED' ? { background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)' } : {})
+                              }}>
+                                {ord.status}
+                              </span>
+                            </td>
+                            <td style={{ fontWeight: '800' }}>₹{Number(ord.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           </tr>
                         ))
                       )}
@@ -1186,10 +1541,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                             <td style={{ color: 'var(--accent-emerald)', fontWeight: '700' }}>₹{v.netPayout?.toLocaleString('en-IN')}</td>
                             <td>
                               <button 
-                                onClick={() => {
-                                  setSelectedVendorDetail(v);
-                                  setTempCommissionRate(v.commissionRate !== null && v.commissionRate !== undefined ? v.commissionRate.toString() : '');
-                                }}
+                                onClick={() => handleInspectVendor(v)}
                                 className="btn btn-secondary" 
                                 style={{ padding: '4px 10px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                               >
@@ -1960,19 +2312,23 @@ export default function AdminDashboard({ user, onGoToHome }) {
                                 {isPending && (
                                   r.returnStage === 'QC_PASSED' ? (
                                     <span className="badge badge-approved" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <Check size={11} /> QC PASSED (AWAITING RESOLUTION)
+                                      <Check size={11} /> QC PASSED (AWAITING REFUND)
                                     </span>
                                   ) : r.returnStage === 'QC_FAILED' ? (
                                     <span className="badge badge-rejected" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <X size={11} /> QC FAILED (AWAITING RESOLUTION)
+                                      <X size={11} /> QC FAILED
                                     </span>
                                   ) : r.returnStage === 'ITEM_RETURNED' ? (
                                     <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <Clock size={11} /> PENDING QC INSPECTION
+                                      <Clock size={11} /> QC PENDING IN WAREHOUSE
+                                    </span>
+                                  ) : r.returnStage === 'ADMIN_APPROVED' ? (
+                                    <span className="badge badge-customer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--accent-blue)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+                                      <Clock size={11} /> APPROVED, AWAITING PICKUP
                                     </span>
                                   ) : (
-                                    <span className="badge badge-customer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--accent-blue)', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
-                                      <Clock size={11} /> AWAITING PICKUP
+                                    <span className="badge badge-customer" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(239, 68, 68, 0.15)', color: 'var(--accent-rose)', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+                                      <Clock size={11} /> PENDING ADMIN REVIEW
                                     </span>
                                   )
                                 )}
@@ -1988,39 +2344,73 @@ export default function AdminDashboard({ user, onGoToHome }) {
                                 )}
                               </td>
                               <td style={{ textAlign: 'center' }}>
-                                {isPending ? (
-                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleApproveReturn(r.id, r.orderId, r.amount)}
-                                      disabled={isProcessingReturnAction}
-                                      className="btn btn-success"
-                                      style={{ fontSize: '11px', padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                      title="Accept Return & Disburse Refund (Razorpay Test Mode)"
-                                    >
-                                      <Check size={12} /> Accept & Refund
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenRejectReturnModal(r)}
-                                      disabled={isProcessingReturnAction}
-                                      className="btn btn-danger"
-                                      style={{ fontSize: '11px', padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                      title="Reject Return Request (QC Failed)"
-                                    >
-                                      <X size={12} /> Reject
-                                    </button>
-                                  </div>
-                                ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
                                   <button
                                     type="button"
                                     onClick={() => setSelectedReturnCase(r)}
                                     className="btn btn-secondary"
-                                    style={{ fontSize: '11px', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    style={{ fontSize: '11px', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px', width: '100%', justifyContent: 'center' }}
                                   >
-                                    <Eye size={12} /> View Audit
+                                    <Eye size={12} /> Inspect
                                   </button>
-                                )}
+                                  {isPending && (
+                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', width: '100%' }}>
+                                      {r.returnStage === 'REQUESTED' && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAcceptReturnRequest(r.id)}
+                                            disabled={isProcessingReturnAction}
+                                            className="btn btn-success"
+                                            style={{ fontSize: '11px', padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px', flex: 1 }}
+                                            title="Accept return request and route to warehouse"
+                                          >
+                                            <Check size={12} /> Accept Return
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleOpenRejectReturnModal(r)}
+                                            disabled={isProcessingReturnAction}
+                                            className="btn btn-danger"
+                                            style={{ fontSize: '11px', padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px', flex: 1 }}
+                                            title="Reject customer return request"
+                                          >
+                                            <X size={12} /> Reject
+                                          </button>
+                                        </>
+                                      )}
+                                      {r.returnStage === 'QC_PASSED' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleApproveReturn(r.id, r.orderId, r.amount)}
+                                          disabled={isProcessingReturnAction}
+                                          className="btn btn-success"
+                                          style={{ fontSize: '11px', padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px', width: '100%', justifyContent: 'center' }}
+                                          title="Disburse payment refund (Razorpay Test Mode)"
+                                        >
+                                          <Check size={12} /> Disburse Refund
+                                        </button>
+                                      )}
+                                      {r.returnStage === 'QC_FAILED' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenRejectReturnModal(r)}
+                                          disabled={isProcessingReturnAction}
+                                          className="btn btn-danger"
+                                          style={{ fontSize: '11px', padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px', width: '100%', justifyContent: 'center' }}
+                                          title="Reject return request after failed QC"
+                                        >
+                                          <X size={12} /> Reject Return
+                                        </button>
+                                      )}
+                                      {(r.returnStage === 'ADMIN_APPROVED' || r.returnStage === 'ITEM_RETURNED') && (
+                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                          {r.returnStage === 'ADMIN_APPROVED' ? "Awaiting pickup..." : "Awaiting QC check..."}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -2029,6 +2419,1124 @@ export default function AdminDashboard({ user, onGoToHome }) {
                   </table>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB: WAREHOUSE LOGISTICS & ORDER ALLOCATIONS - SEPARATED BY FACILITY */}
+          {activeTab === 'warehouses' && (
+            <div>
+              {/* Header */}
+              <div className="flex-between" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Truck size={22} style={{ color: 'var(--accent-teal)' }} /> Warehouse Logistics & Multi-Facility Console
+                  </h2>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Manage separated fulfillment facilities, audit isolated inventory bins, and route customer orders.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setAdminWhForm({ id: null, name: '', code: '', address: '', city: '', active: true });
+                      setShowAddWhAdminModal(true);
+                    }} 
+                    className="btn btn-primary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                  >
+                    + Register New Facility
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={fetchWarehousesAndAllocations} 
+                    className="btn btn-secondary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px' }}
+                  >
+                    <RefreshCw size={13} className={isLoadingWarehouses ? "spin-animation" : ""} /> Refresh Data
+                  </button>
+                </div>
+              </div>
+
+              {/* SUB-MODULE SELECTOR: Order Allocation Desk | Facilities | Multi-Warehouse Stock Ledger | Stock Transfers | Inbound & Ownership Audit */}
+              {(() => {
+                const isOrderFulfilledOrFinal = (order) => {
+                  const s = (order.status || '').toUpperCase();
+                  return s === 'DELIVERED' || s === 'SHIPPED' || s === 'PACKED' || s === 'PICKED' || 
+                         s === 'OUT_FOR_DELIVERY' || s === 'COMPLETED' || 
+                         s === 'RETURN_REQUESTED' || s === 'RETURN_APPROVED' || s === 'REFUNDED' || 
+                         s === 'PARTIALLY_REFUNDED' || s === 'CANCELLED';
+                };
+
+                const isOrderAllocatedCheck = (order) => {
+                  if (isOrderFulfilledOrFinal(order)) return true;
+                  const orderAllocs = warehouseAllocations.filter(a => a.orderId === order.orderId);
+                  return orderAllocs.some(a => a.warehouseId !== null && a.status === 'ALLOCATED');
+                };
+
+                const unallocCount = adminOrders.filter(order => {
+                  const s = (order.status || '').toUpperCase();
+                  if (s === 'CANCELLED' || s === 'REFUNDED' || isOrderFulfilledOrFinal(order)) return false;
+                  return !isOrderAllocatedCheck(order);
+                }).length;
+
+                return (
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px', overflowX: 'auto' }}>
+                    <button
+                      type="button"
+                      onClick={() => setAdminWhModuleSubTab('allocation_desk')}
+                      className={`btn ${adminWhModuleSubTab === 'allocation_desk' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ fontSize: '12px', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Truck size={14} /> 1. Order Allocation Desk
+                      {unallocCount > 0 ? (
+                        <span className="badge" style={{ background: '#f59e0b', color: '#fff', fontSize: '10px', padding: '2px 6px', fontWeight: '800' }}>
+                          {unallocCount} Awaiting Routing
+                        </span>
+                      ) : (
+                        <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontSize: '10px', padding: '2px 6px' }}>
+                          ✓ Up to Date
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAdminWhModuleSubTab('facilities')}
+                      className={`btn ${adminWhModuleSubTab === 'facilities' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ fontSize: '12px', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <MapPin size={14} /> 2. Facility Network & Consoles ({warehousesList.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAdminWhModuleSubTab('inventory')}
+                      className={`btn ${adminWhModuleSubTab === 'inventory' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ fontSize: '12px', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Package size={14} /> 3. Multi-Hub Stock Ledger ({warehouseInventories.length} SKUs)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => { setAdminWhModuleSubTab('transfers'); fetchAdminStockTransfers(); }}
+                      className={`btn ${adminWhModuleSubTab === 'transfers' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ fontSize: '12px', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <ArrowRightLeft size={14} /> 4. Regional Transfers ({adminStockTransfers.length})
+                    </button>
+                  </div>
+                );
+              })()}
+
+              {/* VIEW 1: ORDER ALLOCATION DESK (PRIMARY ACTION CONSOLE FOR ADMIN) */}
+              {adminWhModuleSubTab === 'allocation_desk' && (() => {
+                const isOrderFulfilledOrFinal = (order) => {
+                  const s = (order.status || '').toUpperCase();
+                  return s === 'DELIVERED' || s === 'SHIPPED' || s === 'PACKED' || s === 'PICKED' || 
+                         s === 'OUT_FOR_DELIVERY' || s === 'COMPLETED' || 
+                         s === 'RETURN_REQUESTED' || s === 'RETURN_APPROVED' || s === 'REFUNDED' || 
+                         s === 'PARTIALLY_REFUNDED' || s === 'CANCELLED';
+                };
+
+                const isOrderAllocated = (order) => {
+                  if (isOrderFulfilledOrFinal(order)) return true;
+                  const orderAllocs = warehouseAllocations.filter(a => a.orderId === order.orderId);
+                  return orderAllocs.some(a => a.warehouseId !== null && a.status === 'ALLOCATED');
+                };
+
+                const unallocatedOrders = adminOrders.filter(order => {
+                  const s = (order.status || '').toUpperCase();
+                  if (s === 'CANCELLED' || s === 'REFUNDED' || isOrderFulfilledOrFinal(order)) return false;
+                  const orderAllocs = warehouseAllocations.filter(a => a.orderId === order.orderId);
+                  return !orderAllocs.some(a => a.warehouseId !== null && a.status === 'ALLOCATED');
+                });
+
+                const inProgressOrders = adminOrders.filter(order => {
+                  const s = (order.status || '').toUpperCase();
+                  if (s === 'DELIVERED' || s === 'CANCELLED' || s === 'REFUNDED' || s === 'COMPLETED') return false;
+                  return isOrderAllocated(order);
+                });
+                const totalAvailRetail = warehouseInventories.reduce((sum, i) => sum + Math.max(0, (i.quantity || 0) - (i.allocated || 0)), 0);
+
+                const displayedOrders = adminOrders
+                  .filter(order => {
+                    const isAlloc = isOrderAllocated(order);
+                    const isDelivered = (order.status || '').toUpperCase() === 'DELIVERED';
+                    const isCancelled = (order.status || '').toUpperCase() === 'CANCELLED';
+                    if (allocFilterStatus === 'UNALLOCATED') return !isAlloc && !isDelivered && !isCancelled;
+                    if (allocFilterStatus === 'ALLOCATED') return isAlloc && !isDelivered && !isCancelled;
+                    if (allocFilterStatus === 'DELIVERED') return isDelivered;
+                    return true;
+                  })
+                  .filter(order => {
+                    if (!allocSearchTerm.trim()) return true;
+                    const q = allocSearchTerm.toLowerCase();
+                    return order.orderId?.toLowerCase().includes(q) || order.customerName?.toLowerCase().includes(q) || order.shippingCity?.toLowerCase().includes(q);
+                  });
+
+                return (
+                  <div>
+                    {/* Metric Cards Header */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                      <div className="metric-card" style={{ border: unallocatedOrders.length > 0 ? '1px solid #f59e0b' : '1px solid var(--border-light)', background: unallocatedOrders.length > 0 ? 'rgba(245, 158, 11, 0.04)' : 'var(--bg-card)' }}>
+                        <div className="flex-between">
+                          <span className="metric-label">Awaiting Admin Allocation</span>
+                          <Clock size={18} style={{ color: '#f59e0b' }} />
+                        </div>
+                        <div className="metric-value" style={{ color: unallocatedOrders.length > 0 ? '#f59e0b' : 'inherit' }}>
+                          {unallocatedOrders.length} Orders
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Require warehouse assignment</span>
+                      </div>
+
+                      <div className="metric-card">
+                        <div className="flex-between">
+                          <span className="metric-label">In-Fulfillment Pipeline</span>
+                          <Truck size={18} style={{ color: 'var(--accent-indigo)' }} />
+                        </div>
+                        <div className="metric-value">
+                          {inProgressOrders.length} Orders
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Active in picking / packing / dispatch</span>
+                      </div>
+
+                      <div className="metric-card">
+                        <div className="flex-between">
+                          <span className="metric-label">Active Facilities</span>
+                          <Store size={18} style={{ color: 'var(--accent-teal)' }} />
+                        </div>
+                        <div className="metric-value">
+                          {warehousesList.filter(w => w.active).length} Hubs
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Operational warehouse network</span>
+                      </div>
+
+                      <div className="metric-card">
+                        <div className="flex-between">
+                          <span className="metric-label">Available Retail Stock</span>
+                          <CheckCircle size={18} style={{ color: 'var(--accent-emerald)' }} />
+                        </div>
+                        <div className="metric-value" style={{ color: 'var(--accent-emerald)' }}>
+                          {totalAvailRetail} Units
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Unreserved across all hubs</span>
+                      </div>
+                    </div>
+
+                    {/* Order Allocation Table Console */}
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px', marginBottom: '24px' }}>
+                      <div className="flex-between" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                        <div>
+                          <h3 style={{ fontSize: '16px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Truck size={18} style={{ color: 'var(--accent-teal)' }} />
+                            Customer Order Warehouse Routing Desk
+                          </h3>
+                          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                            Allocate incoming orders to optimal fulfillment facilities. Assigned staff will instantly receive dispatch alerts.
+                          </p>
+                        </div>
+
+                        {/* Filter Pills */}
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => setAllocFilterStatus('UNALLOCATED')}
+                            className={`btn ${allocFilterStatus === 'UNALLOCATED' ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ fontSize: '11px', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            ⏳ Awaiting Allocation ({unallocatedOrders.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAllocFilterStatus('ALLOCATED')}
+                            className={`btn ${allocFilterStatus === 'ALLOCATED' ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ fontSize: '11px', padding: '5px 12px' }}
+                          >
+                            📦 In-Fulfillment ({inProgressOrders.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAllocFilterStatus('ALL')}
+                            className={`btn ${allocFilterStatus === 'ALL' ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ fontSize: '11px', padding: '5px 12px' }}
+                          >
+                            🌐 All Orders ({adminOrders.length})
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Search Bar */}
+                      <div style={{ marginBottom: '16px' }}>
+                        <input
+                          type="text"
+                          placeholder="Search by Order ID, Customer Name, or City..."
+                          value={allocSearchTerm}
+                          onChange={(e) => setAllocSearchTerm(e.target.value)}
+                          className="form-input"
+                          style={{ width: '100%', fontSize: '12px', padding: '8px 12px' }}
+                        />
+                      </div>
+
+                      {displayedOrders.length === 0 ? (
+                        <div style={{ padding: '36px', textAlign: 'center', background: 'var(--bg-input)', borderRadius: '8px', color: 'var(--text-muted)' }}>
+                          <CheckCircle2 size={36} style={{ opacity: 0.3, marginBottom: '8px', color: 'var(--accent-emerald)' }} />
+                          <p style={{ margin: 0, fontSize: '14px' }}>
+                            {allocFilterStatus === 'UNALLOCATED' 
+                              ? 'All customer orders have been routed to fulfillment facilities! No pending allocations.'
+                              : 'No matching orders found.'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                          <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                            <thead>
+                              <tr>
+                                <th>Order Details</th>
+                                <th>Items Ordered</th>
+                                <th>Hub Stock Availability Check</th>
+                                <th>Routing Status</th>
+                                <th style={{ textAlign: 'center', width: '280px' }}>Allocate to Warehouse</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {displayedOrders.map(order => {
+                                const orderAllocs = warehouseAllocations.filter(a => a.orderId === order.orderId);
+                                const assignedWarehouseNames = [...new Set(orderAllocs.map(a => a.warehouseName || (a.warehouse && a.warehouse.name)).filter(Boolean))];
+                                const isAlloc = isOrderAllocated(order);
+                                const s = (order.status || '').toUpperCase();
+                                const isRefunded = s === 'REFUNDED';
+                                const isCancelled = s === 'CANCELLED';
+                                const isDelivered = s === 'DELIVERED' || s === 'COMPLETED';
+                                const isShipped = s === 'SHIPPED' || s === 'OUT_FOR_DELIVERY';
+                                const currentSelectedWh = allocWhSelection[order.orderId] || '';
+
+                                return (
+                                  <tr key={order.id || order.orderId}>
+                                    <td>
+                                      <strong>{order.orderId}</strong>
+                                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{order.customerName} • {order.shippingCity}</div>
+                                      <div style={{ fontSize: '11px', color: 'var(--accent-teal)', fontWeight: '700', marginTop: '2px' }}>
+                                        ₹{order.totalAmount?.toLocaleString('en-IN')}
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        {order.items && order.items.map((it, idx) => (
+                                          <div key={idx} style={{ fontSize: '11px' }}>
+                                            <span className="badge" style={{ background: 'var(--bg-input)', fontSize: '10px', padding: '1px 5px' }}>{it.quantity}x</span> {it.productName}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                        {warehousesList.filter(w => w.active).map(wh => {
+                                          let hasStock = true;
+                                          let minAvail = 999999;
+                                          if (order.items && order.items.length > 0) {
+                                            order.items.forEach(it => {
+                                              const match = warehouseInventories.find(i => (i.warehouseId === wh.id || (i.warehouse && i.warehouse.id === wh.id)) && i.productId === it.productId);
+                                              const avail = match ? Math.max(0, (match.quantity || 0) - (match.allocated || 0)) : 0;
+                                              if (avail < it.quantity) hasStock = false;
+                                              if (avail < minAvail) minAvail = avail;
+                                            });
+                                          }
+                                          return (
+                                            <span
+                                              key={wh.id}
+                                              style={{
+                                                fontSize: '10px',
+                                                padding: '2px 6px',
+                                                borderRadius: '4px',
+                                                background: hasStock ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.1)',
+                                                color: hasStock ? '#10b981' : '#ef4444',
+                                                fontWeight: '700',
+                                                border: `1px solid ${hasStock ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.2)'}`
+                                              }}
+                                              title={`${wh.name}: ${hasStock ? 'Sufficient stock to fulfill order' : 'Insufficient stock'}`}
+                                            >
+                                              {wh.code}: {hasStock ? `Ready (${minAvail})` : 'Low Stock'}
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    </td>
+                                    <td>
+                                      {isRefunded ? (
+                                        <span className="badge badge-rejected" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '700' }}>
+                                          <RotateCcw size={11} /> REFUNDED
+                                        </span>
+                                      ) : isCancelled ? (
+                                        <span className="badge badge-rejected" style={{ fontSize: '10px' }}>
+                                          ❌ Cancelled Order
+                                        </span>
+                                      ) : isDelivered ? (
+                                        <div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <CheckCircle size={14} style={{ color: 'var(--accent-emerald)' }} />
+                                            <strong style={{ color: 'var(--accent-emerald)' }}>Delivered & Complete</strong>
+                                          </div>
+                                          <span className="badge badge-approved" style={{ fontSize: '9px', marginTop: '3px' }}>
+                                            {assignedWarehouseNames.join(', ') || 'Delivered'}
+                                          </span>
+                                        </div>
+                                      ) : isShipped ? (
+                                        <div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <Truck size={14} style={{ color: 'var(--accent-teal)' }} />
+                                            <strong style={{ color: 'var(--accent-teal)' }}>In Transit / Shipped</strong>
+                                          </div>
+                                          <span className="badge badge-customer" style={{ fontSize: '9px', marginTop: '3px' }}>
+                                            {assignedWarehouseNames.join(', ') || order.status}
+                                          </span>
+                                        </div>
+                                      ) : isAlloc ? (
+                                        <div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <CheckCircle size={14} style={{ color: 'var(--accent-emerald)' }} />
+                                            <strong style={{ color: 'var(--accent-indigo)' }}>
+                                              {assignedWarehouseNames.join(', ') || order.status || 'Allocated'}
+                                            </strong>
+                                          </div>
+                                          <span className="badge badge-customer" style={{ fontSize: '9px', marginTop: '3px' }}>
+                                            Stage: {order.status || 'ALLOCATED'}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="badge badge-pending" style={{ fontSize: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                          <Clock size={11} /> ⏳ Awaiting Allocation
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                      {isRefunded ? (
+                                        <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                          <Ban size={12} /> Non-Allocatable (Refunded)
+                                        </span>
+                                      ) : isCancelled ? (
+                                        <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                          <Ban size={12} /> Non-Allocatable (Cancelled)
+                                        </span>
+                                      ) : isAlloc ? (
+                                        <span className="badge badge-approved" style={{ fontSize: '11px', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                                          <Check size={12} /> {isDelivered ? 'Delivered & Complete' : isShipped ? 'Dispatched' : `Allocated (${assignedWarehouseNames.join(', ') || 'Facility'})`}
+                                        </span>
+                                      ) : (
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'center' }}>
+                                          <select
+                                            value={currentSelectedWh}
+                                            onChange={(e) => setAllocWhSelection({ ...allocWhSelection, [order.orderId]: e.target.value })}
+                                            className="form-input"
+                                            style={{ fontSize: '11px', padding: '4px 6px', width: '150px' }}
+                                          >
+                                            <option value="">Select Facility...</option>
+                                            {warehousesList.filter(w => w.active).map(w => (
+                                              <option key={w.id} value={w.id}>
+                                                {w.name} ({w.code})
+                                              </option>
+                                            ))}
+                                          </select>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (!currentSelectedWh) {
+                                                showFlash('error', 'Please select a facility from the dropdown first.');
+                                                return;
+                                              }
+                                              handleAdminAllocateOrder(order.orderId, currentSelectedWh);
+                                            }}
+                                            className="btn btn-primary"
+                                            style={{ fontSize: '11px', padding: '4px 10px', whiteSpace: 'nowrap' }}
+                                          >
+                                            Submit
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAdminAutoAllocateOrder(order.orderId)}
+                                            className="btn btn-secondary"
+                                            style={{ fontSize: '11px', padding: '4px 8px', whiteSpace: 'nowrap' }}
+                                            title="Auto-route to facility with highest available stock"
+                                          >
+                                            ⚡ Auto
+                                          </button>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* VIEW 2: SEPARATED FACILITIES & CONSOLES */}
+              {adminWhModuleSubTab === 'facilities' && (
+                <div>
+                  {/* SEPARATED FACILITY SWITCHER TAB STRIP */}
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: '8px', 
+                    marginBottom: '22px', 
+                    overflowX: 'auto', 
+                    padding: '6px', 
+                    background: 'var(--bg-card)', 
+                    borderRadius: '10px', 
+                    border: '1px solid var(--border-light)' 
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAdminWhId('ALL')}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        background: selectedAdminWhId === 'ALL' ? 'var(--accent-teal)' : 'transparent',
+                        color: selectedAdminWhId === 'ALL' ? '#fff' : 'var(--text-secondary)',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      🌐 All Facilities Hubs ({warehousesList.length})
+                    </button>
+
+                    {warehousesList.map(wh => {
+                      const whInvs = warehouseInventories.filter(inv => inv.warehouseId === wh.id || (inv.warehouse && inv.warehouse.id === wh.id));
+                      const whPhys = whInvs.reduce((sum, i) => sum + (i.quantity || 0), 0);
+                      const whAlloc = whInvs.reduce((sum, i) => sum + (i.allocated || 0), 0);
+                      const whAvail = Math.max(0, whPhys - whAlloc);
+                      const isSelected = String(selectedAdminWhId) === String(wh.id);
+
+                      return (
+                        <button
+                          key={wh.id}
+                          type="button"
+                          onClick={() => setSelectedAdminWhId(String(wh.id))}
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            border: isSelected ? 'none' : '1px solid var(--border-light)',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            background: isSelected ? 'var(--accent-indigo, #6366f1)' : 'var(--bg-input)',
+                            color: isSelected ? '#fff' : 'var(--text-primary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <span>🏢 {wh.name} ({wh.code})</span>
+                          <span style={{
+                            fontSize: '10px',
+                            padding: '1px 6px',
+                            borderRadius: '10px',
+                            background: isSelected ? 'rgba(255,255,255,0.25)' : 'rgba(16,185,129,0.15)',
+                            color: isSelected ? '#fff' : '#10b981',
+                            fontWeight: '800'
+                          }}>
+                            {whAvail} Avail
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* If an Individual Facility is Selected: Dedicated Command Console */}
+                  {selectedAdminWhId !== 'ALL' && (() => {
+                    const currentWh = warehousesList.find(w => String(w.id) === String(selectedAdminWhId));
+                    if (!currentWh) return null;
+
+                    const whInvs = warehouseInventories.filter(inv => inv.warehouseId === currentWh.id || (inv.warehouse && inv.warehouse.id === currentWh.id));
+                    const totalPhys = whInvs.reduce((sum, i) => sum + (i.quantity || 0), 0);
+                    const totalAlloc = whInvs.reduce((sum, i) => sum + (i.allocated || 0), 0);
+                    const totalAvail = Math.max(0, totalPhys - totalAlloc);
+                    const totalDamaged = whInvs.reduce((sum, i) => sum + (i.damagedQuantity || 0), 0);
+
+                    const whAllocs = warehouseAllocations.filter(a => String(a.warehouseId) === String(currentWh.id) || (a.warehouse && String(a.warehouse.id) === String(currentWh.id)));
+                    const whOrderIds = [...new Set(whAllocs.map(a => a.orderId))];
+                    const whOrders = adminOrders.filter(o => whOrderIds.includes(o.orderId));
+
+                    return (
+                      <div>
+                        {/* Facility Command Header */}
+                        <div style={{
+                          background: 'linear-gradient(135deg, var(--bg-card) 0%, rgba(99, 102, 241, 0.05) 100%)',
+                          border: '1px solid var(--border-light)',
+                          borderRadius: '12px',
+                          padding: '20px',
+                          marginBottom: '20px'
+                        }}>
+                          <div className="flex-between" style={{ flexWrap: 'wrap', gap: '12px' }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                                <span className="badge badge-vendor" style={{ fontSize: '12px', fontWeight: '800' }}>{currentWh.code}</span>
+                                <span className={`badge ${currentWh.active ? 'badge-approved' : 'badge-rejected'}`}>
+                                  {currentWh.active ? 'OPERATIONAL ACTIVE' : 'INACTIVE'}
+                                </span>
+                                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>📍 {currentWh.city}</span>
+                              </div>
+                              <h3 style={{ fontSize: '22px', fontWeight: '800', margin: 0, color: 'var(--text-primary)' }}>
+                                {currentWh.name}
+                              </h3>
+                              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                                {currentWh.address}
+                              </p>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAdminWhForm(currentWh);
+                                  setShowEditWhAdminModal(true);
+                                }}
+                                className="btn btn-secondary"
+                                style={{ fontSize: '12px', padding: '6px 12px' }}
+                              >
+                                Edit Facility
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleAdminWhStatus(currentWh)}
+                                className={`btn ${currentWh.active ? 'btn-secondary' : 'btn-primary'}`}
+                                style={{ fontSize: '12px', padding: '6px 12px' }}
+                              >
+                                {currentWh.active ? 'Deactivate' : 'Activate'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedAdminWhId('ALL')}
+                                className="btn btn-secondary"
+                                style={{ fontSize: '12px', padding: '6px 12px' }}
+                              >
+                                ← Network View
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Facility Dedicated KPI Cards */}
+                        <div className="dashboard-metrics" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                          <div className="metric-card" style={{ padding: '16px' }}>
+                            <div className="flex-between">
+                              <span className="metric-label">Physical Stock</span>
+                              <Package size={16} style={{ color: 'var(--accent-teal)' }} />
+                            </div>
+                            <div className="metric-value" style={{ fontSize: '22px' }}>{totalPhys} units</div>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>In {currentWh.code} storage</span>
+                          </div>
+
+                          <div className="metric-card" style={{ padding: '16px' }}>
+                            <div className="flex-between">
+                              <span className="metric-label">Available to Sell</span>
+                              <CheckCircle size={16} style={{ color: 'var(--accent-emerald)' }} />
+                            </div>
+                            <div className="metric-value" style={{ fontSize: '22px', color: 'var(--accent-emerald)' }}>{totalAvail} units</div>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Unreserved stock</span>
+                          </div>
+
+                          <div className="metric-card" style={{ padding: '16px' }}>
+                            <div className="flex-between">
+                              <span className="metric-label">Allocated In-Flight</span>
+                              <Clock size={16} style={{ color: 'var(--accent-amber)' }} />
+                            </div>
+                            <div className="metric-value" style={{ fontSize: '22px', color: 'var(--accent-amber)' }}>{totalAlloc} units</div>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Reserved in packaging</span>
+                          </div>
+
+                          <div className="metric-card" style={{ padding: '16px' }}>
+                            <div className="flex-between">
+                              <span className="metric-label">Quarantined Damaged</span>
+                              <ShieldAlert size={16} style={{ color: '#ef4444' }} />
+                            </div>
+                            <div className="metric-value" style={{ fontSize: '22px', color: '#ef4444' }}>{totalDamaged} units</div>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Isolated from catalog</span>
+                          </div>
+                        </div>
+
+                        {/* Section: Fulfillment Queue for THIS Facility */}
+                        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px', marginBottom: '24px' }}>
+                          <div className="flex-between" style={{ marginBottom: '16px' }}>
+                            <div>
+                              <h4 style={{ fontSize: '15px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Truck size={17} style={{ color: 'var(--accent-indigo)' }} />
+                                Fulfillment Orders Assigned to {currentWh.name} ({whOrders.length})
+                              </h4>
+                              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                                Customer orders routed to this physical location for picking, packing, and dispatch.
+                              </p>
+                            </div>
+                          </div>
+
+                          {whOrders.length === 0 ? (
+                            <div style={{ padding: '24px', textAlign: 'center', background: 'var(--bg-input)', borderRadius: '8px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                              No orders currently assigned to {currentWh.name}.
+                            </div>
+                          ) : (
+                            <div style={{ overflowX: 'auto' }}>
+                              <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                                <thead>
+                                  <tr>
+                                    <th>Order Details</th>
+                                    <th>Items Ordered</th>
+                                    <th>Total Amount</th>
+                                    <th>Fulfillment Stage</th>
+                                    <th>Re-route Facility</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {whOrders.map(ord => {
+                                    return (
+                                      <tr key={ord.id || ord.orderId}>
+                                        <td>
+                                          <strong>{ord.orderId}</strong>
+                                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{ord.customerName} • {ord.shippingCity}</div>
+                                        </td>
+                                        <td>
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            {ord.items && ord.items.map((it, idx) => (
+                                              <div key={idx} style={{ fontSize: '11px' }}>
+                                                <span className="badge" style={{ background: 'var(--bg-input)', fontSize: '10px', padding: '1px 5px' }}>{it.quantity}x</span> {it.productName}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </td>
+                                        <td><strong>₹{ord.totalAmount?.toLocaleString('en-IN')}</strong></td>
+                                        <td>
+                                          <span className={`badge ${
+                                            ord.status === 'DELIVERED' ? 'badge-approved' :
+                                            ord.status === 'SHIPPED' ? 'badge-vendor' :
+                                            ord.status === 'PACKED' ? 'badge-customer' :
+                                            ord.status === 'PICKED' ? 'badge-customer' : 'badge-pending'
+                                          }`} style={{ fontSize: '10px', padding: '2px 8px', fontWeight: '700' }}>
+                                            {ord.status || 'ALLOCATED'}
+                                          </span>
+                                        </td>
+                                        <td>
+                                          <select
+                                            onChange={(e) => {
+                                              if (e.target.value) {
+                                                handleAdminAllocateOrder(ord.orderId, e.target.value);
+                                              }
+                                            }}
+                                            defaultValue=""
+                                            className="form-input"
+                                            style={{ fontSize: '11px', padding: '3px 6px' }}
+                                          >
+                                            <option value="">Re-route to another facility...</option>
+                                            {warehousesList.filter(w => w.id !== currentWh.id && w.active).map(w => (
+                                              <option key={w.id} value={w.id}>
+                                                {w.name} ({w.code})
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* If NETWORK OVERVIEW is selected: All Facilities Hub Cards Grid */}
+                  {selectedAdminWhId === 'ALL' && (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                        {warehousesList.map(wh => {
+                          const whInvs = warehouseInventories.filter(inv => inv.warehouseId === wh.id || (inv.warehouse && inv.warehouse.id === wh.id));
+                          const totalPhys = whInvs.reduce((sum, i) => sum + (i.quantity || 0), 0);
+                          const totalAlloc = whInvs.reduce((sum, i) => sum + (i.allocated || 0), 0);
+                          const totalAvail = Math.max(0, totalPhys - totalAlloc);
+                          const whAllocs = warehouseAllocations.filter(a => String(a.warehouseId) === String(wh.id) || (a.warehouse && String(a.warehouse.id) === String(wh.id)));
+
+                          return (
+                            <div
+                              key={wh.id}
+                              style={{
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border-light)',
+                                borderRadius: '12px',
+                                padding: '18px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between',
+                                gap: '14px'
+                              }}
+                            >
+                              <div>
+                                <div className="flex-between" style={{ marginBottom: '8px' }}>
+                                  <span className="badge badge-vendor" style={{ fontWeight: '800' }}>{wh.code}</span>
+                                  <span className={`badge ${wh.active ? 'badge-approved' : 'badge-rejected'}`}>
+                                    {wh.active ? 'OPERATIONAL' : 'INACTIVE'}
+                                  </span>
+                                </div>
+                                <h4 style={{ fontSize: '16px', fontWeight: '800', margin: '0 0 4px 0' }}>{wh.name}</h4>
+                                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>📍 {wh.city} — {wh.address}</div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '14px', textAlign: 'center' }}>
+                                  <div style={{ background: 'var(--bg-input)', padding: '8px', borderRadius: '6px' }}>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>PHYSICAL</div>
+                                    <strong style={{ fontSize: '15px' }}>{totalPhys}</strong>
+                                  </div>
+                                  <div style={{ background: 'var(--bg-input)', padding: '8px', borderRadius: '6px' }}>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>AVAILABLE</div>
+                                    <strong style={{ fontSize: '15px', color: '#10b981' }}>{totalAvail}</strong>
+                                  </div>
+                                  <div style={{ background: 'var(--bg-input)', padding: '8px', borderRadius: '6px' }}>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>IN-FLIGHT</div>
+                                    <strong style={{ fontSize: '15px', color: '#3b82f6' }}>{whAllocs.filter(a => a.status !== 'DELIVERED').length}</strong>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setSelectedAdminWhId(String(wh.id))}
+                                className="btn btn-primary"
+                                style={{ width: '100%', fontSize: '12px', padding: '8px' }}
+                              >
+                                Open {wh.code} Facility Console →
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* VIEW 3: MULTI-HUB INVENTORY LEDGER */}
+              {adminWhModuleSubTab === 'inventory' && (() => {
+                // Group warehouse inventories by product
+                const productsMap = {};
+                warehouseInventories.forEach(inv => {
+                  if (!productsMap[inv.productId]) {
+                    productsMap[inv.productId] = {
+                      id: inv.productId,
+                      name: inv.productName,
+                      category: inv.productCategory,
+                      price: inv.productPrice,
+                      imageUrl: inv.productImageUrl,
+                      hubStocks: {},
+                      totalPhysical: 0,
+                      totalAllocated: 0,
+                      totalAvailable: 0
+                    };
+                  }
+                  productsMap[inv.productId].hubStocks[inv.warehouseId] = inv.quantity || 0;
+                  productsMap[inv.productId].totalPhysical += (inv.quantity || 0);
+                  productsMap[inv.productId].totalAllocated += (inv.allocated || 0);
+                  productsMap[inv.productId].totalAvailable += Math.max(0, (inv.quantity || 0) - (inv.allocated || 0));
+                });
+                const groupedProducts = Object.values(productsMap);
+
+                return (
+                  <div>
+                    {/* Stock Distribution per Product Card */}
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px', marginBottom: '24px' }}>
+                      <div className="flex-between" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                        <div>
+                          <h3 style={{ fontSize: '16px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Layers size={18} style={{ color: 'var(--accent-indigo)' }} />
+                            Vendor Product Stock Distribution Across Warehouses
+                          </h3>
+                          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                            Admin manages how vendor product quantities are distributed across Kolkata, Mumbai, Delhi, and Bangalore hubs.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                          <thead>
+                            <tr>
+                              <th>Product</th>
+                              <th>Total Physical Stock</th>
+                              <th>Available to Sell</th>
+                              {warehousesList.map(w => (
+                                <th key={w.id} style={{ textAlign: 'center' }}>
+                                  {w.name?.replace('Warehouse', '').replace('Fulfillment Center', '').replace('Logistics Hub', '').trim() || w.city}
+                                  <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>({w.code})</div>
+                                </th>
+                              ))}
+                              <th style={{ textAlign: 'center' }}>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {groupedProducts.map(p => (
+                              <tr key={p.id}>
+                                <td>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ width: '32px', height: '32px', borderRadius: '6px', overflow: 'hidden', background: 'var(--bg-input)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      {p.imageUrl ? (
+                                        <img src={p.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                      ) : (
+                                        <ProductIcon name={p.name} category={p.category} size={16} />
+                                      )}
+                                    </div>
+                                    <div>
+                                      <strong>{p.name}</strong>
+                                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>SKU #{p.id} • ₹{p.price}</div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td><strong>{p.totalPhysical}</strong> units</td>
+                                <td><strong style={{ color: p.totalAvailable < 5 ? '#ef4444' : '#10b981' }}>{p.totalAvailable}</strong> units</td>
+                                {warehousesList.map(w => {
+                                  const qty = p.hubStocks[w.id] || 0;
+                                  return (
+                                    <td key={w.id} style={{ textAlign: 'center' }}>
+                                      <span className="badge" style={{ background: qty > 0 ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-input)', color: qty > 0 ? 'var(--accent-indigo)' : 'var(--text-muted)', fontWeight: '700' }}>
+                                        {qty}
+                                      </span>
+                                    </td>
+                                  );
+                                })}
+                                <td style={{ textAlign: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenDistributeModal(p.id, p.name)}
+                                    className="btn btn-primary"
+                                    style={{ fontSize: '11px', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                  >
+                                    ⚡ Distribute Stock
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Detailed Hub Stock Ledger */}
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
+                      <div className="flex-between" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                        <div>
+                          <h3 style={{ fontSize: '16px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Package size={18} style={{ color: 'var(--accent-teal)' }} />
+                            Centralized Multi-Warehouse Stock Ledger ({warehouseInventories.length} SKU Entries)
+                          </h3>
+                          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                            Physical inventory breakdown per warehouse facility with real-time allocated reservations.
+                          </p>
+                        </div>
+                      </div>
+
+                      {warehouseInventories.length === 0 ? (
+                        <div style={{ padding: '36px', textAlign: 'center', background: 'var(--bg-input)', borderRadius: '8px', color: 'var(--text-muted)' }}>
+                          No inventory records mapped across facilities.
+                        </div>
+                      ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                          <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                            <thead>
+                              <tr>
+                                <th>Product Name</th>
+                                <th>Category</th>
+                                <th>Warehouse Hub</th>
+                                <th>Physical Units</th>
+                                <th>Allocated / Reserved</th>
+                                <th>Available to Sell</th>
+                                <th>Quarantined Damaged</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {warehouseInventories.map(inv => (
+                                <tr key={inv.id}>
+                                  <td><strong>{inv.productName}</strong></td>
+                                  <td><span className="badge badge-customer">{inv.productCategory}</span></td>
+                                  <td>
+                                    <strong>{inv.warehouseName}</strong>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Code: {inv.warehouseCode}</div>
+                                  </td>
+                                  <td><strong>{inv.quantity}</strong> units</td>
+                                  <td style={{ color: 'var(--accent-blue)' }}>{inv.allocated || 0}</td>
+                                  <td>
+                                    <strong style={{ color: (inv.available || 0) < 5 ? '#ef4444' : '#10b981' }}>
+                                      {inv.available || 0} units
+                                    </strong>
+                                  </td>
+                                  <td>
+                                    {(inv.damagedQuantity || 0) > 0 ? (
+                                      <span style={{ color: '#ef4444', fontWeight: '700' }}>{inv.damagedQuantity} units</span>
+                                    ) : (
+                                      <span style={{ color: 'var(--text-muted)' }}>0</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* VIEW 2: VENDOR STOCK DISTRIBUTION & TRANSFERS CONTROLLER */}
+              {adminWhModuleSubTab === 'transfers' && (
+                <div>
+                  <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '18px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <ArrowRightLeft size={20} style={{ color: 'var(--accent-indigo)' }} />
+                        Vendor Stock Distribution & Multi-Warehouse Allocation
+                      </h3>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                        All stock listed by vendors in the catalog is distributed and allocated by Admin across regional warehouses (Kolkata, Mumbai, Delhi, Bangalore).
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const activeWhs = warehousesList.filter(w => w.active);
+                          const initialDist = {};
+                          activeWhs.forEach(w => { initialDist[w.id] = 10; });
+
+                          setAdminTransferForm({
+                            sourceOrigin: 'VENDOR',
+                            sourceWarehouseId: 'VENDOR',
+                            destinationWarehouseId: 'ALL',
+                            productId: allProductsList[0]?.id ? String(allProductsList[0].id) : '',
+                            quantity: 10,
+                            distributions: initialDist,
+                            transferReason: 'VENDOR_STOCK_DISTRIBUTION',
+                            notes: 'Admin distributes vendor listed catalog stock across regional fulfillment centers.'
+                          });
+                          setShowCreateTransferAdminModal(true);
+                        }}
+                        className="btn btn-primary"
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '7px 14px' }}
+                      >
+                        <Plus size={14} /> + Distribute Vendor Stock to Warehouses
+                      </button>
+                      <button
+                        type="button"
+                        onClick={fetchAdminStockTransfers}
+                        className="btn btn-secondary"
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '7px 14px' }}
+                      >
+                        <RefreshCw size={13} className={isLoadingAdminTransfers ? "spin-animation" : ""} /> Refresh Ledger
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Explanatory Banner on Control vs Ownership */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(20, 184, 166, 0.08) 100%)',
+                    border: '1px solid rgba(99, 102, 241, 0.25)',
+                    borderRadius: '10px',
+                    padding: '14px 18px',
+                    marginBottom: '20px',
+                    fontSize: '12px',
+                    color: 'var(--text-secondary)',
+                    lineHeight: '1.5'
+                  }}>
+                    • <strong>Source Origin (Vendor):</strong> The Vendor owns and lists the product stock in the catalog. Vendors do not dispatch shipments directly to warehouses.<br />
+                    • <strong>Admin Distribution Authority:</strong> Administrator allocates and balances physical inventory across <strong>Kolkata, Mumbai, Delhi, and Bangalore</strong> fulfillment hubs to ensure fast regional order processing.
+                  </div>
+
+                  {/* Stock Transfers Table */}
+                  <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
+                    {adminStockTransfers.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+                        <ArrowRightLeft size={36} style={{ opacity: 0.3, marginBottom: '8px' }} />
+                        <p style={{ margin: 0, fontSize: '14px' }}>No stock distributions or transfers recorded yet.</p>
+                      </div>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                          <thead>
+                            <tr>
+                              <th>Distribution Ref / Date</th>
+                              <th>Product SKU</th>
+                              <th>Units</th>
+                              <th>Source Origin</th>
+                              <th>Destination Warehouse Hub</th>
+                              <th>Fulfillment Status</th>
+                              <th>Reason / Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {adminStockTransfers.map(t => (
+                              <tr key={t.id}>
+                                <td>
+                                  <strong style={{ fontFamily: 'monospace', color: 'var(--accent-indigo)' }}>{t.transferNumber}</strong>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                    {t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-IN') : 'N/A'}
+                                  </div>
+                                </td>
+                                <td>
+                                  <strong>{t.product?.name}</strong>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>₹{t.product?.price} • SKU #{t.product?.id}</div>
+                                </td>
+                                <td><strong style={{ color: 'var(--accent-indigo)', fontSize: '13px' }}>{t.quantity} units</strong></td>
+                                <td>
+                                  {t.sourceWarehouse ? (
+                                    <div>
+                                      <div>{t.sourceWarehouse.name}</div>
+                                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{t.sourceWarehouse.code}</div>
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <span className="badge badge-vendor" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                        🏷️ {t.sourceVendorName || t.product?.vendorName || 'Vendor Listed Stock'}
+                                      </span>
+                                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>Origin: Vendor Catalog</div>
+                                    </div>
+                                  )}
+                                </td>
+                                <td>
+                                  <div><strong>{t.destinationWarehouse?.name}</strong></div>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Facility Code: {t.destinationWarehouse?.code}</div>
+                                </td>
+                                <td>
+                                  <span className={`badge ${
+                                    t.status === 'RECEIVED_AND_SHELVED' ? 'badge-approved' :
+                                    t.status === 'DISPATCHED' ? 'badge-customer' : 'badge-pending'
+                                  }`} style={{ fontSize: '10px', padding: '2px 8px', fontWeight: '700' }}>
+                                    {t.status === 'RECEIVED_AND_SHELVED' ? '✓ DISTRIBUTED & SHELVED' :
+                                     t.status === 'DISPATCHED' ? 'IN TRANSIT BETWEEN HUBS' :
+                                     t.status === 'APPROVED_BY_ADMIN' ? 'APPROVED BY ADMIN' : t.status}
+                                  </span>
+                                </td>
+                                <td>
+                                  <div>{t.transferReason || 'Vendor Stock Distribution'}</div>
+                                  {t.notes && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{t.notes}</div>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
 
@@ -2489,7 +3997,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     <DollarSign size={16} style={{ color: 'var(--accent-blue)' }} />
                   </div>
                   <div className="analytics-card-value" style={{ fontSize: '22px' }}>
-                    ₹{settlementsSummary.totalGross?.toLocaleString('en-IN') || '0'}
+                    ₹{settlementsSummary.totalGross?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                   </div>
                   <div className="analytics-card-desc">All vendor item sales</div>
                 </div>
@@ -2500,7 +4008,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     <ShieldCheck size={16} style={{ color: 'var(--accent-rose)' }} />
                   </div>
                   <div className="analytics-card-value" style={{ fontSize: '22px', color: 'var(--accent-rose)' }}>
-                    ₹{settlementsSummary.totalCommission?.toLocaleString('en-IN') || '0'}
+                    ₹{settlementsSummary.totalCommission?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                   </div>
                   <div className="analytics-card-desc">Platform fee collected</div>
                 </div>
@@ -2511,7 +4019,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     <Clock size={16} style={{ color: '#f59e0b' }} />
                   </div>
                   <div className="analytics-card-value" style={{ fontSize: '22px', color: '#f59e0b' }}>
-                    ₹{settlementsSummary.pendingPayout?.toLocaleString('en-IN') || '0'}
+                    ₹{settlementsSummary.pendingPayout?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                   </div>
                   <div className="analytics-card-desc">Awaiting payout approval</div>
                 </div>
@@ -2522,7 +4030,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     <CheckCircle size={16} style={{ color: 'var(--accent-emerald)' }} />
                   </div>
                   <div className="analytics-card-value" style={{ fontSize: '22px', color: 'var(--accent-emerald)' }}>
-                    ₹{settlementsSummary.settledPayout?.toLocaleString('en-IN') || '0'}
+                    ₹{settlementsSummary.settledPayout?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                   </div>
                   <div className="analytics-card-desc">Transferred to vendors</div>
                 </div>
@@ -2543,7 +4051,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                 </div>
 
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {['ALL', 'PENDING', 'SETTLED'].map((st) => (
+                  {['ALL', 'PENDING', 'SETTLED', 'REFUNDED'].map((st) => (
                     <button
                       key={st}
                       type="button"
@@ -2553,7 +4061,8 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     >
                       {st === 'ALL' ? `All (${settlements.length})` : 
                        st === 'PENDING' ? `Pending (${settlements.filter(s => s.status === 'PENDING').length})` : 
-                       `Settled (${settlements.filter(s => s.status === 'SETTLED').length})`}
+                       st === 'SETTLED' ? `Settled (${settlements.filter(s => s.status === 'SETTLED').length})` : 
+                       `Refunded (${settlements.filter(s => s.status === 'REFUNDED').length})`}
                     </button>
                   ))}
                 </div>
@@ -2596,6 +4105,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                         })
                         .map((s) => {
                           const isSettled = s.status === 'SETTLED';
+                          const isRefunded = s.status === 'REFUNDED';
 
                           return (
                             <tr key={s.id}>
@@ -2611,15 +4121,19 @@ export default function AdminDashboard({ user, onGoToHome }) {
                               <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '13px', fontWeight: '500' }}>
                                 {s.productName || `Item #${s.orderItemId}`}
                               </td>
-                              <td style={{ fontWeight: '700' }}>₹{s.grossAmount}</td>
-                              <td style={{ color: 'var(--accent-rose)', fontSize: '13px' }}>
-                                -₹{s.commissionAmount} ({s.commissionPercentage}%)
+                              <td style={{ fontWeight: '700' }}>₹{Number(s.grossAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ color: isRefunded ? 'var(--text-muted)' : 'var(--accent-rose)', fontSize: '13px' }}>
+                                {isRefunded ? '₹0.00 (Reversed)' : `-₹${Number(s.commissionAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${s.commissionPercentage}%)`}
                               </td>
-                              <td style={{ fontWeight: '800', color: 'var(--accent-emerald)', fontSize: '14px' }}>
-                                ₹{s.netPayoutAmount}
+                              <td style={{ fontWeight: '800', color: isRefunded ? 'var(--text-muted)' : 'var(--accent-emerald)', fontSize: '14px' }}>
+                                {isRefunded ? '₹0.00' : `₹${Number(s.netPayoutAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                               </td>
                               <td>
-                                {isSettled ? (
+                                {isRefunded ? (
+                                  <span className="badge badge-rejected" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '700' }}>
+                                    <RotateCcw size={11} /> REFUNDED
+                                  </span>
+                                ) : isSettled ? (
                                   <span className="badge badge-approved" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                     <Check size={11} /> SETTLED
                                   </span>
@@ -2630,10 +4144,14 @@ export default function AdminDashboard({ user, onGoToHome }) {
                                 )}
                               </td>
                               <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                                {s.settledAt || 'Pending transfer'}
+                                {isRefunded ? 'Order Refunded' : (s.settledAt || 'Pending transfer')}
                               </td>
                               <td style={{ textAlign: 'center' }}>
-                                {!isSettled ? (
+                                {isRefunded ? (
+                                  <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <Ban size={12} /> Non-Payable (Refunded)
+                                  </span>
+                                ) : !isSettled ? (
                                   <button
                                     type="button"
                                     onClick={() => handleMarkSettled(s.id)}
@@ -3183,10 +4701,32 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     <p style={{ margin: '2px 0 0 0', color: 'var(--text-secondary)' }}>{selectedReturnCase.customerNotes}</p>
                   </div>
                 )}
+                {selectedReturnCase.customerProofImage && (
+                  <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '6px' }}>
+                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', marginBottom: '4px' }}>Customer Proof Attachment:</span>
+                    <img 
+                      src={selectedReturnCase.customerProofImage.startsWith('http') ? selectedReturnCase.customerProofImage : `http://localhost:8080${selectedReturnCase.customerProofImage}`} 
+                      alt="Customer Proof" 
+                      style={{ maxWidth: '100%', maxHeight: '180px', borderRadius: '6px', border: '1px solid var(--border-light)', objectFit: 'contain' }}
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                  </div>
+                )}
                 {selectedReturnCase.adminNotes && (
                   <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '6px' }}>
                     <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px' }}>Admin/QC Notes:</span>
                     <p style={{ margin: '2px 0 0 0', color: '#a78bfa' }}>{selectedReturnCase.adminNotes}</p>
+                  </div>
+                )}
+                {selectedReturnCase.warehouseInspectionImage && (
+                  <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '6px' }}>
+                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', marginBottom: '4px' }}>Warehouse Inspection Image:</span>
+                    <img 
+                      src={selectedReturnCase.warehouseInspectionImage.startsWith('http') ? selectedReturnCase.warehouseInspectionImage : `http://localhost:8080${selectedReturnCase.warehouseInspectionImage}`} 
+                      alt="Warehouse Inspection" 
+                      style={{ maxWidth: '100%', maxHeight: '180px', borderRadius: '6px', border: '1px solid var(--border-light)', objectFit: 'contain' }}
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-light)', paddingTop: '6px' }}>
@@ -3203,59 +4743,126 @@ export default function AdminDashboard({ user, onGoToHome }) {
 
               {selectedReturnCase.status === 'PENDING' && (
                 <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '12px', marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <h4 style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)' }}>Fulfillment Resolution Action</h4>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div>
-                      <label className="form-label" style={{ fontSize: '11px', fontWeight: 'bold' }}>Resolution Strategy</label>
-                      <select 
-                        value={resolutionChoice}
-                        onChange={(e) => setResolutionChoice(e.target.value)}
-                        className="form-input"
-                        style={{ height: '34px', fontSize: '12px' }}
-                      >
-                        <option value="REFUND">REFUND (Disburse money, void payout)</option>
-                        <option value="REPLACEMENT">REPLACEMENT (Create zero-cost order)</option>
-                        <option value="EXCHANGE">EXCHANGE (Create exchange order)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="form-label" style={{ fontSize: '11px', fontWeight: 'bold' }}>Observations / Notes</label>
-                      <input 
-                        type="text"
-                        value={resolutionNotes}
-                        onChange={(e) => setResolutionNotes(e.target.value)}
-                        className="form-input"
-                        style={{ height: '34px', fontSize: '12px' }}
-                        placeholder="e.g. Approved after physical check."
-                      />
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
-                    <button 
-                      type="button" 
-                      onClick={async () => {
-                        setIsProcessingReturnAction(true);
-                        try {
-                          await axios.post(`http://localhost:8080/api/payment/refunds/${selectedReturnCase.id}/resolve`, {
-                            resolution: resolutionChoice,
-                            method: 'ORIGINAL_PAYMENT',
-                            adminNotes: resolutionNotes
-                          });
-                          showFlash('success', `Return case resolved with strategy: ${resolutionChoice}!`);
+                  <h4 style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)' }}>Return Request Action Console</h4>
+                  
+                  {selectedReturnCase.returnStage === 'REQUESTED' && (
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleAcceptReturnRequest(selectedReturnCase.id);
                           setSelectedReturnCase(null);
-                          fetchReturnRequests();
-                        } catch (err) {
-                          showFlash('error', err.response?.data || 'Failed to apply resolution.');
-                        } finally {
-                          setIsProcessingReturnAction(false);
-                        }
-                      }}
-                      className="btn btn-success"
-                      style={{ fontSize: '12px', padding: '6px 14px' }}
-                    >
-                      Apply Resolution
-                    </button>
-                  </div>
+                        }}
+                        disabled={isProcessingReturnAction}
+                        className="btn btn-success"
+                        style={{ fontSize: '12px', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Check size={14} /> Accept Return
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleOpenRejectReturnModal(selectedReturnCase);
+                          setSelectedReturnCase(null);
+                        }}
+                        disabled={isProcessingReturnAction}
+                        className="btn btn-danger"
+                        style={{ fontSize: '12px', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <X size={14} /> Reject Return
+                      </button>
+                    </div>
+                  )}
+
+                  {selectedReturnCase.returnStage === 'QC_PASSED' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <p style={{ fontSize: '12px', color: 'var(--accent-emerald)', margin: 0, fontWeight: '600' }}>
+                        ✓ Quality check has passed. You can now disburse the refund or choose other resolution strategy below:
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div>
+                          <label className="form-label" style={{ fontSize: '11px', fontWeight: 'bold' }}>Resolution Strategy</label>
+                          <select 
+                            value={resolutionChoice}
+                            onChange={(e) => setResolutionChoice(e.target.value)}
+                            className="form-input"
+                            style={{ height: '34px', fontSize: '12px' }}
+                          >
+                            <option value="REFUND">REFUND (Disburse money, void payout)</option>
+                            <option value="REPLACEMENT">REPLACEMENT (Create zero-cost order)</option>
+                            <option value="EXCHANGE">EXCHANGE (Create exchange order)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="form-label" style={{ fontSize: '11px', fontWeight: 'bold' }}>Observations / Notes</label>
+                          <input 
+                            type="text"
+                            value={resolutionNotes}
+                            onChange={(e) => setResolutionNotes(e.target.value)}
+                            className="form-input"
+                            style={{ height: '34px', fontSize: '12px' }}
+                            placeholder="e.g. Approved after physical check."
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                        <button 
+                          type="button" 
+                          onClick={async () => {
+                            setIsProcessingReturnAction(true);
+                            try {
+                              await axios.post(`http://localhost:8080/api/payment/refunds/${selectedReturnCase.id}/resolve`, {
+                                resolution: resolutionChoice,
+                                method: 'ORIGINAL_PAYMENT',
+                                adminNotes: resolutionNotes
+                              });
+                              showFlash('success', `Return case resolved with strategy: ${resolutionChoice}!`);
+                              setSelectedReturnCase(null);
+                              fetchReturnRequests();
+                            } catch (err) {
+                              showFlash('error', err.response?.data || 'Failed to apply resolution.');
+                            } finally {
+                              setIsProcessingReturnAction(false);
+                            }
+                          }}
+                          className="btn btn-success"
+                          style={{ fontSize: '12px', padding: '6px 14px' }}
+                        >
+                          Apply Resolution
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedReturnCase.returnStage === 'QC_FAILED' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <p style={{ fontSize: '12px', color: 'var(--accent-rose)', margin: 0, fontWeight: '600' }}>
+                        ⚠ Quality check has failed. Please reject the return request:
+                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleOpenRejectReturnModal(selectedReturnCase);
+                            setSelectedReturnCase(null);
+                          }}
+                          disabled={isProcessingReturnAction}
+                          className="btn btn-danger"
+                          style={{ fontSize: '12px', padding: '6px 16px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <X size={14} /> Reject Return
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {(selectedReturnCase.returnStage === 'ADMIN_APPROVED' || selectedReturnCase.returnStage === 'ITEM_RETURNED') && (
+                    <div style={{ padding: '8px 12px', background: 'var(--bg-input)', borderRadius: '6px', fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'center' }}>
+                      {selectedReturnCase.returnStage === 'ADMIN_APPROVED' 
+                        ? "Awaiting package pickup from customer address..." 
+                        : "Return package received. Awaiting Quality Control (QC) inspection in warehouse..."}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -3438,89 +5045,763 @@ export default function AdminDashboard({ user, onGoToHome }) {
         </div>
       )}
 
-      {/* Vendor Profile Inspection Modal */}
+      {/* Vendor Profile & Products Inspection Modal */}
       {selectedVendorDetail && (
-        <div className="modal-overlay" onClick={() => setSelectedVendorDetail(null)}>
-          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Store size={20} style={{ color: 'var(--accent-teal)' }} />
-                <h2 className="modal-title">Vendor Operation Details</h2>
+        <div className="modal-overlay" onClick={() => { setSelectedVendorDetail(null); setInspectingProductDetail(null); }}>
+          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '850px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            {/* Modal Header */}
+            <div className="modal-header" style={{ paddingBottom: '12px', borderBottom: '1px solid var(--border-light)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ background: 'rgba(20, 184, 166, 0.1)', color: 'var(--accent-teal)', padding: '8px', borderRadius: '8px' }}>
+                  <Store size={22} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h2 className="modal-title" style={{ margin: 0 }}>{selectedVendorDetail.fullName}</h2>
+                    <span className="badge badge-vendor" style={{ fontWeight: 'bold' }}>{selectedVendorDetail.vendorCode || `ID #${selectedVendorDetail.id}`}</span>
+                    <span className="badge badge-approved" style={{ fontSize: '10px' }}>ACTIVE MERCHANT</span>
+                  </div>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    {selectedVendorDetail.email} • {selectedVendorDetail.phone || 'No phone'}
+                  </p>
+                </div>
               </div>
-              <button onClick={() => setSelectedVendorDetail(null)} className="btn-icon-only">
+              <button onClick={() => { setSelectedVendorDetail(null); setInspectingProductDetail(null); }} className="btn-icon-only">
                 <X size={18} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '13px' }}>
-              <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Vendor Name:</span>
-                  <strong>{selectedVendorDetail.fullName}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Email Address:</span>
-                  <strong>{selectedVendorDetail.email}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Phone Number:</span>
-                  <strong>{selectedVendorDetail.phone || 'N/A'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Operational Code:</span>
-                  <span className="badge badge-vendor" style={{ fontWeight: 'bold' }}>{selectedVendorDetail.vendorCode || 'N/A'}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Fulfillment Status:</span>
-                  <span className="badge badge-approved">ACTIVE MERCHANT</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Commission Rate:</span>
-                  <strong style={{ color: 'var(--text-primary)' }}>10%</strong>
-                </div>
-              </div>
+            {/* Navigation Tabs inside Modal */}
+            <div style={{ display: 'flex', gap: '8px', padding: '12px 0', borderBottom: '1px solid var(--border-light)' }}>
+              <button
+                type="button"
+                onClick={() => setVendorDetailTab('products')}
+                className={`btn ${vendorDetailTab === 'products' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '12px', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Package size={14} /> Catalog Products ({vendorProducts.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setVendorDetailTab('overview')}
+                className={`btn ${vendorDetailTab === 'overview' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '12px', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Store size={14} /> Merchant Overview & Financials
+              </button>
+            </div>
 
-              <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Products Listed:</span>
-                  <strong>{selectedVendorDetail.totalProducts} items</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-light)', paddingTop: '8px', marginTop: '4px' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Cumulative Sales:</span>
-                  <strong style={{ color: 'var(--text-primary)', fontSize: '14px' }}>₹{selectedVendorDetail.grossSales?.toLocaleString('en-IN')}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Platform Commission (10%):</span>
-                  <strong style={{ color: 'var(--accent-rose)' }}>-₹{selectedVendorDetail.commissionPaid?.toLocaleString('en-IN')}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Vendor Net Payout:</span>
-                  <strong style={{ color: 'var(--accent-emerald)', fontSize: '15px' }}>₹{selectedVendorDetail.netPayout?.toLocaleString('en-IN')}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Pending Settlements:</span>
-                  <strong style={{ color: '#f59e0b' }}>{selectedVendorDetail.pendingPayoutsCount} records</strong>
-                </div>
-              </div>
-
-              {selectedVendorDetail.address && (
+            {/* Modal Body */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {vendorDetailTab === 'products' && (
                 <div>
-                  <span style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Registered Warehouse Address:</span>
-                  <div style={{ background: 'var(--bg-input)', padding: '12px', borderRadius: '8px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                    {selectedVendorDetail.address}
+                  <div className="flex-between" style={{ marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '15px', fontWeight: '700', margin: 0, color: 'var(--text-primary)' }}>
+                        Products Listed by {selectedVendorDetail.fullName}
+                      </h3>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+                        Inspect product specifications, stock levels, approval statuses, or delete inappropriate items as administrator.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fetchVendorProducts(selectedVendorDetail.id)}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '11px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <RefreshCw size={12} className={isLoadingVendorProducts ? "spin-animation" : ""} /> Refresh Items
+                    </button>
                   </div>
+
+                  {isLoadingVendorProducts ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                      <RefreshCw size={24} className="spin-animation" style={{ margin: '0 auto 8px auto' }} />
+                      <p style={{ fontSize: '13px' }}>Loading vendor products...</p>
+                    </div>
+                  ) : vendorProducts.length === 0 ? (
+                    <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '8px', padding: '30px' }}>
+                      <Package className="cart-empty-icon" style={{ opacity: 0.2, width: '40px', height: '40px' }} />
+                      <p style={{ margin: 0, fontSize: '13px' }}>This vendor has not listed any catalog products yet.</p>
+                    </div>
+                  ) : (
+                    <div className="table-container">
+                      <table className="custom-table" style={{ fontSize: '12px' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ width: '40px' }}>Icon</th>
+                            <th>Product Name</th>
+                            <th>Category</th>
+                            <th>Regular Price</th>
+                            <th>Final Price</th>
+                            <th>Stock</th>
+                            <th>Status</th>
+                            <th style={{ textAlign: 'center', width: '130px' }}>Admin Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {vendorProducts.map((prod) => {
+                            const disc = Number(prod.discountPercentage) || 0;
+                            const finalP = prod.finalPrice != null ? prod.finalPrice : (disc > 0 ? Math.round(prod.price * (1 - disc / 100) * 100) / 100 : prod.price);
+                            return (
+                              <tr key={prod.id}>
+                                <td>
+                                  <div style={{ width: '32px', height: '32px', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)' }}>
+                                    {prod.imageUrl && prod.imageUrl.length > 4 ? (
+                                      <img src={prod.imageUrl} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    ) : (
+                                      <ProductIcon name={prod.name} category={prod.category} size={16} />
+                                    )}
+                                  </div>
+                                </td>
+                                <td>
+                                  <strong style={{ color: 'var(--text-primary)', display: 'block' }}>{prod.name}</strong>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{prod.brand || 'No brand'}</span>
+                                </td>
+                                <td>
+                                  <span className="badge badge-customer" style={{ fontSize: '10px', padding: '2px 6px' }}>{prod.category}</span>
+                                </td>
+                                <td>
+                                  {disc > 0 ? (
+                                    <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '11px' }}>
+                                      ₹{Number(prod.price).toLocaleString('en-IN')}
+                                    </span>
+                                  ) : (
+                                    <span>₹{Number(prod.price).toLocaleString('en-IN')}</span>
+                                  )}
+                                </td>
+                                <td>
+                                  <strong style={{ color: 'var(--accent-teal)', fontSize: '13px' }}>
+                                    ₹{Number(finalP).toLocaleString('en-IN')}
+                                  </strong>
+                                  {disc > 0 && (
+                                    <span className="badge badge-rejected" style={{ marginLeft: '4px', fontSize: '9px', padding: '1px 4px' }}>
+                                      {disc}% OFF
+                                    </span>
+                                  )}
+                                </td>
+                                <td>
+                                  <span style={{ fontWeight: '700', color: prod.stock <= 0 ? '#ef4444' : prod.stock < 5 ? '#f59e0b' : '#10b981' }}>
+                                    {prod.stock} units
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className={`badge ${
+                                    prod.status === 'APPROVED' ? 'badge-approved' : 
+                                    prod.status === 'REJECTED' ? 'badge-rejected' : 
+                                    prod.status === 'DISABLED' ? 'badge-pending' : 'badge-pending'
+                                  }`} style={{ 
+                                    fontSize: '10px', 
+                                    padding: '2px 6px', 
+                                    fontWeight: '700',
+                                    ...(prod.status === 'DISABLED' ? { background: 'rgba(148, 163, 184, 0.15)', color: '#64748b', border: '1px solid rgba(148, 163, 184, 0.3)' } : {})
+                                  }}>
+                                    {prod.status === 'APPROVED' ? 'APPROVED' : 
+                                     prod.status === 'REJECTED' ? 'REJECTED' : 
+                                     prod.status === 'DISABLED' ? 'DISABLED' : 'PENDING'}
+                                  </span>
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', alignItems: 'center' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setInspectingProductDetail(prod)}
+                                      className="btn btn-secondary"
+                                      title="Inspect Product Details"
+                                      style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                    >
+                                      <Eye size={12} /> Inspect
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdminDeleteProduct(prod.id, prod.name)}
+                                      className="btn btn-danger"
+                                      title="Permanently Delete Product (Admin Override)"
+                                      style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                                    >
+                                      <Trash2 size={12} /> Delete
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
-                <button type="button" onClick={() => setSelectedVendorDetail(null)} className="btn btn-secondary">
-                  Close Details
-                </button>
-              </div>
+              {vendorDetailTab === 'overview' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '13px' }}>
+                  <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Vendor Legal Name:</span>
+                      <strong>{selectedVendorDetail.fullName}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Email Address:</span>
+                      <strong>{selectedVendorDetail.email}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Contact Phone:</span>
+                      <strong>{selectedVendorDetail.phone || 'N/A'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Vendor System Code:</span>
+                      <span className="badge badge-vendor" style={{ fontWeight: 'bold' }}>{selectedVendorDetail.vendorCode || 'N/A'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Merchant Status:</span>
+                      <span className="badge badge-approved">ACTIVE MERCHANT</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Marketplace Platform Commission:</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>10.0% (Fixed)</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Total Listed Products:</span>
+                      <strong>{selectedVendorDetail.totalProducts} items</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-light)', paddingTop: '8px', marginTop: '4px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Cumulative Gross Sales:</span>
+                      <strong style={{ color: 'var(--text-primary)', fontSize: '14px' }}>₹{selectedVendorDetail.grossSales?.toLocaleString('en-IN')}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Platform Commission (10%):</span>
+                      <strong style={{ color: 'var(--accent-rose)' }}>-₹{selectedVendorDetail.commissionPaid?.toLocaleString('en-IN')}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-light)', paddingTop: '8px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Vendor Net Earnings Payout:</span>
+                      <strong style={{ color: 'var(--accent-emerald)', fontSize: '15px' }}>₹{selectedVendorDetail.netPayout?.toLocaleString('en-IN')}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Pending Settlement Records:</span>
+                      <strong style={{ color: '#f59e0b' }}>{selectedVendorDetail.pendingPayoutsCount} records</strong>
+                    </div>
+                  </div>
+
+                  {selectedVendorDetail.address && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', display: 'block', marginBottom: '4px', fontSize: '12px' }}>Registered Warehouse Facility Address:</span>
+                      <div style={{ background: 'var(--bg-input)', padding: '12px', borderRadius: '8px', color: 'var(--text-secondary)', lineHeight: '1.4', fontSize: '13px' }}>
+                        {selectedVendorDetail.address}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '12px', borderTop: '1px solid var(--border-light)' }}>
+              <button type="button" onClick={() => { setSelectedVendorDetail(null); setInspectingProductDetail(null); }} className="btn btn-secondary">
+                Close Console
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Admin Inspect Specific Vendor Product Modal */}
+      {inspectingProductDetail && (
+        <div className="modal-overlay" onClick={() => setInspectingProductDetail(null)} style={{ zIndex: 3500 }}>
+          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Package size={20} style={{ color: 'var(--accent-teal)' }} />
+                <h2 className="modal-title">Product Inspection (Vendor #{inspectingProductDetail.vendorId})</h2>
+              </div>
+              <button onClick={() => setInspectingProductDetail(null)} className="btn-icon-only">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1, paddingRight: '4px' }}>
+              {/* Product Header & Images */}
+              <div style={{ display: 'flex', gap: '18px', alignItems: 'flex-start' }}>
+                <div style={{ width: '130px', height: '130px', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)', flexShrink: 0 }}>
+                  {inspectingProductDetail.imageUrl && inspectingProductDetail.imageUrl.length > 4 ? (
+                    <img src={inspectingProductDetail.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <ProductIcon name={inspectingProductDetail.name} category={inspectingProductDetail.category} size={48} />
+                  )}
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ fontSize: '17px', fontWeight: '800', margin: '0 0 4px 0', color: 'var(--text-primary)' }}>
+                    {inspectingProductDetail.name}
+                  </h3>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    Brand: <strong style={{ color: 'var(--text-primary)' }}>{inspectingProductDetail.brand || 'Generic / Unbranded'}</strong>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span className="badge badge-customer">{inspectingProductDetail.category}</span>
+                    <span className={`badge ${
+                      inspectingProductDetail.status === 'APPROVED' ? 'badge-approved' : 
+                      inspectingProductDetail.status === 'REJECTED' ? 'badge-rejected' : 
+                      inspectingProductDetail.status === 'DISABLED' ? 'badge-pending' : 'badge-pending'
+                    }`} style={{ 
+                      fontWeight: '700',
+                      ...(inspectingProductDetail.status === 'DISABLED' ? { background: 'rgba(148, 163, 184, 0.15)', color: '#64748b', border: '1px solid rgba(148, 163, 184, 0.3)' } : {})
+                    }}>
+                      Status: {inspectingProductDetail.status}
+                    </span>
+                    <span className="badge badge-vendor">
+                      Vendor ID #{inspectingProductDetail.vendorId}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Gallery Images if multiple */}
+              {inspectingProductDetail.images && inspectingProductDetail.images.length > 0 && (
+                <div>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>Product Gallery ({inspectingProductDetail.images.length})</span>
+                  <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                    {inspectingProductDetail.images.map((img, idx) => (
+                      <img 
+                        key={idx} 
+                        src={img} 
+                        alt={`Gallery ${idx}`} 
+                        style={{ width: '60px', height: '60px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border-light)' }} 
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pricing & Stock Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', background: 'var(--bg-input)', padding: '12px', borderRadius: '8px' }}>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 'bold' }}>Regular Price</span>
+                  <span style={{ fontSize: '15px', fontWeight: '700', textDecoration: inspectingProductDetail.discountPercentage > 0 ? 'line-through' : 'none', color: inspectingProductDetail.discountPercentage > 0 ? 'var(--text-muted)' : 'inherit' }}>
+                    ₹{Number(inspectingProductDetail.price).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 'bold' }}>Discount</span>
+                  <span style={{ fontSize: '15px', fontWeight: '700', color: '#ef4444' }}>
+                    {inspectingProductDetail.discountPercentage || 0}% OFF
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 'bold' }}>Customer Price</span>
+                  <span style={{ fontSize: '16px', fontWeight: '800', color: 'var(--accent-teal)' }}>
+                    ₹{Number(inspectingProductDetail.finalPrice || inspectingProductDetail.price).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 'bold' }}>Inventory Stock</span>
+                  <span style={{ fontSize: '16px', fontWeight: '800', color: inspectingProductDetail.stock <= 0 ? '#ef4444' : '#10b981' }}>
+                    {inspectingProductDetail.stock} units
+                  </span>
+                </div>
+              </div>
+
+              {/* Return Policy & Coupons */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px' }}>
+                <div style={{ background: 'var(--bg-input)', padding: '10px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: 'var(--text-muted)', display: 'block' }}>Return Policy:</span>
+                  <strong>{inspectingProductDetail.returnPolicy || '7_DAYS'}</strong>
+                </div>
+                <div style={{ background: 'var(--bg-input)', padding: '10px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: 'var(--text-muted)', display: 'block' }}>Platform Promo Coupons:</span>
+                  <strong style={{ color: inspectingProductDetail.couponsEnabled !== false ? '#10b981' : '#ef4444' }}>
+                    {inspectingProductDetail.couponsEnabled !== false ? 'Eligible' : 'Disabled'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>Description</span>
+                <div style={{ background: 'var(--bg-input)', padding: '12px', borderRadius: '8px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5', maxHeight: '100px', overflowY: 'auto' }}>
+                  {inspectingProductDetail.description || 'No description provided by vendor.'}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer with Delete Permission */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '14px', marginTop: '12px', borderTop: '1px solid var(--border-light)' }}>
+              <button
+                type="button"
+                onClick={() => handleAdminDeleteProduct(inspectingProductDetail.id, inspectingProductDetail.name)}
+                className="btn btn-danger"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: '#fff', padding: '8px 16px', fontSize: '12px', fontWeight: '700' }}
+              >
+                <Trash2 size={14} /> Delete Product Permanently
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInspectingProductDetail(null)}
+                className="btn btn-secondary"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Add/Edit Warehouse Modal */}
+      {(showAddWhAdminModal || showEditWhAdminModal) && (
+        <div className="modal-overlay" onClick={() => { setShowAddWhAdminModal(false); setShowEditWhAdminModal(false); }}>
+          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Store size={20} style={{ color: 'var(--accent-teal)' }} />
+                <h2 className="modal-title">{adminWhForm.id ? "Edit Warehouse Facility" : "Register New Warehouse"}</h2>
+              </div>
+              <button onClick={() => { setShowAddWhAdminModal(false); setShowEditWhAdminModal(false); }} className="btn-icon-only">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAdminWarehouse} style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '10px' }}>
+              <div className="form-group">
+                <label className="form-label">Warehouse Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Mumbai Central Fulfillment Center"
+                  value={adminWhForm.name}
+                  onChange={(e) => setAdminWhForm({ ...adminWhForm, name: e.target.value })}
+                  className="form-input"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Warehouse Code *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. WH-MUM-01"
+                  value={adminWhForm.code}
+                  onChange={(e) => setAdminWhForm({ ...adminWhForm, code: e.target.value.toUpperCase() })}
+                  className="form-input"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">City *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Mumbai"
+                  value={adminWhForm.city}
+                  onChange={(e) => setAdminWhForm({ ...adminWhForm, city: e.target.value })}
+                  className="form-input"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Street Address *</label>
+                <textarea
+                  placeholder="e.g. Plot 45, Kurla Industrial Estate, Mumbai - 400070"
+                  value={adminWhForm.address}
+                  onChange={(e) => setAdminWhForm({ ...adminWhForm, address: e.target.value })}
+                  className="form-input"
+                  style={{ minHeight: '60px', resize: 'vertical' }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowAddWhAdminModal(false); setShowEditWhAdminModal(false); }}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  {adminWhForm.id ? "Update Facility" : "Register Facility"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DISTRIBUTE VENDOR STOCK TO REGIONAL WAREHOUSES */}
+      {showCreateTransferAdminModal && (() => {
+        const selectedProd = allProductsList.find(p => String(p.id) === String(adminTransferForm.productId)) ||
+          warehouseInventories.find(i => String(i.productId) === String(adminTransferForm.productId));
+        const totalDistAcrossWhs = Object.values(adminTransferForm.distributions || {}).reduce((sum, v) => sum + (parseInt(v) || 0), 0);
+        const listedStock = selectedProd ? (selectedProd.stock !== undefined ? selectedProd.stock : selectedProd.quantity) : 0;
+
+        const applySplitPreset = (type) => {
+          const activeWhs = warehousesList.filter(w => w.active);
+          const newDists = {};
+          const total = listedStock > 0 ? listedStock : 100;
+          if (type === 'EQUAL') {
+            const perWh = Math.floor(total / (activeWhs.length || 1));
+            activeWhs.forEach((w, idx) => {
+              newDists[w.id] = idx === 0 ? perWh + (total % (activeWhs.length || 1)) : perWh;
+            });
+          } else if (type === 'WEIGHTED') {
+            // 40% Kolkata, 30% Mumbai, 20% Delhi, 10% Bangalore
+            const weights = [0.40, 0.30, 0.20, 0.10];
+            activeWhs.forEach((w, idx) => {
+              const weight = weights[idx % weights.length];
+              newDists[w.id] = Math.round(total * weight);
+            });
+          } else if (type === 'CLEAR') {
+            activeWhs.forEach(w => { newDists[w.id] = 0; });
+          }
+          setAdminTransferForm(prev => ({ ...prev, distributions: newDists }));
+        };
+
+        return (
+          <div className="modal-overlay" onClick={() => setShowCreateTransferAdminModal(false)}>
+            <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px', display: 'flex', flexDirection: 'column', maxHeight: '90vh', overflowY: 'auto' }}>
+              <div className="modal-header">
+                <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px' }}>
+                  <ArrowRightLeft size={20} style={{ color: 'var(--accent-indigo)' }} />
+                  Distribute Vendor Stock to Warehouses
+                </h2>
+                <button onClick={() => setShowCreateTransferAdminModal(false)} className="btn-icon-only"><X size={18} /></button>
+              </div>
+
+              <form onSubmit={handleCreateAdminStockTransfer} style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '8px 0' }}>
+                <div style={{ background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(20, 184, 166, 0.08) 100%)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '12px 16px', borderRadius: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  ⚡ <strong>Vendor Ownership & Admin Distribution:</strong> All product stock listed by vendors in the catalog is distributed and allocated by Admin across regional fulfillment centers (Kolkata, Mumbai, Delhi, Bangalore).
+                </div>
+
+                {/* Source Origin Info Card */}
+                <div style={{ background: 'var(--bg-input)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>SOURCE ORIGIN</div>
+                      <div style={{ fontWeight: '800', fontSize: '14px', color: 'var(--accent-indigo)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                        🏷️ {selectedProd?.vendorName || 'Vendor Listed Stock'} (Vendor Origin)
+                      </div>
+                    </div>
+                    <span className="badge badge-vendor" style={{ fontSize: '11px', padding: '3px 8px' }}>
+                      Vendor Catalog Stock
+                    </span>
+                  </div>
+                </div>
+
+                {/* Select Product SKU */}
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: '700' }}>Select Product SKU Listed by Vendor *</label>
+                  <select
+                    value={adminTransferForm.productId}
+                    onChange={(e) => {
+                      const pId = e.target.value;
+                      const activeWhs = warehousesList.filter(w => w.active);
+                      const initialDist = {};
+                      activeWhs.forEach(w => {
+                        const existingInv = warehouseInventories.find(i => String(i.productId) === String(pId) && (String(i.warehouseId) === String(w.id) || (i.warehouse && String(i.warehouse.id) === String(w.id))));
+                        initialDist[w.id] = existingInv ? existingInv.quantity : 10;
+                      });
+                      setAdminTransferForm(prev => ({
+                        ...prev,
+                        productId: pId,
+                        distributions: initialDist
+                      }));
+                    }}
+                    className="form-select"
+                    required
+                  >
+                    <option value="">-- Select Product Listed by Vendor --</option>
+                    {(allProductsList.length > 0 ? allProductsList : warehouseInventories).map(p => {
+                      const pId = p.id || p.productId;
+                      const pName = p.name || p.productName;
+                      const pStock = p.stock !== undefined ? p.stock : (p.quantity || 0);
+                      const vName = p.vendorName || 'Vendor';
+                      return (
+                        <option key={pId} value={pId}>
+                          {pName} (SKU #{pId} • Listed Stock: {pStock} units • Vendor: {vName})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* Product Summary Details */}
+                {selectedProd && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '8px', padding: '10px 14px', fontSize: '12px' }}>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Vendor Listed Stock</div>
+                      <strong style={{ fontSize: '15px', color: 'var(--accent-teal)' }}>{listedStock} units</strong>
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Unit Price</div>
+                      <strong style={{ fontSize: '15px' }}>₹{selectedProd.price || 0}</strong>
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Vendor Partner</div>
+                      <strong style={{ fontSize: '13px', color: 'var(--accent-indigo)' }}>{selectedProd.vendorName || 'Vendor'}</strong>
+                    </div>
+                  </div>
+                )}
+
+                {/* Distribution Mode Switcher */}
+                <div style={{ display: 'flex', gap: '8px', background: 'var(--bg-input)', padding: '4px', borderRadius: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setAdminTransferForm(prev => ({ ...prev, destinationWarehouseId: 'ALL' }))}
+                    className={`btn ${adminTransferForm.destinationWarehouseId === 'ALL' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, fontSize: '12px', padding: '6px 12px' }}
+                  >
+                    🏢 Distribute Across All Regional Hubs
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminTransferForm(prev => ({ ...prev, destinationWarehouseId: warehousesList[0]?.id ? String(warehousesList[0].id) : '' }))}
+                    className={`btn ${adminTransferForm.destinationWarehouseId !== 'ALL' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, fontSize: '12px', padding: '6px 12px' }}
+                  >
+                    📍 Allocate to Single Warehouse
+                  </button>
+                </div>
+
+                {/* MODE A: MULTI-WAREHOUSE REGIONAL DISTRIBUTION */}
+                {adminTransferForm.destinationWarehouseId === 'ALL' ? (
+                  <div>
+                    <div className="flex-between" style={{ marginBottom: '8px', alignItems: 'center' }}>
+                      <label className="form-label" style={{ fontWeight: '700', margin: 0 }}>
+                        Allocate Units to Regional Warehouses:
+                      </label>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button type="button" onClick={() => applySplitPreset('WEIGHTED')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '3px 8px' }}>
+                          ⚡ 40/30/20/10 Split
+                        </button>
+                        <button type="button" onClick={() => applySplitPreset('EQUAL')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '3px 8px' }}>
+                          ⚡ Equal Split
+                        </button>
+                        <button type="button" onClick={() => applySplitPreset('CLEAR')} className="btn btn-secondary" style={{ fontSize: '10px', padding: '3px 8px' }}>
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                      {warehousesList.filter(w => w.active).map(w => {
+                        const existingInv = warehouseInventories.find(i => String(i.productId) === String(adminTransferForm.productId) && (String(i.warehouseId) === String(w.id) || (i.warehouse && String(i.warehouse.id) === String(w.id))));
+                        const currentInHub = existingInv ? existingInv.quantity : 0;
+                        const val = adminTransferForm.distributions[w.id] !== undefined ? adminTransferForm.distributions[w.id] : 0;
+
+                        return (
+                          <div key={w.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '8px', padding: '10px 12px' }}>
+                            <div style={{ fontWeight: '700', fontSize: '12px' }}>{w.name}</div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                              Code: {w.code} • In Hub: <strong>{currentInHub} units</strong>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Allocate:</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={val}
+                                onChange={(e) => {
+                                  const qty = parseInt(e.target.value) || 0;
+                                  setAdminTransferForm(prev => ({
+                                    ...prev,
+                                    distributions: {
+                                      ...prev.distributions,
+                                      [w.id]: qty
+                                    }
+                                  }));
+                                }}
+                                className="form-input"
+                                style={{ fontSize: '14px', fontWeight: '800', padding: '4px 8px', textAlign: 'right' }}
+                              />
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>units</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Total Summary */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(99, 102, 241, 0.08)', borderRadius: '8px', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '700' }}>Total Units to Distribute:</span>
+                      <strong style={{ fontSize: '16px', color: 'var(--accent-indigo)' }}>
+                        {totalDistAcrossWhs} units {listedStock > 0 && `(Vendor Listed: ${listedStock} units)`}
+                      </strong>
+                    </div>
+                  </div>
+                ) : (
+                  /* MODE B: SINGLE WAREHOUSE ALLOCATION */
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: '700' }}>Destination Warehouse *</label>
+                      <select
+                        value={adminTransferForm.destinationWarehouseId}
+                        onChange={(e) => setAdminTransferForm(prev => ({ ...prev, destinationWarehouseId: e.target.value }))}
+                        className="form-select"
+                        required
+                      >
+                        <option value="">-- Select Destination Hub --</option>
+                        {warehousesList.filter(w => w.active).map(w => (
+                          <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: '700' }}>Units to Allocate *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={adminTransferForm.quantity}
+                        onChange={(e) => setAdminTransferForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                        className="form-input"
+                        style={{ fontSize: '16px', fontWeight: '800' }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="form-group">
+                  <label className="form-label">Distribution Reason / Purpose</label>
+                  <select
+                    value={adminTransferForm.transferReason}
+                    onChange={(e) => setAdminTransferForm(prev => ({ ...prev, transferReason: e.target.value }))}
+                    className="form-select"
+                  >
+                    <option value="VENDOR_STOCK_DISTRIBUTION">Vendor Listed Stock Initial Distribution</option>
+                    <option value="REGIONAL_REBALANCE">Regional Stock Rebalancing & Buffer Allocation</option>
+                    <option value="LOW_STOCK_REPLENISHMENT">Low Stock Replenishment</option>
+                    <option value="PROMOTIONAL_DEMAND">High Customer Demand Anticipation</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Administrative Notes</label>
+                  <textarea
+                    rows="2"
+                    placeholder="e.g. Approved vendor catalog stock distribution across regional hubs."
+                    value={adminTransferForm.notes}
+                    onChange={(e) => setAdminTransferForm(prev => ({ ...prev, notes: e.target.value }))}
+                    className="form-input"
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                  <button type="button" onClick={() => setShowCreateTransferAdminModal(false)} className="btn btn-secondary" style={{ flex: 1 }}>
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={isSubmittingTransfer} className="btn btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <ArrowRightLeft size={16} />
+                    {isSubmittingTransfer ? 'Distributing Stock...' : '⚡ Distribute & Allocate Stock to Warehouses'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

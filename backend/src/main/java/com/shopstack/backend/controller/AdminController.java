@@ -58,6 +58,33 @@ public class AdminController {
     @Autowired
     private RefundRepository refundRepository;
 
+    @Autowired
+    private com.shopstack.backend.repository.ReviewRepository reviewRepository;
+
+    @Autowired
+    private com.shopstack.backend.service.FileStorageService fileStorageService;
+
+    @Autowired
+    private com.shopstack.backend.repository.WishlistItemRepository wishlistItemRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.ProductCouponRepository productCouponRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.InventoryRepository inventoryRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.InboundShipmentRepository inboundShipmentRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.StockTransferRepository stockTransferRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.WarehouseAllocationRepository warehouseAllocationRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.OrderItemRepository orderItemRepository;
+
     /**
      * Get all vendor settlements across the platform
      */
@@ -65,6 +92,9 @@ public class AdminController {
     public ResponseEntity<?> getAllSettlements() {
         try {
             List<Settlement> settlements = settlementRepository.findAllByOrderByIdDesc();
+            List<Order> orders = orderRepository.findAll();
+            Map<String, String> orderStatusMap = orders.stream()
+                    .collect(Collectors.toMap(Order::getOrderId, o -> o.getStatus() != null ? o.getStatus().toUpperCase() : "", (a, b) -> a));
 
             double totalGross = 0;
             double totalCommission = 0;
@@ -73,13 +103,33 @@ public class AdminController {
             double settledPayout = 0;
 
             for (Settlement s : settlements) {
-                totalGross += s.getGrossAmount();
-                totalCommission += s.getCommissionAmount();
-                totalNetPayout += s.getNetPayoutAmount();
-                if ("SETTLED".equalsIgnoreCase(s.getStatus())) {
-                    settledPayout += s.getNetPayoutAmount();
-                } else {
-                    pendingPayout += s.getNetPayoutAmount();
+                String ordSt = orderStatusMap.getOrDefault(s.getOrderId(), "");
+                
+                // If order is refunded or cancelled, sync settlement status to REFUNDED / CANCELLED and zero out net payout
+                if ("REFUNDED".equalsIgnoreCase(ordSt) || "CANCELLED".equalsIgnoreCase(ordSt)) {
+                    if (!"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())) {
+                        if (!"SETTLED".equalsIgnoreCase(s.getStatus())) {
+                            s.setStatus("REFUNDED".equalsIgnoreCase(ordSt) ? "REFUNDED" : "CANCELLED");
+                            s.setNetPayoutAmount(0.0);
+                            try { settlementRepository.save(s); } catch (Exception ignored) {}
+                        }
+                    }
+                }
+
+                // 1. Gross Volume includes all non-void order sales
+                if (!"VOID".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())) {
+                    totalGross += Math.abs(s.getGrossAmount());
+                }
+
+                // 2. Refunded orders contribute 0 to Platform Revenue, Pending Payouts, and Settled Payouts
+                if (!"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus()) && !"VOID".equalsIgnoreCase(s.getStatus()) && !"REFUNDED".equalsIgnoreCase(ordSt) && !"CANCELLED".equalsIgnoreCase(ordSt)) {
+                    totalCommission += s.getCommissionAmount();
+                    totalNetPayout += s.getNetPayoutAmount();
+                    if ("SETTLED".equalsIgnoreCase(s.getStatus())) {
+                        settledPayout += s.getNetPayoutAmount();
+                    } else if ("PENDING".equalsIgnoreCase(s.getStatus())) {
+                        pendingPayout += s.getNetPayoutAmount();
+                    }
                 }
             }
 
@@ -115,6 +165,13 @@ public class AdminController {
             }
 
             Settlement settlement = settlementOpt.get();
+            if ("REFUNDED".equalsIgnoreCase(settlement.getStatus()) || "CANCELLED".equalsIgnoreCase(settlement.getStatus())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Cannot settle a refunded or cancelled order.");
+            }
+            if ("SETTLED".equalsIgnoreCase(settlement.getStatus())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Settlement record is already marked as SETTLED.");
+            }
+
             settlement.setStatus("SETTLED");
             settlement.setSettledAt(new SimpleDateFormat("MMM dd, yyyy HH:mm").format(new Date()));
             Settlement saved = settlementRepository.save(settlement);
@@ -141,10 +198,18 @@ public class AdminController {
             long failedCount = allOrders.stream().filter(o -> "FAILED".equalsIgnoreCase(o.getPaymentStatus())).count();
             long refundedCount = allOrders.stream().filter(o -> "REFUNDED".equalsIgnoreCase(o.getPaymentStatus()) || "PARTIALLY_REFUNDED".equalsIgnoreCase(o.getPaymentStatus())).count();
 
-            double totalPaidVolume = allOrders.stream()
-                    .filter(o -> "PAID".equalsIgnoreCase(o.getPaymentStatus()) || "REFUNDED".equalsIgnoreCase(o.getPaymentStatus()) || "PARTIALLY_REFUNDED".equalsIgnoreCase(o.getPaymentStatus()))
-                    .mapToDouble(Order::getTotalAmount)
-                    .sum();
+            double totalPaidVolume = 0;
+            for (Order o : allOrders) {
+                if ("PAID".equalsIgnoreCase(o.getPaymentStatus())) {
+                    totalPaidVolume += o.getTotalAmount();
+                } else if ("PARTIALLY_REFUNDED".equalsIgnoreCase(o.getPaymentStatus())) {
+                    double refundedSum = refundRepository.findByOrderId(o.getOrderId()).stream()
+                            .filter(r -> "PROCESSED".equalsIgnoreCase(r.getStatus()))
+                            .mapToDouble(Refund::getAmount)
+                            .sum();
+                    totalPaidVolume += Math.max(0, o.getTotalAmount() - refundedSum);
+                }
+            }
 
             Map<String, Object> metrics = new HashMap<>();
             metrics.put("totalOrders", totalOrders);
@@ -177,6 +242,23 @@ public class AdminController {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Failed to fetch refund requests: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Admin accepts a return request.
+     */
+    @PostMapping("/refunds/{refundId}/accept")
+    public ResponseEntity<?> acceptReturnRequest(@PathVariable Long refundId, @RequestBody(required = false) Map<String, String> payload) {
+        try {
+            String adminNotes = payload != null && payload.containsKey("adminNotes") ? payload.get("adminNotes") : "Admin accepted the return request. Awaiting pickup and QC check.";
+            Refund refund = paymentService.acceptReturnRequest(refundId, adminNotes);
+            return ResponseEntity.ok(refund);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to accept return request: " + e.getMessage());
         }
     }
 
@@ -221,27 +303,56 @@ public class AdminController {
     /**
      * Get overall marketplace summary statistics
      */
+    /**
+     * Get overall marketplace summary statistics
+     */
     @GetMapping("/dashboard-summary")
     public ResponseEntity<?> getDashboardSummary() {
         try {
             List<Order> orders = orderRepository.findAll();
-            double totalSalesVolume = 0;
+            List<Refund> allRefunds = refundRepository.findAll();
             long totalOrdersCount = orders.size();
+
+            // 1. Gross sales volume = sum of all order totals regardless of refund status (verified historical transaction volume)
+            double grossSalesVolume = 0.0;
             for (Order o : orders) {
-                if ("PAID".equalsIgnoreCase(o.getPaymentStatus()) || 
-                    "REFUNDED".equalsIgnoreCase(o.getPaymentStatus()) || 
-                    "PARTIALLY_REFUNDED".equalsIgnoreCase(o.getPaymentStatus())) {
-                    totalSalesVolume += o.getTotalAmount();
-                }
+                grossSalesVolume += (o.getTotalAmount() > 0 ? o.getTotalAmount() : 0.0);
             }
 
-            List<Settlement> settlements = settlementRepository.findAll();
-            double totalCommission = 0;
-            double totalPayouts = 0;
-            for (Settlement s : settlements) {
-                totalCommission += s.getCommissionAmount();
-                totalPayouts += s.getNetPayoutAmount();
+            // 2. Total refunded = sum of all processed refunds or refunded orders
+            double totalRefunded = 0.0;
+            for (Order o : orders) {
+                String st = o.getStatus() != null ? o.getStatus().toUpperCase() : "";
+                String paySt = o.getPaymentStatus() != null ? o.getPaymentStatus().toUpperCase() : "";
+
+                if ("REFUNDED".equals(st) || "REFUNDED".equals(paySt)) {
+                    totalRefunded += o.getTotalAmount();
+                } else if ("PARTIALLY_REFUNDED".equals(st) || "PARTIALLY_REFUNDED".equals(paySt)) {
+                    double refSum = allRefunds.stream()
+                            .filter(r -> o.getOrderId().equals(r.getOrderId()) && ("PROCESSED".equalsIgnoreCase(r.getStatus()) || "REFUNDED".equalsIgnoreCase(r.getStatus())))
+                            .mapToDouble(Refund::getAmount)
+                            .sum();
+                    totalRefunded += Math.min(refSum, o.getTotalAmount());
+                } else {
+                    double refSum = allRefunds.stream()
+                            .filter(r -> o.getOrderId().equals(r.getOrderId()) && ("PROCESSED".equalsIgnoreCase(r.getStatus()) || "REFUNDED".equalsIgnoreCase(r.getStatus())))
+                            .mapToDouble(Refund::getAmount)
+                            .sum();
+                    if (refSum > 0) {
+                        totalRefunded += Math.min(refSum, o.getTotalAmount());
+                    }
+                }
             }
+            totalRefunded = Math.min(totalRefunded, grossSalesVolume);
+
+            // 3. Platform commission rate (fixed 10.0%)
+            double commissionRate = 0.10;
+
+            // 4. Platform revenue = (gross_sales_volume * commission_rate) - (total_refunded * commission_rate)
+            double platformRevenue = Math.max(0.0, (grossSalesVolume * commissionRate) - (totalRefunded * commissionRate));
+
+            // 5. Net vendor payouts = (gross_sales_volume - total_refunded) - platform_revenue
+            double netVendorPayouts = Math.max(0.0, (grossSalesVolume - totalRefunded) - platformRevenue);
 
             List<Product> products = productRepository.findAll();
             long totalProductsCount = products.size();
@@ -265,9 +376,11 @@ public class AdminController {
             }
 
             Map<String, Object> summary = new HashMap<>();
-            summary.put("totalSalesVolume", Math.round(totalSalesVolume * 100.0) / 100.0);
-            summary.put("totalCommission", Math.round(totalCommission * 100.0) / 100.0);
-            summary.put("totalPayouts", Math.round(totalPayouts * 100.0) / 100.0);
+            summary.put("totalSalesVolume", Math.round(grossSalesVolume * 100.0) / 100.0);
+            summary.put("totalRefunded", Math.round(totalRefunded * 100.0) / 100.0);
+            summary.put("totalCommission", Math.round(platformRevenue * 100.0) / 100.0);
+            summary.put("totalPayouts", Math.round(netVendorPayouts * 100.0) / 100.0);
+            summary.put("commissionRate", 10.0);
             summary.put("totalOrders", totalOrdersCount);
             summary.put("totalProducts", totalProductsCount);
             summary.put("pendingProducts", pendingProductsCount);
@@ -296,6 +409,9 @@ public class AdminController {
             List<Map<String, Object>> statsList = new ArrayList<>();
             List<Product> allProducts = productRepository.findAll();
             List<Settlement> allSettlements = settlementRepository.findAll();
+            List<Order> allOrders = orderRepository.findAll();
+            Map<String, String> orderStatusMap = allOrders.stream()
+                    .collect(Collectors.toMap(Order::getOrderId, o -> o.getStatus() != null ? o.getStatus().toUpperCase() : "", (a, b) -> a));
 
             for (User v : vendors) {
                 List<Product> vProducts = allProducts.stream()
@@ -312,6 +428,15 @@ public class AdminController {
                 long pendingPayoutsCount = 0;
 
                 for (Settlement s : vSettlements) {
+                    String ordSt = orderStatusMap.getOrDefault(s.getOrderId(), "");
+                    if ("REFUNDED".equalsIgnoreCase(s.getStatus()) || "CANCELLED".equalsIgnoreCase(s.getStatus()) || "REFUNDED".equalsIgnoreCase(ordSt) || "CANCELLED".equalsIgnoreCase(ordSt)) {
+                        if (!"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())) {
+                            s.setStatus("REFUNDED".equalsIgnoreCase(ordSt) ? "REFUNDED" : "CANCELLED");
+                            try { settlementRepository.save(s); } catch (Exception ignored) {}
+                        }
+                        continue;
+                    }
+
                     grossSales += s.getGrossAmount();
                     commission += s.getCommissionAmount();
                     netPayout += s.getNetPayoutAmount();
@@ -469,9 +594,9 @@ public class AdminController {
                 List<Settlement> allSettlements = settlementRepository.findAll();
                 for (User v : vendors) {
                     long productsCount = allProducts.stream().filter(p -> v.getId().equals(p.getVendorId())).count();
-                    double grossSales = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId())).mapToDouble(Settlement::getGrossAmount).sum();
-                    double commission = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId())).mapToDouble(Settlement::getCommissionAmount).sum();
-                    double netPayout = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId())).mapToDouble(Settlement::getNetPayoutAmount).sum();
+                    double grossSales = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId()) && !"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())).mapToDouble(Settlement::getGrossAmount).sum();
+                    double commission = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId()) && !"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())).mapToDouble(Settlement::getCommissionAmount).sum();
+                    double netPayout = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId()) && !"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())).mapToDouble(Settlement::getNetPayoutAmount).sum();
 
                     csvBuilder.append(String.format("%d,%s,%s,%s,%d,%.2f,%.2f,%.2f\n",
                             v.getId(),
@@ -541,9 +666,9 @@ public class AdminController {
             List<Settlement> allSettlements = settlementRepository.findAll();
             for (User v : vendors) {
                 long productsCount = allProducts.stream().filter(p -> v.getId().equals(p.getVendorId())).count();
-                double grossSales = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId())).mapToDouble(Settlement::getGrossAmount).sum();
-                double commission = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId())).mapToDouble(Settlement::getCommissionAmount).sum();
-                double netPayout = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId())).mapToDouble(Settlement::getNetPayoutAmount).sum();
+                double grossSales = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId()) && !"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())).mapToDouble(Settlement::getGrossAmount).sum();
+                double commission = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId()) && !"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())).mapToDouble(Settlement::getCommissionAmount).sum();
+                double netPayout = allSettlements.stream().filter(s -> v.getId().equals(s.getVendorId()) && !"REFUNDED".equalsIgnoreCase(s.getStatus()) && !"CANCELLED".equalsIgnoreCase(s.getStatus())).mapToDouble(Settlement::getNetPayoutAmount).sum();
 
                 Map<String, Object> m = new HashMap<>();
                 m.put("id", v.getId());
@@ -582,5 +707,154 @@ public class AdminController {
     public ResponseEntity<?> updateVendorCommissionRate(@PathVariable Long vendorId, @RequestBody Map<String, Object> payload) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body("Vendor-specific commission rates are disabled. The platform commission rate is fixed at 10.0%.");
+    }
+
+    /**
+     * Inspect all products listed by a specific vendor (Admin view)
+     */
+    @GetMapping("/vendors/{vendorId}/products")
+    public ResponseEntity<?> getVendorProducts(@PathVariable Long vendorId) {
+        try {
+            List<Product> products = productRepository.findAll().stream()
+                    .filter(p -> p.getVendorId() != null && p.getVendorId().equals(vendorId))
+                    .map(this::populateProductRatings)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(products);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to retrieve vendor products: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Admin permanently deletes a product and cleans up all related disk storage and records
+     */
+    @org.springframework.web.bind.annotation.DeleteMapping("/products/{productId}")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> adminDeleteProduct(@PathVariable Long productId) {
+        try {
+            Optional<Product> optional = productRepository.findById(productId);
+            if (optional.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            Product p = optional.get();
+            if (p.getImageUrl() != null) {
+                fileStorageService.deleteFile(p.getImageUrl());
+            }
+            if (p.getImages() != null) {
+                for (String img : p.getImages()) {
+                    fileStorageService.deleteFile(img);
+                }
+            }
+
+            // 1. Inbound Shipments referencing product (foreign key parent)
+            try {
+                List<com.shopstack.backend.model.InboundShipment> shipments = inboundShipmentRepository.findAll().stream()
+                        .filter(s -> s.getProduct() != null && productId.equals(s.getProduct().getId()))
+                        .collect(Collectors.toList());
+                if (!shipments.isEmpty()) {
+                    inboundShipmentRepository.deleteAll(shipments);
+                }
+            } catch (Exception ex) {
+                System.err.println("Note cleaning shipments: " + ex.getMessage());
+            }
+
+            // 2. Stock Transfers referencing product (foreign key parent)
+            try {
+                List<com.shopstack.backend.model.StockTransfer> transfers = stockTransferRepository.findAll().stream()
+                        .filter(t -> t.getProduct() != null && productId.equals(t.getProduct().getId()))
+                        .collect(Collectors.toList());
+                if (!transfers.isEmpty()) {
+                    stockTransferRepository.deleteAll(transfers);
+                }
+            } catch (Exception ex) {
+                System.err.println("Note cleaning transfers: " + ex.getMessage());
+            }
+
+            // 3. Keep historical WarehouseAllocation records for past orders (no foreign key constraint)
+
+            // 4. Warehouse Inventories
+            try {
+                List<com.shopstack.backend.model.Inventory> inventories = inventoryRepository.findByProductId(productId);
+                if (inventories != null && !inventories.isEmpty()) {
+                    inventoryRepository.deleteAll(inventories);
+                }
+            } catch (Exception ignored) {}
+
+            // 5. Reviews
+            try {
+                List<com.shopstack.backend.model.Review> reviews = reviewRepository.findByProductIdOrderByIdDesc(productId);
+                if (reviews != null && !reviews.isEmpty()) {
+                    reviewRepository.deleteAll(reviews);
+                }
+            } catch (Exception ignored) {}
+
+            // 6. Wishlist Items
+            try {
+                List<com.shopstack.backend.model.WishlistItem> wishlists = wishlistItemRepository.findAll().stream()
+                        .filter(w -> productId.equals(w.getProductId()))
+                        .collect(Collectors.toList());
+                if (wishlists != null && !wishlists.isEmpty()) {
+                    wishlistItemRepository.deleteAll(wishlists);
+                }
+            } catch (Exception ignored) {}
+
+            // 7. Product Coupons
+            try {
+                List<com.shopstack.backend.model.ProductCoupon> coupons = productCouponRepository.findByProductId(productId);
+                if (coupons != null && !coupons.isEmpty()) {
+                    productCouponRepository.deleteAll(coupons);
+                }
+            } catch (Exception ignored) {}
+
+            // 8. Clear collection elements
+            if (p.getImages() != null) {
+                p.getImages().clear();
+                productRepository.saveAndFlush(p);
+            }
+
+            productRepository.deleteById(productId);
+            return ResponseEntity.ok(Map.of("message", "Product deleted successfully by admin", "productId", productId));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to delete product: " + e.getMessage());
+        }
+    }
+
+    private Product populateProductRatings(Product p) {
+        if (p.getDiscountPercentage() == null) {
+            p.setDiscountPercentage(0.0);
+        }
+        if (p.getFinalPrice() == null) {
+            p.setFinalPrice(p.calculateFinalPrice());
+        }
+        if (reviewRepository != null) {
+            List<com.shopstack.backend.model.Review> reviews = reviewRepository.findByProductIdOrderByIdDesc(p.getId());
+            if (reviews.isEmpty()) {
+                p.setAverageRating(0.0);
+                p.setReviewCount(0);
+            } else {
+                double sum = 0;
+                for (com.shopstack.backend.model.Review r : reviews) {
+                    sum += r.getRating();
+                }
+                p.setAverageRating(Math.round((sum / reviews.size()) * 10.0) / 10.0);
+                p.setReviewCount(reviews.size());
+            }
+        }
+        if (p.getVendorId() != null) {
+            Optional<User> vendorOpt = userRepository.findById(p.getVendorId());
+            if (vendorOpt.isPresent()) {
+                User v = vendorOpt.get();
+                p.setVendorName(v.getFullName());
+                p.setVendorEmail(v.getEmail());
+                p.setVendorPhone(v.getPhone());
+                p.setVendorCode(v.getVendorCode());
+                p.setVendorAddress(v.getAddress());
+            }
+        }
+        return p;
     }
 }

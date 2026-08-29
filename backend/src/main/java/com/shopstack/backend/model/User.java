@@ -34,6 +34,12 @@ public class User {
     @Column(name = "commission_rate")
     private Double commissionRate;
 
+    @Column(name = "warehouse_id")
+    private Long warehouseId;
+
+    @Column(name = "warehouse_name")
+    private String warehouseName;
+
     public User() {}
 
     public User(String fullName, String email, String password, String role, String phone, String address) {
@@ -45,6 +51,8 @@ public class User {
         this.address = address;
         this.vendorCode = null;
         this.commissionRate = null;
+        this.warehouseId = null;
+        this.warehouseName = null;
     }
 
     public Long getId() { return id; }
@@ -73,4 +81,10 @@ public class User {
 
     public Double getCommissionRate() { return commissionRate; }
     public void setCommissionRate(Double commissionRate) { this.commissionRate = commissionRate; }
+
+    public Long getWarehouseId() { return warehouseId; }
+    public void setWarehouseId(Long warehouseId) { this.warehouseId = warehouseId; }
+
+    public String getWarehouseName() { return warehouseName; }
+    public void setWarehouseName(String warehouseName) { this.warehouseName = warehouseName; }
 }

@@ -30,7 +30,7 @@ public class WarehouseAllocation {
     private LocalDateTime updatedAt;
 
     // Shipment preparation details
-    private String courierPartner; // BlueDart, Delhivery, ShopStack Express, etc.
+    private String courierPartner = "ShopStack Express"; // Fixed provider: ShopStack Express
     private String trackingNumber;
     private String packagingType; // Standard Box, Bubble Wrap, Eco-friendly Box, etc.
 

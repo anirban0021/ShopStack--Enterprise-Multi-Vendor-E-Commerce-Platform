@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   TrendingUp, Package, AlertTriangle, IndianRupee, Plus, Edit2, 
-  Trash2, X, Check, Save, Truck, Calendar, ShoppingBag, Eye, Layers,
+  Trash2, X, Check, Save, Truck, Calendar, ShoppingBag, Eye, EyeOff, Power, Layers,
   DollarSign, RefreshCw, CheckCircle, Clock, ShieldCheck, FileText, Search, Ticket, RotateCcw
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
@@ -85,8 +85,12 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
   }, []);
 
   const showFlash = (type, text) => {
-    setFlashMessage({ type, text });
-    setTimeout(() => setFlashMessage({ type: '', text: '' }), 3000);
+    let msg = text;
+    if (typeof text === 'object' && text !== null) {
+      msg = text.message || text.error || JSON.stringify(text);
+    }
+    setFlashMessage({ type, text: msg });
+    setTimeout(() => setFlashMessage({ type: '', text: '' }), 3500);
   };
 
   const fetchVendorCoupons = async () => {
@@ -432,15 +436,19 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
     }
   };
 
-  const handleDeleteProduct = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this product? This action cannot be undone.")) return;
+  const handleToggleProductStatus = async (productId, currentStatus) => {
+    const isCurrentlyDisabled = currentStatus === 'DISABLED';
+    const actionName = isCurrentlyDisabled ? 'enable' : 'disable';
+    if (!window.confirm(`Are you sure you want to ${actionName} this product? ${isCurrentlyDisabled ? 'It will become active and visible in the store.' : 'It will be hidden from customer browsing and search.'}`)) return;
     try {
-      await axios.delete(`http://localhost:8080/api/products/${id}`);
-      showFlash('success', 'Product deleted successfully.');
+      const res = await axios.put(`http://localhost:8080/api/products/${productId}/toggle-status`);
+      const newStatus = res.data.status;
+      setProducts(prev => prev.map(p => p.id === productId ? { ...p, status: newStatus } : p));
+      showFlash('success', `Product ${isCurrentlyDisabled ? 'enabled and active on store' : 'disabled from customer store'}.`);
       fetchProducts();
       fetchAnalytics();
     } catch (err) {
-      showFlash('error', 'Failed to delete product.');
+      showFlash('error', `Failed to ${actionName} product.`);
     }
   };
 
@@ -500,7 +508,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
             onClick={() => setActiveTab('inventory')} 
             className={`sidebar-item ${activeTab === 'inventory' ? 'sidebar-item-active' : ''}`}
           >
-            <Package size={18} /> Inventory Stock ({products.length})
+            <Package size={18} /> Catalog Products ({products.length})
           </div>
           <div 
             onClick={() => setActiveTab('orders')} 
@@ -736,24 +744,34 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                             </div>
                           </td>
                            <td>
-                             <span className={`badge ${
-                               prod.status === 'APPROVED' ? 'badge-approved' : 
-                               prod.status === 'REJECTED' ? 'badge-rejected' : 'badge-pending'
-                             }`} style={{ fontWeight: '700' }}>
-                               {prod.status === 'APPROVED' ? 'APPROVED' : 
-                                prod.status === 'REJECTED' ? 'REJECTED' : 'PENDING APPROVAL'}
-                             </span>
-                             {prod.status === 'PENDING' && (
-                               <div style={{ fontSize: '10px', color: 'var(--accent-amber)', marginTop: '4px', fontWeight: '600' }}>
-                                 Awaiting Admin Approval
-                               </div>
-                             )}
-                             {prod.status === 'REJECTED' && prod.rejectionReason && (
-                               <div style={{ fontSize: '11px', color: 'var(--accent-rose)', marginTop: '4px', maxWidth: '180px', lineBreak: 'anywhere' }}>
-                                 <strong>Reason:</strong> {prod.rejectionReason}
+                              <span className={`badge ${
+                                prod.status === 'APPROVED' ? 'badge-approved' : 
+                                prod.status === 'REJECTED' ? 'badge-rejected' : 
+                                prod.status === 'DISABLED' ? 'badge-pending' : 'badge-pending'
+                              }`} style={{ 
+                                fontWeight: '700', 
+                                ...(prod.status === 'DISABLED' ? { background: 'rgba(148, 163, 184, 0.15)', color: '#64748b', border: '1px solid rgba(148, 163, 184, 0.3)' } : {}) 
+                              }}>
+                                {prod.status === 'APPROVED' ? 'APPROVED' : 
+                                 prod.status === 'REJECTED' ? 'REJECTED' : 
+                                 prod.status === 'DISABLED' ? 'DISABLED' : 'PENDING APPROVAL'}
+                              </span>
+                              {prod.status === 'PENDING' && (
+                                <div style={{ fontSize: '10px', color: 'var(--accent-amber)', marginTop: '4px', fontWeight: '600' }}>
+                                  Awaiting Admin Approval
                                 </div>
-                             )}
-                           </td>
+                              )}
+                              {prod.status === 'DISABLED' && (
+                                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', fontWeight: '600' }}>
+                                  Hidden from Store
+                                </div>
+                              )}
+                              {prod.status === 'REJECTED' && prod.rejectionReason && (
+                                <div style={{ fontSize: '11px', color: 'var(--accent-rose)', marginTop: '4px', maxWidth: '180px', lineBreak: 'anywhere' }}>
+                                  <strong>Reason:</strong> {prod.rejectionReason}
+                                </div>
+                              )}
+                            </td>
                           <td style={{ textAlign: 'center' }}>
                             <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
                               <button 
@@ -773,12 +791,22 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                                 <Edit2 size={14} />
                               </button>
                               <button 
-                                onClick={() => handleDeleteProduct(prod.id)} 
-                                className="btn-icon-only" 
-                                title="Delete Product"
-                                style={{ padding: '6px', color: 'var(--accent-rose)' }}
+                                onClick={() => handleToggleProductStatus(prod.id, prod.status)} 
+                                className="btn btn-secondary" 
+                                title={prod.status === 'DISABLED' ? "Enable Product (Make live on store)" : "Disable Product (Hide from customers)"}
+                                style={{ 
+                                  padding: '4px 8px', 
+                                  fontSize: '11px', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  gap: '4px',
+                                  color: prod.status === 'DISABLED' ? '#10b981' : '#f59e0b',
+                                  borderColor: prod.status === 'DISABLED' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)',
+                                  background: prod.status === 'DISABLED' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)'
+                                }}
                               >
-                                <Trash2 size={14} />
+                                {prod.status === 'DISABLED' ? <Eye size={13} /> : <EyeOff size={13} />}
+                                {prod.status === 'DISABLED' ? 'Enable' : 'Disable'}
                               </button>
                             </div>
                           </td>
@@ -917,7 +945,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                     <DollarSign size={16} style={{ color: 'var(--accent-blue)' }} />
                   </div>
                   <div className="analytics-card-value" style={{ fontSize: '22px' }}>
-                    ₹{settlementsSummary.totalGross?.toLocaleString('en-IN') || '0'}
+                    ₹{settlementsSummary.totalGross?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                   </div>
                   <div className="analytics-card-desc">Total sales before commission</div>
                 </div>
@@ -928,7 +956,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                     <ShieldCheck size={16} style={{ color: 'var(--accent-rose)' }} />
                   </div>
                   <div className="analytics-card-value" style={{ fontSize: '22px' }}>
-                    ₹{settlementsSummary.totalCommission?.toLocaleString('en-IN') || '0'}
+                    ₹{settlementsSummary.totalCommission?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                   </div>
                   <div className="analytics-card-desc">ShopStack commission</div>
                 </div>
@@ -939,7 +967,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                     <IndianRupee size={16} style={{ color: 'var(--accent-teal)' }} />
                   </div>
                   <div className="analytics-card-value" style={{ fontSize: '22px' }}>
-                    ₹{settlementsSummary.totalNetPayout?.toLocaleString('en-IN') || '0'}
+                    ₹{settlementsSummary.totalNetPayout?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                   </div>
                   <div className="analytics-card-desc">Total vendor earnings</div>
                 </div>
@@ -950,7 +978,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                     <Clock size={16} style={{ color: '#f59e0b' }} />
                   </div>
                   <div className="analytics-card-value" style={{ fontSize: '22px', color: '#f59e0b' }}>
-                    ₹{settlementsSummary.pendingPayout?.toLocaleString('en-IN') || '0'}
+                    ₹{settlementsSummary.pendingPayout?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                   </div>
                   <div className="analytics-card-desc">Awaiting admin settlement</div>
                 </div>
@@ -961,7 +989,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                     <CheckCircle size={16} style={{ color: 'var(--accent-emerald)' }} />
                   </div>
                   <div className="analytics-card-value" style={{ fontSize: '22px', color: 'var(--accent-emerald)' }}>
-                    ₹{settlementsSummary.settledPayout?.toLocaleString('en-IN') || '0'}
+                    ₹{settlementsSummary.settledPayout?.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                   </div>
                   <div className="analytics-card-desc">Successfully transferred</div>
                 </div>
@@ -969,7 +997,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
 
               {/* Filter Tabs */}
               <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                {['ALL', 'PENDING', 'SETTLED'].map(filter => (
+                {['ALL', 'PENDING', 'SETTLED', 'REFUNDED'].map(filter => (
                   <button
                     key={filter}
                     type="button"
@@ -979,7 +1007,8 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                   >
                     {filter === 'ALL' ? `All Records (${settlements.length})` : 
                      filter === 'PENDING' ? `Pending (${settlements.filter(s => s.status === 'PENDING').length})` : 
-                     `Settled (${settlements.filter(s => s.status === 'SETTLED').length})`}
+                     filter === 'SETTLED' ? `Settled (${settlements.filter(s => s.status === 'SETTLED').length})` : 
+                     `Refunded (${settlements.filter(s => s.status === 'REFUNDED').length})`}
                   </button>
                 ))}
               </div>
@@ -1010,6 +1039,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                         .filter(s => settlementFilter === 'ALL' || s.status === settlementFilter)
                         .map((s) => {
                           const isSettled = s.status === 'SETTLED';
+                          const isRefunded = s.status === 'REFUNDED';
                           return (
                             <tr key={s.id}>
                               <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
@@ -1022,16 +1052,20 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                                 {s.productName || `Item #${s.orderItemId}`}
                               </td>
                               <td style={{ fontWeight: '700' }}>
-                                ₹{s.grossAmount}
+                                ₹{Number(s.grossAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
-                              <td style={{ color: 'var(--accent-rose)', fontSize: '13px' }}>
-                                -₹{s.commissionAmount} ({s.commissionPercentage}%)
+                              <td style={{ color: isRefunded ? 'var(--text-muted)' : 'var(--accent-rose)', fontSize: '13px' }}>
+                                {isRefunded ? '₹0.00 (Reversed)' : `-₹${Number(s.commissionAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${s.commissionPercentage}%)`}
                               </td>
-                              <td style={{ fontWeight: '800', color: 'var(--accent-emerald)', fontSize: '14px' }}>
-                                ₹{s.netPayoutAmount}
+                              <td style={{ fontWeight: '800', color: isRefunded ? 'var(--text-muted)' : 'var(--accent-emerald)', fontSize: '14px' }}>
+                                {isRefunded ? '₹0.00' : `₹${Number(s.netPayoutAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                               </td>
                               <td>
-                                {isSettled ? (
+                                {isRefunded ? (
+                                  <span className="badge badge-rejected" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '700' }}>
+                                    <RotateCcw size={11} /> REFUNDED
+                                  </span>
+                                ) : isSettled ? (
                                   <span className="badge badge-approved" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                     <Check size={12} /> SETTLED
                                   </span>
@@ -1040,9 +1074,6 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                                     <Clock size={12} /> PENDING
                                   </span>
                                 )}
-                              </td>
-                              <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                                {s.settledAt || 'Pending transfer'}
                               </td>
                             </tr>
                           );

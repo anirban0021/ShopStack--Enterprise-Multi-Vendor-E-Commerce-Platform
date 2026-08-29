@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { User, Mail, Lock, Briefcase, Eye, EyeOff, Check, X, Sun, Moon, CheckCircle2 } from 'lucide-react';
+import { User, Mail, Lock, Briefcase, Eye, EyeOff, Check, X, Sun, Moon, CheckCircle2, MapPin } from 'lucide-react';
 
 const passwordRules = [
   { id: 'length', label: 'Minimum 8 characters', test: (pwd) => pwd.length >= 8 },
@@ -15,12 +15,26 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
     fullName: '',
     email: '',
     password: '',
-    role: 'CUSTOMER'
+    role: 'CUSTOMER',
+    warehouseId: null,
+    warehouseName: ''
   });
+  const [availableWarehouses, setAvailableWarehouses] = useState([]);
   const [showPassword, setShowPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [flashMessage, setFlashMessage] = useState({ type: '', title: '', text: '' });
   const [generatedVendorCode, setGeneratedVendorCode] = useState(null);
+
+  // Fetch active warehouses for staff registration selection
+  useEffect(() => {
+    axios.get('http://localhost:8080/api/warehouses')
+      .then(res => {
+        if (Array.isArray(res.data)) {
+          setAvailableWarehouses(res.data.filter(w => w.active));
+        }
+      })
+      .catch(err => console.error("Failed to load warehouses list", err));
+  }, []);
 
   // Auto-dismiss flash messages after 3 seconds
   useEffect(() => {
@@ -68,13 +82,23 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
       });
       return;
     }
-    if (role === 'WAREHOUSE_STAFF' && !email.endsWith('@staff')) {
-      setFlashMessage({
-        type: 'error',
-        title: 'Invalid Email ID',
-        text: 'Warehouse Staff accounts must register with an email ending in @staff (e.g. abcd123@staff).'
-      });
-      return;
+    if (role === 'WAREHOUSE_STAFF') {
+      if (!email.endsWith('@staff')) {
+        setFlashMessage({
+          type: 'error',
+          title: 'Invalid Email ID',
+          text: 'Warehouse Staff accounts must register with an email ending in @staff (e.g. abcd123@staff).'
+        });
+        return;
+      }
+      if (!formData.warehouseId) {
+        setFlashMessage({
+          type: 'error',
+          title: 'Warehouse Assignment Required',
+          text: 'Please choose an assigned warehouse facility from the dropdown list.'
+        });
+        return;
+      }
     }
     if (role === 'CUSTOMER' && (email.endsWith('@admin') || email.endsWith('@staff'))) {
       setFlashMessage({
@@ -274,6 +298,41 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
               </div>
             )}
           </div>
+
+          {/* Assigned Warehouse Facility selection for Warehouse Staff */}
+          {formData.role === 'WAREHOUSE_STAFF' && (
+            <div className="form-group" style={{ marginTop: '12px' }}>
+              <label className="form-label">Assigned Warehouse Facility *</label>
+              <div className="input-icon-wrapper">
+                <MapPin className="input-icon" />
+                <select
+                  required
+                  value={formData.warehouseId || ''}
+                  onChange={(e) => {
+                    const selId = e.target.value;
+                    const selWh = availableWarehouses.find(w => String(w.id) === String(selId));
+                    setFormData({ 
+                      ...formData, 
+                      warehouseId: selId ? parseInt(selId) : null,
+                      warehouseName: selWh ? `${selWh.name} (${selWh.code})` : ''
+                    });
+                  }}
+                  className="form-input"
+                  style={{ paddingLeft: '44px' }}
+                >
+                  <option value="">-- Choose Assigned Warehouse Facility --</option>
+                  {availableWarehouses.map((wh) => (
+                    <option key={wh.id} value={wh.id}>
+                      {wh.name} ({wh.code}) - {wh.city}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                You will receive and process orders specifically allocated to this warehouse facility.
+              </div>
+            </div>
+          )}
 
           <button type="submit" className="btn btn-primary btn-block" style={{ marginTop: '12px' }}>
             Register

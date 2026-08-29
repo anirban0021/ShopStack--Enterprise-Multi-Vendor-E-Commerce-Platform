@@ -24,6 +24,9 @@ public class AuthController {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private com.shopstack.backend.repository.WarehouseRepository warehouseRepository;
+
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody User user) {
         if (user.getEmail() == null || user.getRole() == null) {
@@ -43,15 +46,23 @@ public class AuthController {
             return ResponseEntity.badRequest().body("Error: Customer email cannot end with restricted domains (@admin, @seller, @staff)");
         }
 
-        if (userRepository.existsByEmail(user.getEmail())) {
+        if (userRepository.existsByEmailIgnoreCase(email)) {
             return ResponseEntity.badRequest().body("Error: Email is already registered!");
         }
+
+        user.setEmail(email);
 
         String generatedCode = null;
         if (role.equals("VENDOR")) {
             // Generate a random 6-digit unique code
             generatedCode = String.valueOf((int)(100000 + Math.random() * 900000));
             user.setVendorCode(generatedCode);
+        }
+
+        if (role.equals("WAREHOUSE_STAFF") && user.getWarehouseId() != null) {
+            warehouseRepository.findById(user.getWarehouseId()).ifPresent(wh -> {
+                user.setWarehouseName(wh.getName() + " (" + wh.getCode() + ")");
+            });
         }
 
         userRepository.save(user);
@@ -78,12 +89,13 @@ public class AuthController {
         email = email.trim().toLowerCase();
         requestedRole = requestedRole.toUpperCase();
 
-        Optional<User> userOpt = userRepository.findByEmail(email);
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
         if (userOpt.isEmpty() || !userOpt.get().getPassword().equals(password)) {
             return ResponseEntity.status(401).body("Error: Invalid email or password!");
         }
 
         User user = userOpt.get();
+        user.setEmail(email);
 
         // Enforce role-specific login rules
         if (requestedRole.equals("VENDOR")) {
@@ -201,7 +213,7 @@ public class AuthController {
             return ResponseEntity.badRequest().body("Error: Email is required.");
         }
         email = email.trim().toLowerCase();
-        Optional<User> userOpt = userRepository.findByEmail(email);
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
         if (userOpt.isEmpty()) {
             return ResponseEntity.status(404).body("Error: No account found with this email address.");
         }
@@ -216,7 +228,7 @@ public class AuthController {
             return ResponseEntity.badRequest().body("Error: Email and new password are required.");
         }
         email = email.trim().toLowerCase();
-        Optional<User> userOpt = userRepository.findByEmail(email);
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
         if (userOpt.isEmpty()) {
             return ResponseEntity.status(404).body("Error: No account found with this email address.");
         }

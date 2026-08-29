@@ -38,6 +38,24 @@ public class ProductController {
     private com.shopstack.backend.repository.UserRepository userRepository;
 
     @Autowired
+    private com.shopstack.backend.repository.WishlistItemRepository wishlistItemRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.ProductCouponRepository productCouponRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.InventoryRepository inventoryRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.InboundShipmentRepository inboundShipmentRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.StockTransferRepository stockTransferRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.WarehouseAllocationRepository warehouseAllocationRepository;
+
+    @Autowired
     private com.shopstack.backend.service.FileStorageService fileStorageService;
 
     // Upload single product image to disk
@@ -283,8 +301,52 @@ public class ProductController {
         return ResponseEntity.notFound().build();
     }
 
-    // Vendor: Delete product and automatically remove stored image files from disk
+    // Vendor: Toggle product active/disabled status
+    @PutMapping("/{id}/toggle-status")
+    public ResponseEntity<?> toggleProductStatus(@PathVariable Long id) {
+        Optional<Product> optional = productRepository.findById(id);
+        if (optional.isPresent()) {
+            Product p = optional.get();
+            if ("DISABLED".equalsIgnoreCase(p.getStatus())) {
+                p.setStatus("APPROVED");
+            } else {
+                p.setStatus("DISABLED");
+            }
+            Product saved = productRepository.save(p);
+            return ResponseEntity.ok(populateRatings(saved));
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    // Vendor: Disable product
+    @PutMapping("/{id}/disable")
+    public ResponseEntity<?> disableProduct(@PathVariable Long id) {
+        Optional<Product> optional = productRepository.findById(id);
+        if (optional.isPresent()) {
+            Product p = optional.get();
+            p.setStatus("DISABLED");
+            Product saved = productRepository.save(p);
+            return ResponseEntity.ok(populateRatings(saved));
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    // Vendor: Enable product
+    @PutMapping("/{id}/enable")
+    public ResponseEntity<?> enableProduct(@PathVariable Long id) {
+        Optional<Product> optional = productRepository.findById(id);
+        if (optional.isPresent()) {
+            Product p = optional.get();
+            p.setStatus("APPROVED");
+            Product saved = productRepository.save(p);
+            return ResponseEntity.ok(populateRatings(saved));
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    // Delete product and automatically remove stored image files from disk and cascade references
     @DeleteMapping("/{id}")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
         Optional<Product> optional = productRepository.findById(id);
         if (optional.isPresent()) {
@@ -298,8 +360,75 @@ public class ProductController {
                     fileStorageService.deleteFile(img);
                 }
             }
+
+            // 1. Inbound Shipments referencing product (foreign key parent)
+            try {
+                List<com.shopstack.backend.model.InboundShipment> shipments = inboundShipmentRepository.findAll().stream()
+                        .filter(s -> s.getProduct() != null && id.equals(s.getProduct().getId()))
+                        .collect(Collectors.toList());
+                if (!shipments.isEmpty()) {
+                    inboundShipmentRepository.deleteAll(shipments);
+                }
+            } catch (Exception ex) {
+                System.err.println("Note cleaning shipments: " + ex.getMessage());
+            }
+
+            // 2. Stock Transfers referencing product (foreign key parent)
+            try {
+                List<com.shopstack.backend.model.StockTransfer> transfers = stockTransferRepository.findAll().stream()
+                        .filter(t -> t.getProduct() != null && id.equals(t.getProduct().getId()))
+                        .collect(Collectors.toList());
+                if (!transfers.isEmpty()) {
+                    stockTransferRepository.deleteAll(transfers);
+                }
+            } catch (Exception ex) {
+                System.err.println("Note cleaning transfers: " + ex.getMessage());
+            }
+
+            // 3. Keep historical WarehouseAllocation records for past orders (no foreign key constraint)
+
+            // 4. Warehouse Inventories
+            try {
+                List<com.shopstack.backend.model.Inventory> inventories = inventoryRepository.findByProductId(id);
+                if (inventories != null && !inventories.isEmpty()) {
+                    inventoryRepository.deleteAll(inventories);
+                }
+            } catch (Exception ignored) {}
+
+            // 5. Reviews
+            try {
+                List<Review> reviews = reviewRepository.findByProductIdOrderByIdDesc(id);
+                if (reviews != null && !reviews.isEmpty()) {
+                    reviewRepository.deleteAll(reviews);
+                }
+            } catch (Exception ignored) {}
+
+            // 6. Wishlist Items
+            try {
+                List<com.shopstack.backend.model.WishlistItem> wishlists = wishlistItemRepository.findAll().stream()
+                        .filter(w -> id.equals(w.getProductId()))
+                        .collect(Collectors.toList());
+                if (wishlists != null && !wishlists.isEmpty()) {
+                    wishlistItemRepository.deleteAll(wishlists);
+                }
+            } catch (Exception ignored) {}
+
+            // 7. Product Coupons
+            try {
+                List<com.shopstack.backend.model.ProductCoupon> coupons = productCouponRepository.findByProductId(id);
+                if (coupons != null && !coupons.isEmpty()) {
+                    productCouponRepository.deleteAll(coupons);
+                }
+            } catch (Exception ignored) {}
+
+            // 8. Clear collection elements
+            if (p.getImages() != null) {
+                p.getImages().clear();
+                productRepository.saveAndFlush(p);
+            }
+
             productRepository.deleteById(id);
-            return ResponseEntity.ok("Product deleted successfully");
+            return ResponseEntity.ok(Map.of("message", "Product deleted successfully", "id", id));
         }
         return ResponseEntity.notFound().build();
     }

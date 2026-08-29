@@ -1466,185 +1466,101 @@ Binds eligible products to coupons.
 
 ---
 
-# 🏭 ShopStack — Day 11: Multi-Warehouse Fulfillment Engine & Advanced Returns/Refund Lifecycle
+# 🏭 ShopStack — Day 11: Warehouse Allocation Workflow
 
-This milestone introduces a full **Warehouse & Inventory Management System** with automatic/manual stock allocation and a pick → pack → ship fulfillment workflow, a new **Warehouse Staff** platform role, and overhauls the refund system into a complete multi-stage **Return Management (RMA)** lifecycle spanning customer request, vendor review, warehouse quality inspection, and final admin resolution (refund, replacement, or exchange).
+This milestone introduces an enterprise-grade **Warehouse Allocation Workflow & Logistics Engine** with strict **Role-Based Workflow Separation**, **Vendor Source Origin & Multi-Hub Stock Distribution**, a **1-Time Order Allocation Desk**, a **Pick → Pack → Ship Fulfillment Pipeline**, a dedicated **Warehouse Staff** platform role, and a condition-aware **Defective & Damaged Return Quarantine Engine**.
 
 ---
 
-## 📌 Workflow & System Architecture
+## 📌 Architecture & Workflow System Design
 
-### 1. Complete Fulfillment Workflow
-```text
-Customer Places Order (CONFIRMED)
-      │
-      ▼
-System Auto-Allocates Stock Across Warehouses
-      │
-      ├── Single warehouse has enough stock ──► Allocate fully to that warehouse
-      │
-      └── No single warehouse suffices ──► Split allocation across multiple warehouses
-                                                  │
-                                                  └── Remaining shortfall ──► Marked UNALLOCATED (Stock Pending)
-      ▼
-Warehouse Staff Reviews Allocation Queue
-      │
-      ▼
-PICKED  ──►  PACKED (select packaging type)  ──►  READY_FOR_SHIPMENT (assign courier + tracking #)
-      │                                                 │
-      │                                                 ▼
-      │                                        Physical stock deducted from warehouse
-      │                                        Order status synced to SHIPPED
-      ▼
-DELIVERED
-      │
-      └── If COD ──► Payment auto-marked PAID ──► Vendor Settlements generated
-```
-
-### 2. Complete Return / Refund (RMA) Workflow
-```text
-Customer Requests Return/Refund on a Delivered Order
-      │
-      ▼
-Backend enforces Product Return Policy (7_DAYS / 15_DAYS / NON_RETURNABLE)
-      │
-      ▼
-Refund record created — Stage: REQUESTED, Status: PENDING
-Order status ──► RETURN_REQUESTED | Payment status ──► REFUND_PENDING
-      │
-      ▼
-Vendor Reviews the Return Request
-      │
-      ├── APPROVE ──► Stage: VENDOR_APPROVED (return shipping label generated)
-      └── DISPUTE ──► Stage: VENDOR_DISPUTED (escalated to Admin)
-      │
-      ▼
-Warehouse Staff Performs QC Inspection on the returned item
-      │
-      ├── PASS ──► Stage: QC_PASSED
-      │              └── If restock option = RESELLABLE ──► Item quantity restocked into chosen warehouse's Inventory
-      └── FAIL ──► Stage: QC_FAILED
-      │
-      ▼
-Admin Resolves the Return
-      │
-      ├── REFUND       ──► Stage: REFUNDED ──► Order/Payment status REFUNDED, Settlements marked REFUNDED
-      ├── REPLACEMENT   ──► Stage: REPLACEMENT_DISPATCHED ──► New zero-cost order (REP-xxxxxx) created & auto-allocated
-      └── EXCHANGE      ──► Stage: EXCHANGED ──► New zero-cost order (EXC-xxxxxx) created & auto-allocated
-```
-
-### 3. Full Technical Data Flow
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor Staff as Warehouse Staff
-    actor Vendor as Merchant
-    actor Customer as Shopper
-    actor Admin as Administrator
-    participant React as React UI (Vite)
-    participant Axios as Axios / API Client
-    participant Controller as Spring Boot Controllers
-    participant Service as WarehouseService / PaymentService
-    participant DB as PostgreSQL Database
-
-    %% Order Placement & Auto-Allocation
-    Customer->>React: Places Order at Checkout
-    React->>Axios: POST /api/customer/{id}/orders
-    Axios->>Controller: placeOrder()
-    Controller->>Service: warehouseService.allocateOrder(orderId)
-    Service->>DB: Reserve stock in warehouse_allocations & inventories
-    DB-->>React: Order CONFIRMED
-
-    %% Fulfillment Workflow
-    Staff->>React: Opens Fulfillment tab
-    React->>Axios: GET /api/warehouses/allocations
-    Staff->>React: Advances status (PICKED → PACKED → READY_FOR_SHIPMENT)
-    React->>Axios: PUT /api/warehouses/allocations/{id}/status
-    Axios->>Controller: updateAllocationStatus()
-    Controller->>Service: updateFulfillmentStatus()
-    Service->>DB: Deduct physical stock, sync Product.stock, update Order.status
-    DB-->>React: Order status reflected as SHIPPED/DELIVERED
-
-    %% Return Lifecycle
-    Customer->>React: Submits Return/Refund Request
-    React->>Axios: POST /api/payment/refund/request
-    Axios->>Controller: requestRefund()
-    Controller->>Service: requestReturn()
-    Service->>DB: Save Refund (Stage: REQUESTED)
-
-    Vendor->>React: Approves/Disputes Return
-    React->>Axios: PUT /api/payment/refunds/{id}/vendor-review
-    Axios->>Service: reviewReturnRequest()
-    Service->>DB: Update Stage → VENDOR_APPROVED / VENDOR_DISPUTED
-
-    Staff->>React: Performs QC Inspection
-    React->>Axios: PUT /api/payment/refunds/{id}/qc-inspection
-    Axios->>Service: processReturnQcInspection()
-    Service->>DB: Update Stage → QC_PASSED/QC_FAILED, restock Inventory if resellable
-
-    Admin->>React: Resolves Return
-    React->>Axios: POST /api/payment/refunds/{id}/resolve
-    Axios->>Service: resolveReturnRequest()
-    Service->>DB: Execute Refund / Create Replacement / Exchange Order
-    DB-->>React: Final Order & Refund status updated
+flowchart TD
+    A["Vendor Keeps Stock in Catalog<br/>(Vendor Origin)"] -->|"Admin Distributes Stock via Multi-Hub Ledger"| B["Regional Warehouses<br/>(Kolkata, Mumbai, Delhi, Bangalore)"]
+    B --> C["Customer Places Order (CONFIRMED)"]
+    C --> D["Admin 1-Time Order Allocation Desk"]
+    D -->|"Facility Allocation Locked (1-Time)"| E["Specifically Allocated Warehouse Staff Dashboard"]
+    E --> F["Pick Product from Bin Location"]
+    F --> G["Pack Product with Custom Packaging"]
+    G --> H["ShopStack Express Dispatch (READY_FOR_SHIPPING)"]
+    H --> I["Customer Delivery Completed (DELIVERED)"]
 ```
 
 ---
 
-## 📌 Deliverables & Core Features
+## 📌 Deliverables & Core Capabilities (Day 11)
 
-### 1. Multi-Warehouse Management
-Administrators/Warehouse Staff can manage the platform's physical fulfillment network:
-* **Warehouse CRUD:** Create, edit, deactivate, and delete warehouses with `name`, unique `code` (e.g. `WH-MUM-01`), `address`, `city`, and an `active` toggle.
-* **Default Seed Data:** On first boot, the system auto-seeds 3 default hubs — Mumbai Central Warehouse, Delhi NCR Fulfillment Center, and Bangalore Logistics Hub — and distributes each existing product's stock across them (50% / 30% / 20% split).
-* **Inactive Warehouse Guard:** Manual allocation to a deactivated warehouse is blocked at the service layer.
+### 1. Role-Based Workflow Separation
+* **Administrator Responsibilities**:
+  - Manage the physical fulfillment network (**Kolkata**, **Mumbai**, **Delhi**, **Bangalore** hubs), operational capacity, and geographic coordinates.
+  - Distribute vendor catalog stock across regional fulfillment centers.
+  - Operate the **1-Time Order Allocation Desk** to route incoming customer orders to the optimal facility.
+  - Oversee multi-hub stock ledgers, regional transfers, and return dispute resolution.
+* **Warehouse Staff Responsibilities**:
+  - Associated with a specific regional warehouse hub.
+  - Receive real-time alerts when orders are allocated to their facility.
+  - Manage the facility-specific Picking queue and generate picklists.
+  - Pack orders with designated packaging materials (Standard Box, Fragile Padded, Heavy Duty Corrugated).
+  - Prepare shipments, generate tracking numbers via **ShopStack Express**, and update stock movements.
+  - Perform Inward Returns Quality Control (QC) inspection and process Damaged Stock Dispositions.
+* **Vendor Responsibilities**:
+  - Maintain product catalog listings, images, pricing, and stock quantities.
+  - Retain full economic/financial ownership of listed inventory.
+  - Note: Vendors do not send direct inbound consignments to warehouses; the Admin centrally distributes vendor catalog stock.
 
-### 2. Per-Warehouse Inventory Tracking
-* **Inventory Tracking:** Tracks `quantity` (total physical stock) and `allocated` (reserved-but-unshipped stock) per warehouse-product pair, exposing a derived `availableQuantity = quantity − allocated`.
-* **Restock Endpoint:** Staff can add/replenish stock for a product at a specific warehouse (`POST /api/warehouses/{id}/inventory`), which increments existing records or creates new ones.
-* **Direct Inventory Editing:** Warehouse staff can directly overwrite `quantity`/`allocated` values for corrections (`PUT /api/warehouses/inventory/{invId}`).
-* **Global Stock Sync:** Every inventory change recalculates and syncs the product's platform-wide `stock` field as the sum of `availableQuantity` across all warehouses (`syncProductGlobalStock`), keeping the storefront stock count always accurate.
+---
 
-### 3. Automatic Stock Allocation Engine
-Triggered automatically the moment an order is placed:
-* **Single-Warehouse Fulfillment:** Prefers a single active warehouse that alone holds sufficient available stock for the full order-item quantity.
-* **Split Allocation:** If no single warehouse suffices, sorts active warehouses by available stock (descending) and distributes the required quantity across as few warehouses as possible.
-* **Unallocated Fallback:** Any quantity that still cannot be sourced is logged as an `UNALLOCATED` allocation record ("Stock Pending") for staff to resolve manually once restocked.
-* **Manual Override:** Staff can manually (re)assign a specific order item to a specific warehouse and quantity, automatically reversing/adjusting any prior allocation for that line item first (`POST /api/warehouses/allocations/manual`).
-* **Allocation Release:** Cancelled/refunded orders automatically release their reserved (but not yet shipped) allocated stock back into available inventory.
+### 2. Vendor Source Origin & Multi-Hub Stock Distribution
+* **Source Origin (Vendor)**: Products listed by the vendor in the catalog serve as the single source of truth for stock quantities and financial attribution.
+* **Centralized Multi-Hub Stock Ledger**: Platform Administrator distributes and balances physical inventory across regional facilities:
+  - **Kolkata Regional Fulfillment Hub (`WH-KOL-01`)**
+  - **Mumbai Central Warehouse (`WH-MUM-01`)**
+  - **Delhi Northern Logistics Hub (`WH-DEL-02`)**
+  - **Bangalore Southern Mega Hub (`WH-BLR-03`)**
+* **Distribution Presets & Allocation**:
+  - `⚡ 40/30/20/10 Split` (40% Kolkata, 30% Mumbai, 20% Delhi, 10% Bangalore)
+  - `⚡ Equal Split` (25% each hub)
+  - Single-warehouse custom buffer allocation.
+* **Real-Time Global Stock Sync**: Every warehouse stock adjustment automatically recalculates and synchronizes the product's platform-wide catalog stock (`syncProductGlobalStock`).
 
-### 4. Pick → Pack → Ship Fulfillment Workflow
-Each `WarehouseAllocation` progresses through an explicit status pipeline: **ALLOCATED → PICKED → PACKED → READY_FOR_SHIPMENT**.
-* **PICKED:** Confirms the item has been physically located and verified in the warehouse.
-* **PACKED:** Captures the chosen `packagingType` (e.g. Standard Box, Bubble Wrap, Eco-friendly Box).
-* **READY_FOR_SHIPMENT:** Captures `courierPartner` (e.g. BlueDart, Delhivery, ShopStack Express) and `trackingNumber`, and **deducts physical inventory quantity** (since the item is now leaving the warehouse) while releasing the corresponding `allocated` reservation.
-* **Order Status Propagation:** Every allocation status change automatically syncs the parent `Order.status` (`PICKED` / `PACKED` / `SHIPPED` / `DELIVERED`), so Customer, Vendor, and Admin dashboards stay in sync in real time.
-* **COD Auto-Settlement:** Marking a COD order `DELIVERED` automatically flips its `paymentStatus` to `PAID` and generates vendor settlement records.
+---
 
-### 5. Warehouse Analytics Dashboard
-Aggregates operational KPIs for platform operators:
-* Total & active warehouse counts.
-* Platform-wide physical stock, allocated stock, and available stock totals.
-* Fulfillment status breakdown (counts per `ALLOCATED`/`PICKED`/`PACKED`/`READY_FOR_SHIPMENT`/`UNALLOCATED`).
-* Per-warehouse capacity breakdown (physical / allocated / available stock per hub).
+### 3. One-Time Order Allocation System
+* **Awaiting Allocation Queue**: The Admin Order Allocation Desk defaults strictly to pending, unassigned customer orders.
+* **Instant Queue Clearance**: Upon submitting facility allocation (or using `⚡ Auto-Allocate`), the order is immediately locked, stock is reserved in the designated hub, and the order is cleared from the pending allocation desk.
+* **Locked Allocation State**: In history or all-orders views, allocated orders show a permanent confirmation badge (`✓ Allocation Complete (1-Time)`) and cannot be re-allocated, preventing duplicate routing errors.
 
-### 6. New Platform Role — Warehouse Staff
-* **Role Value:** `WAREHOUSE_STAFF`, alongside existing `CUSTOMER`, `VENDOR`, and `ADMINISTRATOR` roles.
-* **Restricted Registration:** Signing up as Warehouse Staff requires an email ending in `@staff` to prevent unauthorized self-registration.
-* **Dedicated Dashboard:** Logging in as `WAREHOUSE_STAFF` routes the user to the new `WarehouseDashboard.jsx`, with five sections: **Analytics**, **Fulfillment** (allocation queue & status progression), **Warehouses** (CRUD), **Inventory** (restock/adjust), and **Returns** (QC inspection queue).
-* **Role Switching:** Existing customer accounts can toggle into the Warehouse Staff role from the profile panel, consistent with the platform's existing multi-role account model.
+---
 
-### 7. Advanced Return & Refund Lifecycle (RMA)
-Replaces the previous single-step refund with a fully auditable, multi-party return process:
-* **Product-Level Return Policy:** Vendors set a `returnPolicy` per product — `7_DAYS`, `15_DAYS`, or `NON_RETURNABLE` — enforced automatically at request time (days elapsed since order date is computed and validated per item).
-* **Customer Return Request:** Captures `returnReasonCategory` (`DEFECTIVE_DAMAGED`, `WRONG_ITEM`, `SIZE_FIT_ISSUE`, `CHANGED_MIND`, `NOT_AS_DESCRIBED`), desired `resolutionType` (`REFUND`, `REPLACEMENT`, `EXCHANGE`), free-text notes, and an optional customer-uploaded proof image. Blocks duplicate in-flight requests and caps the requested amount to the order's remaining refundable balance.
-* **Vendor Review Step:** Vendor can `APPROVE` (generates a return shipping label reference) or `DISPUTE` (escalates to Admin with notes) before any physical return is inspected.
-* **Warehouse QC Inspection:** Once the item is physically returned, staff record a pass/fail inspection with notes and an optional inspection photo. A passing inspection with `RESELLABLE` restock option automatically adds the returned quantity back into the selected warehouse's inventory and re-syncs global product stock.
-* **Admin Resolution:** Final disposition by an administrator:
-  * **REFUND** — Executes the (test-mode) Razorpay refund, marks the order/payment `REFUNDED`, and voids associated vendor settlements.
-  * **REPLACEMENT** — Auto-generates a new zero-cost order (`REP-xxxxxx`) with duplicated line items and triggers fresh warehouse allocation.
-  * **EXCHANGE** — Same as replacement but tagged `EXC-xxxxxx` for exchange tracking.
-* **Full Audit Trail:** Every `Refund` record now tracks `returnStage` (`REQUESTED → VENDOR_APPROVED/VENDOR_DISPUTED → QC_PASSED/QC_FAILED → REFUNDED/REPLACEMENT_DISPATCHED/EXCHANGED/REJECTED`), plus `adminNotes`, `customerNotes`, `customerProofImage`, and `warehouseInspectionImage` for complete traceability.
+### 4. Pick → Pack → Ship Fulfillment Pipeline
+Each `WarehouseAllocation` progresses through an explicit status pipeline: **ALLOCATED → PICKED → PACKED → READY_FOR_SHIPMENT → DELIVERED**.
+* **PICKED**: Confirms the item has been physically located and verified in the warehouse bin location.
+* **PACKED**: Captures the chosen `packagingType` (Standard Box, Fragile Padded, Eco-Friendly).
+* **READY_FOR_SHIPMENT**: Captures `courierPartner` (`ShopStack Express`) and `trackingNumber`, **deducts physical inventory quantity** from the facility, and releases the corresponding `allocated` reservation.
+* **Order Status Propagation**: Every allocation status change automatically syncs the parent `Order.status` (`PICKED` / `PACKED` / `SHIPPED` / `DELIVERED`), keeping Customer, Vendor, and Admin dashboards synchronized in real time.
+* **COD Auto-Settlement**: Marking a COD order `DELIVERED` automatically flips its `paymentStatus` to `PAID` and generates vendor settlement records.
+
+---
+
+### 5. Defective & Damaged Return Quarantine Engine
+Automatic condition-aware inventory routing based on customer return reason category:
+* **`DEFECTIVE_DAMAGED` (Defective / Damaged Items)**:
+  - Automatically routed into **Damaged & Quarantine Stock** (`inv.damagedQuantity`).
+  - **Main Sellable Stock is NOT Restored**: Sellable inventory (`inv.quantity`) remains reduced to protect retail catalog integrity.
+  - Accessible under the Warehouse **Damaged & Quarantine** tab for disposition (Write-Off / Scrap, Return to Vendor RTV, or Refurbish).
+* **Non-Defective Reasons (`WRONG_ITEM`, `CHANGED_MIND`, `SIZE_FIT`, etc.)**:
+  - Identified as resellable goods.
+  - Upon warehouse package receipt and QC approval, **Main Sellable Stock is Restored** (`inv.quantity` incremented) and synchronized with the global marketplace catalog.
+
+```mermaid
+flowchart TD
+    R["Customer Return Request"] --> S["Warehouse Staff Receives Package (ITEM_RETURNED)"]
+    S --> T{"Customer Return Reason?"}
+    T -->|"DEFECTIVE_DAMAGED"| U["Move to Damaged & Quarantine Stock<br/>(Sellable Stock Remains Reduced)"]
+    T -->|"WRONG_ITEM / CHANGED_MIND / SIZE_FIT"| V["QC Passed: Restore Main Sellable Stock<br/>(inv.quantity Incremented)"]
+    U --> W["Quarantine Actions: Write-Off / RTV / Refurbish"]
+    V --> X["Live Catalog Stock Synchronized"]
+```
 
 ---
 
@@ -1655,251 +1571,224 @@ ShopStack/
 ├── backend/
 │   └── src/main/java/com/shopstack/backend/
 │       ├── model/
-│       │   ├── Warehouse.java                 # JPA Entity for a physical fulfillment hub
-│       │   ├── Inventory.java                 # JPA Entity: per-warehouse product stock & allocation
+│       │   ├── Warehouse.java                 # JPA Entity for physical fulfillment hubs
+│       │   ├── Inventory.java                 # JPA Entity: per-warehouse stock, damaged quarantine & allocation
 │       │   ├── WarehouseAllocation.java        # JPA Entity: order-item ↔ warehouse fulfillment tracking
-│       │   ├── Refund.java                    # Extended: return reason, resolution type, QC images, return stage
-│       │   ├── Product.java                   # Extended: returnPolicy field (7_DAYS / 15_DAYS / NON_RETURNABLE)
-│       │   └── User.java                      # Extended: role now includes WAREHOUSE_STAFF
+│       │   ├── StockTransfer.java             # JPA Entity: Vendor stock distribution & inter-hub transfers
+│       │   ├── Product.java                   # Extended: returnPolicy (7_DAYS / 15_DAYS / NON_RETURNABLE)
+│       │   └── User.java                      # Extended: role includes WAREHOUSE_STAFF
 │       ├── repository/
 │       │   ├── WarehouseRepository.java
 │       │   ├── InventoryRepository.java
-│       │   └── WarehouseAllocationRepository.java
+│       │   ├── WarehouseAllocationRepository.java
+│       │   └── StockTransferRepository.java
 │       ├── controller/
-│       │   ├── WarehouseController.java        # REST APIs (/api/warehouses) for hubs, inventory, allocations, analytics
-│       │   └── PaymentController.java          # Extended: return request/vendor-review/qc-inspection/resolve endpoints
+│       │   ├── WarehouseController.java        # REST APIs for hubs, inventory, distribution, allocations
+│       │   └── StockTransferController.java    # REST APIs for stock distribution and transfers
 │       ├── service/
-│       │   ├── WarehouseService.java           # Allocation algorithm, fulfillment workflow, analytics aggregation
-│       │   └── PaymentService.java             # Extended: full return/refund lifecycle orchestration
+│       │   ├── WarehouseService.java           # Allocation algorithm, fulfillment workflow, distribution
+│       │   └── StockTransferService.java       # Stock distribution & movement tracking
 │       └── config/
-│           ├── DataLoader.java                 # Seeds 3 default warehouses & distributes initial product stock
-│           └── SecurityConfig.java             # Extended: permits /api/warehouses/**
+│           ├── DataLoader.java                 # Seeds Kolkata, Mumbai, Delhi, Bangalore & initial stock
+│           └── SecurityConfig.java             # Permits /api/warehouses/**, /api/stock-transfers/**
 │
 └── frontend/
     └── src/
         └── components/
-            ├── WarehouseDashboard.jsx          # New: Analytics, Fulfillment, Warehouses, Inventory, Returns tabs
-            ├── Login.jsx / Register.jsx        # Extended: Warehouse Staff role option (@staff email gating)
-            ├── HomeDashboard.jsx               # Extended: routes WAREHOUSE_STAFF role to WarehouseDashboard
-            └── CustomerDashboard.jsx            # Extended: role toggle to Warehouse Staff, return request UI
+            ├── WarehouseDashboard.jsx          # Fulfillment Pipeline, Stock, Returns & QC, Damaged Quarantine
+            ├── AdminDashboard.jsx              # Order Allocation Desk, Multi-Hub Stock Ledger, Facility Network
+            ├── Login.jsx / Register.jsx        # Warehouse Staff role option (@staff email gating)
+            └── CustomerDashboard.jsx            # Order tracking & Return request UI
 ```
 
 Related Code Files:
 - [`Warehouse.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Warehouse.java)
 - [`Inventory.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Inventory.java)
 - [`WarehouseAllocation.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/WarehouseAllocation.java)
-- [`Refund.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Refund.java)
-- [`Product.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Product.java)
-- [`User.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/User.java)
-- [`WarehouseRepository.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/repository/WarehouseRepository.java)
-- [`InventoryRepository.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/repository/InventoryRepository.java)
-- [`WarehouseAllocationRepository.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/repository/WarehouseAllocationRepository.java)
+- [`StockTransfer.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/StockTransfer.java)
 - [`WarehouseController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/WarehouseController.java)
-- [`PaymentController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/PaymentController.java)
 - [`WarehouseService.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/service/WarehouseService.java)
-- [`PaymentService.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/service/PaymentService.java)
-- [`DataLoader.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/config/DataLoader.java)
-- [`SecurityConfig.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/config/SecurityConfig.java)
 - [`WarehouseDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/WarehouseDashboard.jsx)
-- [`Login.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/Login.jsx)
-- [`Register.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/Register.jsx)
-- [`HomeDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/HomeDashboard.jsx)
-- [`CustomerDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx)
+- [`AdminDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/AdminDashboard.jsx)
 
 ---
 
 ## 📡 API Endpoints (Day 11)
 
-### Warehouse CRUD
+### Warehouse CRUD & Facilities
 Method | Endpoint | Description | Payload Format / Response Model
 ------ | -------- | ----------- | ------------------------------
-GET | `/api/warehouses` | List all warehouses | Returns List of [`Warehouse`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Warehouse.java)
-GET | `/api/warehouses/{id}` | Get a single warehouse | Returns [`Warehouse`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Warehouse.java)
+GET | `/api/warehouses` | List all warehouses | Returns List of `Warehouse`
+GET | `/api/warehouses/{id}` | Get a single warehouse | Returns `Warehouse`
 POST | `/api/warehouses` | Create a warehouse | Body: `Warehouse`. Returns saved `Warehouse`
 PUT | `/api/warehouses/{id}` | Update warehouse details | Body: `Warehouse`. Returns updated `Warehouse`
 DELETE | `/api/warehouses/{id}` | Delete a warehouse | Returns HTTP 200
 
-### Inventory Management
+### Inventory & Stock Distribution
 Method | Endpoint | Description | Payload Format / Response Model
 ------ | -------- | ----------- | ------------------------------
-GET | `/api/warehouses/inventory/all` | List all inventory records across all warehouses | Returns enriched List of maps (warehouse/product names, quantity, allocated, available)
-GET | `/api/warehouses/{id}/inventory` | List inventory for a specific warehouse | Returns List of [`Inventory`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Inventory.java)
-POST | `/api/warehouses/{id}/inventory` | Add/restock inventory for a product | Body: `{"productId": Long, "quantity": Integer}`
-PUT | `/api/warehouses/inventory/{invId}` | Directly adjust quantity/allocated | Body: `{"quantity": Integer, "allocated": Integer}`
+GET | `/api/warehouses/inventory/all` | List all inventory records across all warehouses | Returns enriched List of maps (warehouse/product names, quantity, allocated, available, damaged)
+GET | `/api/warehouses/{id}/inventory` | List inventory for a specific warehouse | Returns List of `Inventory`
+POST | `/api/warehouses/distribute-stock` | Distribute vendor product stock across warehouses | Body: `{"productId": Long, "distributions": [{"warehouseId": Long, "quantity": Int}]}`
+POST | `/api/warehouses/damaged-stock/{invId}/action` | Process disposition for damaged quarantine inventory | Body: `{"action": "WRITE_OFF"/"RETURN_TO_VENDOR"/"REFURBISHED", "quantity", "notes"}`
 
 ### Allocation & Fulfillment
 Method | Endpoint | Description | Payload Format / Response Model
 ------ | -------- | ----------- | ------------------------------
 GET | `/api/warehouses/allocations` | List all allocations with product/warehouse context | Returns enriched List of maps
-POST | `/api/warehouses/allocations/allocate/{orderId}` | Auto-allocate stock for an order | Returns List of [`WarehouseAllocation`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/WarehouseAllocation.java)
-POST | `/api/warehouses/allocations/manual` | Manually (re)assign stock for an order item | Body: `{"orderId", "orderItemId", "warehouseId", "quantity"}`
-PUT | `/api/warehouses/allocations/{id}/status` | Advance fulfillment status | Body: `{"status": "PICKED"/"PACKED"/"READY_FOR_SHIPMENT", ...details}`
-
-### Analytics
-Method | Endpoint | Description | Payload Format / Response Model
------- | -------- | ----------- | ------------------------------
+POST | `/api/warehouses/orders/{orderId}/allocate-warehouse` | Admin allocates order to specific warehouse | Body: `{"warehouseId": Long}`
+POST | `/api/warehouses/allocations/allocate/{orderId}` | Auto-allocate stock for an order | Returns List of `WarehouseAllocation`
+PUT | `/api/warehouses/allocations/{id}/status` | Advance fulfillment status | Body: `{"status": "PICKED"/"PACKED"/"READY_FOR_SHIPMENT", "packagingType", "courierPartner", "trackingNumber"}`
 GET | `/api/warehouses/analytics` | Aggregate warehouse/inventory/fulfillment metrics | Returns metrics map
-
-### Return / Refund Lifecycle
-Method | Endpoint | Description | Payload Format / Response Model
------- | -------- | ----------- | ------------------------------
-POST | `/api/payment/refund/request` | Customer initiates a return/refund | Body: `{"orderId", "amount", "returnReasonCategory", "resolutionType", "reason", "customerNotes", "customerProofImage"}`
-GET | `/api/payment/refund/{orderId}` | Fetch refund history for an order | Returns List of [`Refund`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Refund.java)
-PUT | `/api/payment/refunds/{refundId}/vendor-review` | Vendor approves or disputes the return | Body: `{"action": "APPROVE"/"DISPUTE", "notes"}`
-PUT | `/api/payment/refunds/{refundId}/qc-inspection` | Warehouse QC pass/fail + optional restock | Body: `{"passed": Boolean, "restockOption", "warehouseId", "notes", "warehouseInspectionImage"}`
-POST | `/api/payment/refunds/{refundId}/resolve` | Admin resolves return (refund/replacement/exchange) | Body: `{"resolution", "method", "adminNotes"}`
-POST | `/api/payment/refund` | Direct admin-authorized refund (bypasses RMA steps) | Body: `{"orderId", "amount", "reason"}`
-
----
-
-## 🗄️ Database Schema Mapping Details
-
-### 1. Table: `warehouses`
-* `id` (BIGINT, PRIMARY KEY)
-* `name`, `code` (VARCHAR)
-* `address`, `city` (VARCHAR)
-* `active` (BOOLEAN, Default: true)
-
-### 2. Table: `inventories`
-* `id` (BIGINT, PRIMARY KEY)
-* `warehouse_id` (BIGINT, FK → `warehouses.id`)
-* `product_id` (BIGINT, FK → `products.id`)
-* `quantity` (INTEGER) — total physical stock
-* `allocated` (INTEGER) — reserved-but-unshipped stock
-
-### 3. Table: `warehouse_allocations`
-* `id` (BIGINT, PRIMARY KEY)
-* `order_id` (VARCHAR), `order_item_id` (BIGINT), `product_id` (BIGINT)
-* `warehouse_id` (BIGINT, FK → `warehouses.id`, NULLABLE for unallocated stock)
-* `quantity` (INTEGER)
-* `status` (VARCHAR) — `ALLOCATED`, `UNALLOCATED`, `PICKED`, `PACKED`, `READY_FOR_SHIPMENT`
-* `updated_at` (TIMESTAMP)
-* `courier_partner`, `tracking_number`, `packaging_type` (VARCHAR)
-
-### 4. Table: `refunds` (Extended)
-New columns added on top of the existing refund record:
-* `return_reason_category` (VARCHAR) — `DEFECTIVE_DAMAGED`, `WRONG_ITEM`, `SIZE_FIT_ISSUE`, `CHANGED_MIND`, `NOT_AS_DESCRIBED`
-* `resolution_type` (VARCHAR) — `REFUND`, `REPLACEMENT`, `EXCHANGE`
-* `customer_notes`, `admin_notes` (VARCHAR, length 1000)
-* `customer_proof_image`, `warehouse_inspection_image` (VARCHAR, length 2000)
-* `return_stage` (VARCHAR) — `REQUESTED`, `ITEM_RETURNED`, `VENDOR_APPROVED`, `VENDOR_DISPUTED`, `QC_PASSED`, `QC_FAILED`, `REFUNDED`, `REPLACEMENT_DISPATCHED`, `EXCHANGED`, `REJECTED`
-
-### 5. Table: `products` (Extended)
-* `return_policy` (VARCHAR, Default: `7_DAYS`) — `7_DAYS`, `15_DAYS`, `NON_RETURNABLE`
-
-### 6. Table: `users` (Extended)
-* `role` now also accepts `WAREHOUSE_STAFF` in addition to `CUSTOMER`, `VENDOR`, `ADMINISTRATOR`
 
 ---
 
 ## 🧪 Testing Checklist & Verification Guide (Day 11)
 
-### 1. Warehouse & Inventory Setup
-1. Log in as **Warehouse Staff** (or Admin) and open the **Warehouses** tab.
-2. Confirm the 3 default hubs (Mumbai, Delhi, Bangalore) are seeded with distributed stock.
-3. Create a new warehouse, restock a product into it, and verify the **Inventory** tab reflects updated quantity/available figures.
+### 1. Multi-Warehouse Setup & Stock Distribution
+1. Log in as **Admin** and open **Multi-Hub Stock Ledger**.
+2. Confirm Kolkata, Mumbai, Delhi, and Bangalore hubs are populated.
+3. Click **⚡ Distribute Stock** for a product, apply the **40/30/20/10 Split**, and confirm inventory in all 4 hubs updates.
 
-### 2. Auto-Allocation on Checkout
-1. As a Customer, place an order for a product with enough stock in a single warehouse — confirm the allocation shows one warehouse fully covering the quantity.
-2. Place an order exceeding any single warehouse's available stock — confirm the allocation splits across multiple warehouses, and any shortfall appears as `UNALLOCATED`.
+### 2. 1-Time Order Allocation Desk
+1. As a Customer, place an order for a product.
+2. Log in as **Admin** and open **Warehouse Allocation → Order Allocation Desk**.
+3. Confirm the order appears in **Awaiting Routing**. Select a warehouse and submit.
+4. Verify the order is immediately allocated, stock is reserved in that hub, and the order is removed from the pending queue.
 
 ### 3. Fulfillment Progression
-1. As Warehouse Staff, advance an allocation through **PICKED → PACKED → READY_FOR_SHIPMENT**, supplying packaging type, courier, and tracking number.
-2. Confirm physical inventory quantity decreases only at `READY_FOR_SHIPMENT`, and the customer's Order status updates to `SHIPPED`.
-3. Mark the order `DELIVERED` for a COD order and confirm `paymentStatus` flips to `PAID` and a vendor settlement is generated.
-
-### 4. Return/Refund Lifecycle
-1. As a Customer, request a return on a delivered order and confirm the correct `returnPolicy` window is enforced (try a `NON_RETURNABLE` product to confirm it is blocked).
-2. As the Vendor, approve the return request and confirm the stage advances to `VENDOR_APPROVED`.
-3. As Warehouse Staff, run QC inspection with `passed: true` and `restockOption: RESELLABLE` — confirm inventory in the selected warehouse increases and product global stock re-syncs.
-4. As Admin, resolve the return with `REFUND` — confirm the order/payment status becomes `REFUNDED` and settlements are voided; repeat with `REPLACEMENT`/`EXCHANGE` and confirm a new zero-cost order is created and auto-allocated.
-
-### 5. Warehouse Staff Role
-1. Register a new account with role `WAREHOUSE_STAFF` using a non-`@staff` email and confirm registration is rejected.
-2. Register successfully with an `@staff` email, log in, and confirm routing lands on `WarehouseDashboard` with all five tabs accessible.
+1. Log in as **Warehouse Staff** for the allocated warehouse.
+2. Advance the allocation through **PICKED → PACKED → READY_FOR_SHIPMENT**, supplying packaging type, courier (`ShopStack Express`), and tracking number.
+3. Confirm physical inventory quantity decreases at `READY_FOR_SHIPMENT`, and the customer's Order status updates to `SHIPPED`.
+4. Mark the order `DELIVERED` for a COD order and confirm `paymentStatus` flips to `PAID`.
 
 ---
 
-# 📦 ShopStack — Day 12: Integrated Return & Refund RMA Management Governance
+# 📦 ShopStack — Day 12: Return and Refund Management
 
-This milestone completes the **Return & Refund Lifecycle (RMA)** by introducing physical package arrival tracking (`ITEM_RETURNED`) at the warehouse, gating QC inspections, providing detailed RMA state dashboards for administrators and warehouse operators, and adding manual refresh controls to the vendor console.
+This milestone establishes an end-to-end **Return and Refund Management (RMA) Architecture** spanning physical package arrival tracking (`ITEM_RETURNED`) at the specifically allocated warehouse, gated QC inspections, condition-aware stock routing, **Real-Time Financial Analytics & Refund Profit Deductions**, and interactive manual refresh controls across all operator dashboards.
 
 ---
 
 ## 📌 Architecture & Lifecycle State Transitions
 
-The complete RMA lifecycle now transitions through the following statuses:
+```mermaid
+flowchart TD
+    A["1. Customer Requests Return (REQUESTED)"] --> B["2. Admin Reviews & Approves Return"]
+    B --> C["3. Allocated Warehouse Receives Package (ITEM_RETURNED)"]
+    C --> D{"4. Warehouse Staff QC Inspection"}
+    D -->|"Defective / Damaged"| E["Route to Damaged Quarantine<br/>(Sellable Stock NOT Restored)"]
+    D -->|"Resellable / Intact"| F["QC Passed: Restore Main Sellable Stock<br/>(inv.quantity Incremented)"]
+    E --> G["5. Admin Disburses Refund (REFUNDED)"]
+    F --> G
+    G --> H["Real-Time Financial Analytics Deductions<br/>(Net Sales, 10% Commission & Vendor Payout Reversal)"]
+```
 
-1. **`REQUESTED` / `VENDOR_APPROVED`**:
-   - Package is awaiting pickup and dispatch from the customer.
-   - **Warehouse & Admin consoles** show state as `Awaiting Package Pickup` / `AWAITING PICKUP`.
-   - **Customer Roadmap**: Step 1 (`Requested`) is active; Step 2 (`Picked Up`) remains inactive.
-
+### Complete RMA Status Sequence:
+1. **`REQUESTED` / `ADMIN_APPROVED`**:
+   - Customer submits return request with reason category, notes, and optional photo.
+   - Admin audits and approves return. Warehouse and Admin consoles show state as `Awaiting Package Pickup` / `AWAITING PICKUP`.
+   - **Customer Roadmap**: Step 1 (`Requested`) is active.
 2. **`ITEM_RETURNED`**:
-   - Triggered when Warehouse Staff clicks **"Receive Package"** (`PUT /api/payment/refunds/{refundId}/receive`).
-   - Package is officially received at the warehouse.
-   - **Warehouse console** shows state as `QC Inspection Pending` and exposes the **"Inspect QC"** button.
-   - **Admin console** shows status as `PENDING QC INSPECTION`.
+   - Triggered when Warehouse Staff at the allocated facility clicks **"Receive Package"** (`PUT /api/payment/refunds/{refundId}/receive`).
+   - Package is officially received at the warehouse dock.
+   - **Warehouse console** displays state as `QC Inspection Pending` and exposes the **"Inspect QC"** action.
    - **Customer Roadmap**: Step 2 (`Picked Up`) transitions to active.
-
 3. **`QC_PASSED` / `QC_FAILED`**:
-   - Triggered when Warehouse Staff submits the inspection form (`PUT /api/payment/refunds/{refundId}/qc-inspection`).
-   - **Warehouse console** displays status as `QC Passed` or `QC Failed`.
-   - **Admin console** displays status as `QC PASSED (AWAITING RESOLUTION)` or `QC FAILED (AWAITING RESOLUTION)`.
+   - Triggered when Warehouse Staff submits inspection form (`PUT /api/payment/refunds/{refundId}/qc-inspection`).
+   - Defective items are routed to Damaged Quarantine without restoring sellable inventory.
+   - Resellable items restore physical inventory and sync catalog stock.
    - **Customer Roadmap**: Step 3 (`QC Passed` / `QC Failed`) transitions to active.
-
 4. **`REFUNDED` / `REJECTED`**:
-   - Triggered when Admin resolves the request (`POST /api/admin/refunds/{refundId}/approve` or `reject`).
-   - Refund requests map status to `PROCESSED` or `REJECTED`.
-   - **Customer Roadmap**: Step 4 (`Refunded` / `Rejected`) transitions to active.
+   - Admin executes refund resolution (`POST /api/admin/refunds/{refundId}/approve`).
+   - Refund record is updated to `PROCESSED` with Razorpay refund ID.
+   - **Customer Roadmap**: Step 4 (`Refunded`) transitions to active.
 
 ---
 
-## 🛠️ Codebase Modifications
+## 📌 Key Capabilities & Financial Governance (Day 12)
 
-### Backend
-- **Service Integration**: Implemented `markRefundPackageReceived(Long refundId)` in `PaymentService.java` to handle package arrival state changes.
-- **REST Endpoint**: Exposed `PUT /api/payment/refunds/{refundId}/receive` in `PaymentController.java` to perform the transition securely.
+### 1. Real-Time Financial Analytics & Refund Profit Deductions
+* **Marketplace Gross Sales Volume**: Dynamically calculates net retained sales (`PAID` orders minus all processed refunds). Fully refunded orders contribute `₹0`.
+* **Platform Commission (10%) & Net Payouts**: Reverses and deducts platform commissions and vendor payouts for refunded orders by updating associated settlements to `REFUNDED`.
+* **Vendor Sales Analytics**: Merchant revenue and items sold metrics exclude refunded orders and compute prorated deductions for partial returns.
+* **Admin Payment Monitoring**: `totalPaidVolume` strictly reflects net retained payments.
 
-### Warehouse Dashboard (`WarehouseDashboard.jsx`)
-- Added a **"Receive Package"** button.
-- Disabled/gated the **"Inspect QC"** button until the package status transitions to `ITEM_RETURNED`.
-- Refined state checks to display `"QC Passed"` or `"QC Failed"` badges properly.
+### 2. Interactive Manual Refresh Controls
+* Integrated instant-refresh buttons with animated sync spinners across:
+  - **Vendor Dashboard**: Merchant Customer Orders, Settlements, and Return QC tabs.
+  - **Warehouse Dashboard**: Fulfillment Pipeline, Local Stock, and Inward Returns queues.
+  - **Admin Dashboard**: Live Payment Monitoring, Multi-Hub Stock Ledger, and Allocation Desk.
 
-### Admin Dashboard (`AdminDashboard.jsx`)
-- Refactored returns table status checks to differentiate between pickup wait, pending checks, and completed QC.
+---
 
-### Customer Dashboard (`CustomerDashboard.jsx`)
-- Re-architected caching triggers inside the `useEffect` refund loader to dynamically sync stages.
-- Adjusted progress checks to ensure step 2 ("Picked Up") lights up only after `ITEM_RETURNED` or later.
+## 📂 Project Structure Updates (Day 12)
 
-### Vendor Dashboard (`VendorDashboard.jsx`)
-- Added manual refresh buttons next to **Merchant Customer Orders** and **Customer Return Requests** headers with animated loading indicators.
+```text
+ShopStack/
+├── backend/
+│   └── src/main/java/com/shopstack/backend/
+│       ├── model/
+│       │   ├── Refund.java                    # returnReasonCategory, resolutionType, proof images, returnStage
+│       │   └── Settlement.java                # status (PENDING, SETTLED, REFUNDED)
+│       ├── controller/
+│       │   ├── PaymentController.java          # Return request, receive package, QC inspection endpoints
+│       │   └── AdminController.java            # Net financial analytics & refund resolution endpoints
+│       └── service/
+│           └── PaymentService.java             # markRefundPackageReceived, processReturnQcInspection, resolveReturn
+│
+└── frontend/
+    └── src/
+        └── components/
+            ├── CustomerDashboard.jsx            # RMA visual step roadmap & return request dialog
+            ├── WarehouseDashboard.jsx          # Receive Package action & gated QC inspection modal
+            ├── VendorDashboard.jsx             # Manual refresh controls & return dispute review
+            └── AdminDashboard.jsx              # Net financial analytics, refund disbursement & monitoring
+```
+
+Related Code Files:
+- [`PaymentController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/PaymentController.java)
+- [`AdminController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AdminController.java)
+- [`PaymentService.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/service/PaymentService.java)
+- [`WarehouseDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/WarehouseDashboard.jsx)
+- [`CustomerDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx)
+- [`VendorDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx)
 
 ---
 
 ## 📡 API Endpoints (Day 12)
 
-### Return / Refund Lifecycle
+### Return / Refund RMA Lifecycle
 Method | Endpoint | Description | Payload Format / Response Model
 ------ | -------- | ----------- | ------------------------------
-PUT | `/api/payment/refunds/{refundId}/receive` | Warehouse staff marks return package as physically received | Returns updated [`Refund`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Refund.java)
+POST | `/api/payment/refund/request` | Customer initiates a return/refund | Body: `{"orderId", "amount", "returnReasonCategory", "resolutionType", "reason", "customerNotes", "customerProofImage"}`
+GET | `/api/payment/refund/{orderId}` | Fetch refund history for an order | Returns List of `Refund`
+PUT | `/api/payment/refunds/{refundId}/receive` | Warehouse staff marks return package as physically received | Returns updated `Refund`
+PUT | `/api/payment/refunds/{refundId}/qc-inspection` | Warehouse staff QC inspection & quarantine routing | Body: `{"passed": Boolean, "restockOption": "DAMAGED_QUARANTINE"/"RESELLABLE", "warehouseId", "notes"}`
+POST | `/api/admin/refunds/{refundId}/approve` | Admin approves return & executes refund disbursement | Body: `{"adminNotes": String}`
+POST | `/api/admin/refunds/{refundId}/reject` | Admin rejects return request | Body: `{"rejectionReason": String}`
+
+### Financial Analytics with Net Refund Deductions
+Method | Endpoint | Description | Payload Format / Response Model
+------ | -------- | ----------- | ------------------------------
+GET | `/api/admin/dashboard-summary` | Marketplace KPI summary with net refunds deducted | Returns `totalSalesVolume`, `totalCommission`, `totalPayouts`
+GET | `/api/vendor/{vendorId}/analytics` | Vendor revenue and order analytics with net deductions | Returns `totalRevenue`, `totalOrders`, `totalItemsSold`
 
 ---
 
-## 🚦 Verification Checklist
+## 🚦 Verification Checklist (Day 12)
 
-### 1. RMA Intake & Gated QC
+### 1. RMA Package Intake & Gated QC
 1. Request a return for a delivered order. Observe that **"Receive Package"** is visible on the Warehouse returns tab.
 2. Click **"Receive Package"**. Assert the status changes to `"QC Inspection Pending"`, and the **"Inspect QC"** button is now exposed.
 
-### 2. State & Badge Validations
-1. Verify that the Admin dashboard returns queue displays `"QC PASSED (AWAITING RESOLUTION)"` once the warehouse staff submits a passing check.
-2. Verify that the Warehouse dashboard returns queue displays `"QC Passed"` or `"QC Failed"` instead of reverting to awaiting pickup.
+### 2. Defective/Damaged vs Resellable QC Routing
+1. For a return with reason **"Defective or damaged item received"** (`DEFECTIVE_DAMAGED`), submit QC inspection.
+2. Verify that physical sellable stock is **NOT** restored, and the item appears under **Damaged & Quarantine**.
+3. For a return with reason **"Wrong item sent"** (`WRONG_ITEM`), submit QC inspection with `RESELLABLE`.
+4. Verify that physical sellable stock in the warehouse is incremented and catalog stock syncs.
 
-### 3. Vendor Refresh Actions
-1. Navigate to the Vendor dashboard's Customer Orders or Return QC tab.
-2. Click the **Refresh** button. Assert that the icon spins while executing the API calls and re-populates the tables.
-
-
-
+### 3. Financial Analytics Refund Deductions
+1. Note the Gross Sales Volume and Platform Commission on the Admin Overview tab.
+2. Approve and disburse a refund for an order.
+3. Refresh analytics and verify that Gross Sales Volume, Platform Commission (10%), and Vendor Net Revenue deduct the refunded transaction amount.

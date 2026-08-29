@@ -26,6 +26,8 @@ public class Inventory {
 
     private int quantity; // Total physical quantity stored in the warehouse
     private int allocated; // Quantity reserved/allocated for orders but not yet packed/shipped
+    private int damagedQuantity = 0; // Damaged and quarantined stock (strictly excluded from available main stock)
+    private String binLocation = "BIN-GEN-01"; // Physical bin location, e.g. BIN-A1-04
 
     public Inventory() {}
 
@@ -34,6 +36,8 @@ public class Inventory {
         this.product = product;
         this.quantity = quantity;
         this.allocated = 0;
+        this.damagedQuantity = 0;
+        this.binLocation = "BIN-GEN-01";
     }
 
     public Long getId() { return id; }
@@ -51,7 +55,13 @@ public class Inventory {
     public int getAllocated() { return allocated; }
     public void setAllocated(int allocated) { this.allocated = allocated; }
 
-    // Convenience method to compute available stock
+    public int getDamagedQuantity() { return damagedQuantity; }
+    public void setDamagedQuantity(int damagedQuantity) { this.damagedQuantity = damagedQuantity; }
+
+    public String getBinLocation() { return binLocation; }
+    public void setBinLocation(String binLocation) { this.binLocation = binLocation; }
+
+    // Convenience method to compute available stock (only uses sellable physical stock)
     public int getAvailableQuantity() {
         return Math.max(0, quantity - allocated);
     }
