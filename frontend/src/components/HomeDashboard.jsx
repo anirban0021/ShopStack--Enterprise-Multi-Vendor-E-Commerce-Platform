@@ -1,22 +1,68 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
   Search, User, ChevronDown, ShoppingCart, Heart, MapPin, 
   Package, LogOut, X, Trash2, Plus, Minus, Sun, Moon, Star, 
   MessageSquare, ShieldAlert, Store, ShoppingBag, Send, Truck, Check, Bell,
   CreditCard, QrCode, Smartphone, CheckCircle2, ArrowRight, ShieldCheck, Lock,
-  ExternalLink, Maximize2
+  ExternalLink, Maximize2, Zap
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
+import { extractErrorMessage } from '../utils/errorHandler';
+import { formatImageUrl } from '../utils/imageHelper';
 
 export default function HomeDashboard({ 
   user, cart, setCart, orders, setOrders, onLogout, 
   onGoToProfile, onGoToVendor, onGoToAdmin, onGoToWarehouse, theme, onToggleTheme,
-  wishlist, setWishlist, toggleWishlist, addToCart, fetchOrders
+  wishlist, setWishlist, toggleWishlist, addToCart, fetchOrders,
+  isCartOpen, setIsCartOpen
 }) {
   const [showDropdown, setShowDropdown] = useState(false);
+  const userMenuRef = useRef(null);
+
+  // Notifications dropdown state
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notifDropdownRef = useRef(null);
+
+  // Close profile and notification dropdowns when clicking or tapping outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(e.target)) {
+        setShowNotifications(false);
+      }
+    };
+    if (showDropdown || showNotifications) {
+      document.addEventListener('mousedown', handleOutsideClick);
+      document.addEventListener('touchstart', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [showDropdown, showNotifications]);
+
   const [products, setProducts] = useState([]);
-  const [showCartModal, setShowCartModal] = useState(false);
+  const [showCartModal, setShowCartModal] = useState(isCartOpen || false);
+
+  useEffect(() => {
+    if (isCartOpen !== undefined) {
+      setShowCartModal(isCartOpen);
+    }
+  }, [isCartOpen]);
+
+  const handleCloseCartModal = () => {
+    setShowCartModal(false);
+    if (setIsCartOpen) setIsCartOpen(false);
+  };
+
+  const handleOpenCartModal = () => {
+    setShowCartModal(true);
+    if (setIsCartOpen) setIsCartOpen(true);
+  };
+
   const [showOrdersModal, setShowOrdersModal] = useState(false);
 
   // Checkout & Payment Modal state
@@ -43,6 +89,8 @@ export default function HomeDashboard({
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [showCustomAddressInput, setShowCustomAddressInput] = useState(false);
   const [selectedCartItemIds, setSelectedCartItemIds] = useState([]);
+  const [checkoutMode, setCheckoutMode] = useState('cart'); // 'cart' | 'buynow'
+  const [buyNowItem, setBuyNowItem] = useState(null);
 
   // Auto-select valid in-stock items in cart initially or when items/products change
   useEffect(() => {
@@ -97,6 +145,7 @@ export default function HomeDashboard({
   };
 
   const selectedCartItems = (Array.isArray(cart) ? cart : []).filter(item => selectedCartItemIds.includes(item.id));
+  const activeCheckoutItems = (checkoutMode === 'buynow' && buyNowItem) ? [buyNowItem] : selectedCartItems;
 
   // Fetch saved addresses
   const fetchSavedAddresses = async () => {
@@ -138,14 +187,16 @@ export default function HomeDashboard({
       
       const allImgs = [];
       if (selectedProduct.imageUrl && selectedProduct.imageUrl !== '📦') {
-        allImgs.push(selectedProduct.imageUrl);
+        const formatted = formatImageUrl(selectedProduct.imageUrl);
+        if (formatted) allImgs.push(formatted);
       }
       if (selectedProduct.images && selectedProduct.images.length > 0) {
         selectedProduct.images.forEach(img => {
-          if (!allImgs.includes(img)) allImgs.push(img);
+          const formatted = formatImageUrl(img);
+          if (formatted && !allImgs.includes(formatted)) allImgs.push(formatted);
         });
       }
-      if (allImgs.length === 0) allImgs.push(selectedProduct.imageUrl || '📦');
+      if (allImgs.length === 0) allImgs.push(formatImageUrl(selectedProduct.imageUrl) || '📦');
 
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
@@ -189,8 +240,12 @@ export default function HomeDashboard({
   }, [user]);
 
   const showFlash = (type, text) => {
-    setFlash({ type, text });
-    setTimeout(() => setFlash({ type: '', text: '' }), 3000);
+    let msg = text;
+    if (typeof text === 'object' && text !== null) {
+      msg = extractErrorMessage(text);
+    }
+    setFlash({ type, text: msg });
+    setTimeout(() => setFlash({ type: '', text: '' }), 3500);
   };
 
   const fetchProducts = async () => {
@@ -226,44 +281,44 @@ export default function HomeDashboard({
     showFlash('success', "Item removed from cart.");
   };
 
-  // Pricing & Discount calculations (based on SELECTED items)
-  const calculateOriginalSubtotal = () => {
-    return selectedCartItems.reduce((sum, item) => {
+  // Pricing & Discount calculations
+  const calculateOriginalSubtotal = (items = activeCheckoutItems) => {
+    return (items || []).reduce((sum, item) => {
       const orig = Number(item?.originalPrice) || Number(item?.price) || 0;
       const qty = Number(item?.quantity) || 1;
       return sum + (orig * qty);
     }, 0);
   };
 
-  const calculateSubtotal = () => {
-    return selectedCartItems.reduce((sum, item) => {
+  const calculateSubtotal = (items = activeCheckoutItems) => {
+    return (items || []).reduce((sum, item) => {
       const pr = Number(item?.price) || 0;
       const qty = Number(item?.quantity) || 1;
       return sum + (pr * qty);
     }, 0);
   };
 
-  const calculateDiscountSavings = () => {
-    return Math.max(0, Math.round((calculateOriginalSubtotal() - calculateSubtotal()) * 100) / 100);
+  const calculateDiscountSavings = (items = activeCheckoutItems) => {
+    return Math.max(0, Math.round((calculateOriginalSubtotal(items) - calculateSubtotal(items)) * 100) / 100);
   };
 
-  const calculateDeliveryFee = () => {
-    const subtotal = calculateSubtotal();
+  const calculateDeliveryFee = (items = activeCheckoutItems) => {
+    const subtotal = calculateSubtotal(items);
     if (subtotal <= 0) return 0;
     return subtotal < 500 ? 99 : 0;
   };
 
-  const calculateTotalSavings = () => {
-    const discountSavings = calculateDiscountSavings();
-    const deliverySavings = (calculateSubtotal() >= 500 && calculateSubtotal() > 0) ? 99 : 0;
+  const calculateTotalSavings = (items = activeCheckoutItems) => {
+    const discountSavings = calculateDiscountSavings(items);
+    const deliverySavings = (calculateSubtotal(items) >= 500 && calculateSubtotal(items) > 0) ? 99 : 0;
     return discountSavings + deliverySavings;
   };
 
-  const calculateTotal = () => {
-    const subtotal = calculateSubtotal();
+  const calculateTotal = (items = activeCheckoutItems) => {
+    const subtotal = calculateSubtotal(items);
     if (subtotal <= 0) return 0;
     const discount = appliedCoupon ? Number(appliedCoupon.discountAmount) : 0;
-    return Math.max(0, Math.round((subtotal + calculateDeliveryFee() - discount) * 100) / 100);
+    return Math.max(0, Math.round((subtotal + calculateDeliveryFee(items) - discount) * 100) / 100);
   };
 
   const handleApplyCoupon = async () => {
@@ -279,7 +334,7 @@ export default function HomeDashboard({
       const payload = {
         code: couponCodeInput.trim().toUpperCase(),
         userId: user.id,
-        items: selectedCartItems
+        items: activeCheckoutItems
       };
       
       const res = await axios.post('http://localhost:8080/api/coupons/validate', payload);
@@ -335,7 +390,7 @@ export default function HomeDashboard({
   };
 
   const isCouponEligibleForCart = (coupon) => {
-    const subtotal = calculateSubtotal();
+    const subtotal = calculateSubtotal(activeCheckoutItems);
     if (coupon.minOrderAmount && subtotal < coupon.minOrderAmount) {
       return false;
     }
@@ -343,7 +398,7 @@ export default function HomeDashboard({
     const approvalsArray = Array.isArray(couponApprovals) ? couponApprovals : (couponApprovals?.value || []);
     const mappingsArray = Array.isArray(couponMappings) ? couponMappings : (couponMappings?.value || []);
 
-    const hasEligibleProduct = selectedCartItems.some(item => {
+    const hasEligibleProduct = activeCheckoutItems.some(item => {
       const liveProd = products.find(p => String(p.id) === String(item.id));
       if (!liveProd) return false;
       if (liveProd.couponsEnabled === false) return false;
@@ -372,6 +427,8 @@ export default function HomeDashboard({
       return;
     }
 
+    setCheckoutMode('cart');
+    setBuyNowItem(null);
     setAppliedCoupon(null);
     setCouponCodeInput('');
     setCouponError('');
@@ -411,7 +468,56 @@ export default function HomeDashboard({
       });
     }
     setPaymentStep(1);
-    setShowCartModal(false);
+    handleCloseCartModal();
+    setShowPaymentModal(true);
+  };
+
+  const handleBuyNow = (product) => {
+    if (!product || product.stock <= 0) {
+      showFlash('error', "This product is currently out of stock.");
+      return;
+    }
+
+    const discPct = Number(product.discountPercentage) || 0;
+    const origPrice = Number(product.price) || 0;
+    const effectivePrice = product.finalPrice != null 
+      ? Number(product.finalPrice) 
+      : (discPct > 0 ? Math.round(origPrice * (1 - discPct / 100) * 100) / 100 : origPrice);
+
+    const directItem = { 
+      ...product, 
+      price: effectivePrice,
+      originalPrice: origPrice,
+      discountPercentage: discPct,
+      quantity: 1 
+    };
+
+    setCheckoutMode('buynow');
+    setBuyNowItem(directItem);
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+    setCouponError('');
+    setCouponSuccess('');
+    fetchAvailableCoupons();
+
+    const defaultAddr = savedAddresses.find(a => a.isDefault) || savedAddresses[0];
+    if (defaultAddr) {
+      setDeliveryInfo({
+        name: defaultAddr.fullName || '',
+        phone: defaultAddr.phone || '',
+        address: `${defaultAddr.streetAddress || ''}, ${defaultAddr.city || ''}, ${defaultAddr.state || ''} - ${defaultAddr.postalCode || ''}`.replace(/^, | - $/g, '').trim()
+      });
+    } else {
+      setDeliveryInfo({
+        name: '',
+        phone: '',
+        address: ''
+      });
+    }
+
+    handleCloseCartModal();
+    setSelectedProduct(null);
+    setPaymentStep(1);
     setShowPaymentModal(true);
   };
 
@@ -443,7 +549,7 @@ export default function HomeDashboard({
       try {
         const payload = {
           userId: user.id,
-          items: selectedCartItems,
+          items: activeCheckoutItems,
           deliveryInfo: deliveryInfo,
           paymentMethod: 'COD',
           couponCode: appliedCoupon ? appliedCoupon.couponCode : null
@@ -451,8 +557,12 @@ export default function HomeDashboard({
 
         const res = await axios.post('http://localhost:8080/api/payment/verify-and-order', payload);
         setConfirmedOrder(res.data);
-        setCart(prev => prev.filter(item => !selectedCartItemIds.includes(item.id)));
-        setSelectedCartItemIds([]);
+        if (checkoutMode === 'cart') {
+          setCart(prev => prev.filter(item => !selectedCartItemIds.includes(item.id)));
+          setSelectedCartItemIds([]);
+        } else {
+          setBuyNowItem(null);
+        }
         setIsProcessingPayment(false);
         setPaymentStep(4); // Confirmed screen
         fetchOrders();
@@ -476,7 +586,7 @@ export default function HomeDashboard({
         return;
       }
 
-      const totalAmount = calculateTotal();
+      const totalAmount = calculateTotal(activeCheckoutItems);
       const orderRes = await axios.post('http://localhost:8080/api/payment/create-order', {
         amount: totalAmount,
         receipt: `rcpt_${user.id}_${Date.now()}`
@@ -489,7 +599,7 @@ export default function HomeDashboard({
         amount: amount,
         currency: currency || 'INR',
         name: 'ShopStack Enterprise',
-        description: `Order Checkout (${selectedCartItems.length} items)`,
+        description: `Order Checkout (${activeCheckoutItems.length} items)`,
         order_id: razorpayOrderId,
         prefill: {
           name: deliveryInfo.name || user.fullName,
@@ -507,7 +617,7 @@ export default function HomeDashboard({
           try {
             const verifyPayload = {
               userId: user.id,
-              items: selectedCartItems,
+              items: activeCheckoutItems,
               deliveryInfo: deliveryInfo,
               paymentMethod: 'RAZORPAY',
               razorpayOrderId: response.razorpay_order_id,
@@ -518,8 +628,12 @@ export default function HomeDashboard({
 
             const verifyRes = await axios.post('http://localhost:8080/api/payment/verify-and-order', verifyPayload);
             setConfirmedOrder(verifyRes.data);
-            setCart(prev => prev.filter(item => !selectedCartItemIds.includes(item.id)));
-            setSelectedCartItemIds([]);
+            if (checkoutMode === 'cart') {
+              setCart(prev => prev.filter(item => !selectedCartItemIds.includes(item.id)));
+              setSelectedCartItemIds([]);
+            } else {
+              setBuyNowItem(null);
+            }
             setIsProcessingPayment(false);
             setPaymentStep(4);
             fetchOrders();
@@ -531,42 +645,19 @@ export default function HomeDashboard({
           }
         },
         modal: {
-          ondismiss: async function () {
+          ondismiss: function () {
             setIsProcessingPayment(false);
+            setPaymentStep(2);
             showFlash('info', 'Razorpay checkout cancelled.');
-            try {
-              await axios.post('http://localhost:8080/api/payment/record-failed', {
-                userId: user?.id,
-                razorpayOrderId: razorpayOrderId,
-                errorMessage: 'Payment cancelled / dismissed by user',
-                amount: totalAmount,
-                items: selectedCartItems,
-                deliveryInfo: deliveryInfo
-              });
-            } catch (e) {
-              console.error("Failed to record cancelled checkout", e);
-            }
           }
         }
       };
 
       const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', async function (response) {
+      rzp.on('payment.failed', function (response) {
         setIsProcessingPayment(false);
         setPaymentStep(2);
         showFlash('error', response.error?.description || 'Razorpay transaction failed.');
-        try {
-          await axios.post('http://localhost:8080/api/payment/record-failed', {
-            userId: user?.id,
-            razorpayOrderId: razorpayOrderId,
-            errorMessage: response.error?.description || 'Razorpay transaction failed',
-            amount: totalAmount,
-            items: selectedCartItems,
-            deliveryInfo: deliveryInfo
-          });
-        } catch (e) {
-          console.error("Failed to record failed checkout", e);
-        }
       });
       rzp.open();
     } catch (err) {
@@ -731,49 +822,159 @@ export default function HomeDashboard({
           </div>
         </div>
 
-        <div className="nav-right">
+        {/* Mobile Notification Button (Visible on mobile <= 768px) */}
+        <div className="notification-bell-container show-on-mobile" ref={notifDropdownRef}>
+          <button 
+            type="button"
+            onClick={() => setShowNotifications(!showNotifications)} 
+            className="btn-icon-nav" 
+            style={{ position: 'relative' }}
+            title="Notifications"
+            aria-label="View notifications"
+          >
+            <Bell size={17} />
+            {(pendingProductsCount > 0 || (orders && orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length > 0)) && (
+              <span className="notification-badge">
+                {(user.role === 'ADMINISTRATOR' || user.role === 'ADMIN') && pendingProductsCount > 0 
+                  ? pendingProductsCount 
+                  : (orders ? orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length : 0)}
+              </span>
+            )}
+          </button>
+          
+          {showNotifications && (
+            <div className="notifications-dropdown" style={{ right: 0, left: 'auto', width: 'min(320px, calc(100vw - 24px))' }}>
+              <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-light)', fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Notifications</span>
+                <span className="badge badge-customer" style={{ fontSize: '9px' }}>Live</span>
+              </div>
+              <div style={{ overflowY: 'auto', flex: 1, maxHeight: '280px' }}>
+                {(user.role === 'ADMINISTRATOR' || user.role === 'ADMIN') && pendingProductsCount > 0 && (
+                  <div 
+                    onClick={() => {
+                      setShowNotifications(false);
+                      onGoToAdmin();
+                    }}
+                    className="dropdown-item-notification"
+                    style={{ background: 'rgba(239, 68, 68, 0.08)', cursor: 'pointer' }}
+                  >
+                    <ShieldAlert size={17} style={{ color: 'var(--accent-rose)', flexShrink: 0 }} />
+                    <div>
+                      <strong style={{ fontSize: '12.5px', color: 'var(--accent-rose)' }}>{pendingProductsCount} Product(s) Pending Review</strong>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Tap to review & approve</div>
+                    </div>
+                  </div>
+                )}
+
+                {orders && orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').map(order => (
+                  <div 
+                    key={order.id}
+                    onClick={() => {
+                      setShowNotifications(false);
+                      setShowOrdersModal(true);
+                    }}
+                    className="dropdown-item-notification"
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <Package size={17} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
+                    <div>
+                      <strong style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>Order #{order.id} - {order.orderStatus}</strong>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{order.totalAmount?.toLocaleString('en-IN')} • Tap to view tracking</div>
+                    </div>
+                  </div>
+                ))}
+
+                {(!pendingProductsCount || pendingProductsCount === 0) && (!orders || orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length === 0) && (
+                  <div style={{ padding: '20px 16px', textAlign: 'center', fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                    No new notifications
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="nav-right nav-right-home">
+          {/* Notification Bell on Desktop */}
+          <div className="notification-bell-container" ref={notifDropdownRef}>
+            <button 
+              type="button"
+              onClick={() => setShowNotifications(!showNotifications)} 
+              className="btn-icon-nav" 
+              style={{ position: 'relative' }}
+              title="Notifications"
+            >
+              <Bell size={16} />
+              {(pendingProductsCount > 0 || (orders && orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length > 0)) && (
+                <span className="notification-badge">
+                  {(user.role === 'ADMINISTRATOR' || user.role === 'ADMIN') && pendingProductsCount > 0 
+                    ? pendingProductsCount 
+                    : (orders ? orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length : 0)}
+                </span>
+              )}
+            </button>
+            
+            {showNotifications && (
+              <div className="notifications-dropdown" style={{ right: 0, left: 'auto', width: '320px' }}>
+                <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-light)', fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Notifications</span>
+                  <span className="badge badge-customer" style={{ fontSize: '9px' }}>Live</span>
+                </div>
+                <div style={{ overflowY: 'auto', flex: 1, maxHeight: '280px' }}>
+                  {(user.role === 'ADMINISTRATOR' || user.role === 'ADMIN') && pendingProductsCount > 0 && (
+                    <div 
+                      onClick={() => {
+                        setShowNotifications(false);
+                        onGoToAdmin();
+                      }}
+                      className="dropdown-item-notification"
+                      style={{ background: 'rgba(239, 68, 68, 0.08)', cursor: 'pointer' }}
+                    >
+                      <ShieldAlert size={17} style={{ color: 'var(--accent-rose)', flexShrink: 0 }} />
+                      <div>
+                        <strong style={{ fontSize: '12.5px', color: 'var(--accent-rose)' }}>{pendingProductsCount} Product(s) Pending Review</strong>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Tap to review & approve</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {orders && orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').map(order => (
+                    <div 
+                      key={order.id}
+                      onClick={() => {
+                        setShowNotifications(false);
+                        setShowOrdersModal(true);
+                      }}
+                      className="dropdown-item-notification"
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <Package size={17} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
+                      <div>
+                        <strong style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>Order #{order.id} - {order.orderStatus}</strong>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{order.totalAmount?.toLocaleString('en-IN')} • Tap to view tracking</div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {(!pendingProductsCount || pendingProductsCount === 0) && (!orders || orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length === 0) && (
+                    <div style={{ padding: '20px 16px', textAlign: 'center', fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                      No new notifications
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Admin link */}
           {user.role === 'ADMINISTRATOR' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button 
-                onClick={onGoToAdmin} 
-                className="btn-icon-only" 
-                style={{ position: 'relative', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}
-                title={`${pendingProductsCount} pending product submissions`}
-              >
-                <Bell size={16} />
-                {pendingProductsCount > 0 && (
-                  <span className="notification-badge" style={{
-                    position: 'absolute',
-                    top: '-4px',
-                    right: '-4px',
-                    backgroundColor: 'var(--accent-rose)',
-                    color: '#fff',
-                    fontSize: '10px',
-                    fontWeight: 'bold',
-                    borderRadius: '50%',
-                    minWidth: '16px',
-                    height: '16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '0 4px',
-                    border: '2px solid var(--bg-card)',
-                    animation: 'pulse-ring 2s infinite'
-                  }}>
-                    {pendingProductsCount}
-                  </span>
-                )}
-              </button>
-              
-              <button 
-                onClick={onGoToAdmin} 
-                className="btn btn-secondary" 
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-rose)' }}
-              >
-                <ShieldAlert size={16} /> Admin Panel
-              </button>
-            </div>
+            <button 
+              onClick={onGoToAdmin} 
+              className="btn btn-secondary" 
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-rose)' }}
+            >
+              <ShieldAlert size={16} /> Admin Panel
+            </button>
           )}
 
           {/* Vendor link */}
@@ -798,52 +999,93 @@ export default function HomeDashboard({
             </button>
           )}
 
-          {/* Theme Switch Button */}
-          <button 
-            type="button" 
-            onClick={onToggleTheme} 
-            className="btn-icon-only" 
-            style={{ borderRadius: 'var(--radius-md)', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
-          >
-            {theme === 'dark' ? <Sun size={18} style={{ color: 'var(--accent-blue)' }} /> : <Moon size={18} style={{ color: 'var(--accent-indigo)' }} />}
-          </button>
-
           <div 
             className="nav-user-menu"
-            onMouseEnter={() => setShowDropdown(true)}
-            onMouseLeave={() => setShowDropdown(false)}
+            ref={userMenuRef}
           >
-            <div className="nav-user-trigger">
-              <User size={18} style={{ color: 'var(--accent-blue)' }} />
-              <strong>{user?.fullName || 'User'}</strong>
-              <ChevronDown size={14} style={{ opacity: 0.7 }} />
+            <div 
+              className="nav-user-trigger"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDropdown(prev => !prev);
+              }}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="nav-user-avatar">
+                <User size={14} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
+              </div>
+              <strong className="nav-user-name">{user?.fullName || 'User'}</strong>
+              <ChevronDown 
+                size={13} 
+                className="nav-user-chevron"
+                style={{ 
+                  transform: showDropdown ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s ease'
+                }} 
+              />
             </div>
 
             {showDropdown && (
-              <div className="nav-dropdown">
-                <div className="dropdown-header">Your Account</div>
-                <div onClick={() => onGoToProfile('profile')} className="dropdown-item">
-                  <User size={16} /> My Profile
+              <div className="nav-dropdown" onClick={(e) => e.stopPropagation()}>
+                <div className="dropdown-header" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Signed in as</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                    <strong style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {user?.fullName || 'User'}
+                    </strong>
+                    <span className={`badge ${user?.role === 'ADMIN' ? 'badge-rejected' : user?.role === 'VENDOR' ? 'badge-vendor' : user?.role === 'WAREHOUSE_STAFF' ? 'badge-warehouse' : 'badge-customer'}`} style={{ fontSize: '9px', padding: '1px 6px' }}>
+                      {user?.role || 'CUSTOMER'}
+                    </span>
+                  </div>
                 </div>
-                <div onClick={() => onGoToProfile('addresses')} className="dropdown-item">
-                  <MapPin size={16} /> Your Addresses
+
+                <div onClick={() => { setShowDropdown(false); onGoToProfile('profile'); }} className="dropdown-item">
+                  <User size={16} style={{ flexShrink: 0 }} /> <span>My Profile</span>
                 </div>
-                <div onClick={() => setShowOrdersModal(true)} className="dropdown-item">
-                  <Package size={16} /> Order History
+                <div onClick={() => { setShowDropdown(false); onGoToProfile('addresses'); }} className="dropdown-item">
+                  <MapPin size={16} style={{ flexShrink: 0 }} /> <span>Your Addresses</span>
                 </div>
-                <div onClick={() => onGoToProfile('wishlist')} className="dropdown-item">
-                  <Heart size={16} /> Wishlist
+                <div onClick={() => { setShowDropdown(false); setShowOrdersModal(true); }} className="dropdown-item">
+                  <Package size={16} style={{ flexShrink: 0 }} /> <span>Order History</span>
                 </div>
+                <div onClick={() => { setShowDropdown(false); onGoToProfile('wishlist'); }} className="dropdown-item">
+                  <Heart size={16} style={{ flexShrink: 0 }} /> <span>Wishlist</span>
+                </div>
+
+                {user?.role === 'ADMIN' && (
+                  <div onClick={() => { setShowDropdown(false); onGoToAdmin(); }} className="dropdown-item" style={{ color: 'var(--accent-rose)' }}>
+                    <ShieldAlert size={16} style={{ flexShrink: 0 }} /> <span>Admin Console</span>
+                  </div>
+                )}
+                {user?.role === 'VENDOR' && (
+                  <div onClick={() => { setShowDropdown(false); onGoToVendor(); }} className="dropdown-item" style={{ color: 'var(--accent-emerald)' }}>
+                    <Store size={16} style={{ flexShrink: 0 }} /> <span>Seller Console</span>
+                  </div>
+                )}
+                {user?.role === 'WAREHOUSE_STAFF' && (
+                  <div onClick={() => { setShowDropdown(false); onGoToWarehouse(); }} className="dropdown-item" style={{ color: 'var(--accent-indigo)' }}>
+                    <Truck size={16} style={{ flexShrink: 0 }} /> <span>Warehouse Panel</span>
+                  </div>
+                )}
+
                 <div className="dropdown-divider" />
-                <div onClick={onLogout} className="dropdown-item" style={{ color: 'var(--accent-rose)' }}>
-                  <LogOut size={16} /> Logout
+
+                {/* Logout Button */}
+                <div 
+                  onClick={() => { 
+                    setShowDropdown(false); 
+                    if (onLogout) onLogout(); 
+                  }} 
+                  className="dropdown-item dropdown-item-danger" 
+                  style={{ color: 'var(--accent-rose)', fontWeight: '600' }}
+                >
+                  <LogOut size={16} style={{ flexShrink: 0 }} /> <span>Logout</span>
                 </div>
               </div>
             )}
           </div>
 
-          <div onClick={() => setShowCartModal(true)} className="nav-cart-btn">
+          <div onClick={handleOpenCartModal} className="nav-cart-btn">
             <ShoppingCart size={18} /> Cart ({Array.isArray(cart) ? cart.reduce((sum, item) => sum + (Number(item?.quantity) || 1), 0) : 0})
           </div>
         </div>
@@ -918,30 +1160,10 @@ export default function HomeDashboard({
               const savings = Math.max(0, Math.round((prod.price - finalPrice) * 100) / 100);
 
               return (
-                <div key={prod.id} className="product-card" style={{ position: 'relative', overflow: 'hidden' }}>
+                <div key={prod.id} className="product-card">
                   {/* High-visibility Vibrant Discount Badge */}
                   {disc > 0 && (
-                    <div 
-                      style={{ 
-                        position: 'absolute', 
-                        top: '12px', 
-                        left: '12px', 
-                        zIndex: 15, 
-                        fontWeight: '900',
-                        fontSize: '11px',
-                        letterSpacing: '0.6px',
-                        padding: '5px 10px',
-                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                        color: '#ffffff',
-                        borderRadius: '6px',
-                        boxShadow: '0 4px 12px rgba(239, 68, 68, 0.5)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        textTransform: 'uppercase',
-                        lineHeight: 1
-                      }}
-                    >
+                    <div className="product-discount-badge">
                       {disc}% OFF
                     </div>
                   )}
@@ -966,9 +1188,9 @@ export default function HomeDashboard({
                     style={{ cursor: 'pointer', flex: 1, display: 'flex', flexDirection: 'column' }}
                   >
                     <div className="product-image-container">
-                      {prod.imageUrl && prod.imageUrl.length > 4 ? (
+                      {prod.imageUrl && formatImageUrl(prod.imageUrl).length > 4 ? (
                         <img 
-                          src={prod.imageUrl} 
+                          src={formatImageUrl(prod.imageUrl)} 
                           alt={prod.name} 
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                         />
@@ -1036,19 +1258,48 @@ export default function HomeDashboard({
                     </div>
                   </div>
 
-                  <button 
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      addToCart(prod, showFlash);
-                    }} 
-                    className="btn btn-primary btn-block" 
-                    style={{ marginTop: '16px' }}
-                    disabled={prod.stock <= 0}
-                  >
-                    {prod.stock <= 0 ? "Out of Stock" : <><Plus size={16} /> Add to Cart</>}
-                  </button>
+                  <div style={{ display: 'grid', gridTemplateColumns: prod.stock <= 0 ? '1fr' : '1fr 1fr', gap: '8px', marginTop: '16px' }}>
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        addToCart(prod, showFlash);
+                      }} 
+                      className="btn btn-secondary" 
+                      style={{ padding: '8px 10px', fontSize: '12.5px', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}
+                      disabled={prod.stock <= 0}
+                    >
+                      {prod.stock <= 0 ? "Out of Stock" : <><ShoppingCart size={14} /> Add to Cart</>}
+                    </button>
+                    
+                    {prod.stock > 0 && (
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleBuyNow(prod);
+                        }} 
+                        className="btn btn-primary" 
+                        style={{ 
+                          padding: '8px 10px', 
+                          fontSize: '12.5px', 
+                          justifyContent: 'center', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px', 
+                          fontWeight: '700', 
+                          background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 
+                          borderColor: '#d97706', 
+                          color: '#ffffff',
+                          boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)' 
+                        }}
+                      >
+                        <Zap size={14} /> Buy Now
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -1058,14 +1309,14 @@ export default function HomeDashboard({
 
       {/* Cart Drawer */}
       {showCartModal && (
-        <div className="modal-overlay modal-overlay-drawer" onClick={() => setShowCartModal(false)}>
+        <div className="modal-overlay modal-overlay-drawer" onClick={handleCloseCartModal}>
           <div className="drawer-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <ShoppingCart size={22} style={{ color: 'var(--accent-blue)' }} />
                 Shopping Cart ({Array.isArray(cart) ? cart.reduce((sum, item) => sum + item.quantity, 0) : 0})
               </h2>
-              <button onClick={() => setShowCartModal(false)} className="btn-icon-only">
+              <button onClick={handleCloseCartModal} className="btn-icon-only">
                 <X size={18} />
               </button>
             </div>
@@ -1109,153 +1360,143 @@ export default function HomeDashboard({
                     const currentStock = liveProduct != null ? liveProduct.stock : (item.stock ?? 0);
                     const isOutOfStock = currentStock <= 0;
                     const isExceedingStock = !isOutOfStock && item.quantity > currentStock;
-                    const hasDiscount = item.originalPrice && item.originalPrice > item.price;
                     const isItemSelected = selectedCartItemIds.includes(item.id) && !isOutOfStock;
+                    const hasDiscount = item.originalPrice && item.originalPrice > item.price;
 
                     return (
                       <div 
                         key={item.id} 
-                        className="cart-item" 
+                        className="cart-item-card-responsive" 
                         style={{ 
-                          alignItems: 'flex-start', 
-                          gap: '10px', 
                           opacity: isOutOfStock ? 0.65 : (isItemSelected ? 1 : 0.65), 
-                          background: isOutOfStock ? 'rgba(239, 68, 68, 0.04)' : undefined,
-                          border: isOutOfStock ? '1px dashed rgba(239, 68, 68, 0.35)' : (isItemSelected ? '1px solid var(--border-light)' : '1px solid transparent'),
-                          borderRadius: '8px',
-                          padding: '12px 10px',
+                          background: isOutOfStock ? 'rgba(239, 68, 68, 0.04)' : 'var(--bg-input)',
+                          border: isOutOfStock ? '1px dashed rgba(239, 68, 68, 0.35)' : (isItemSelected ? '1px solid var(--border-light)' : '1px dashed var(--border-light)'),
+                          borderRadius: '10px',
+                          padding: '12px 14px',
                           marginBottom: '10px',
-                          transition: 'all 0.2s ease'
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px',
+                          transition: 'all 0.2s ease',
+                          width: '100%',
+                          boxSizing: 'border-box'
                         }}
                       >
-                        {/* Item Selection Box */}
-                        <div style={{ paddingTop: '10px' }}>
+                        {/* Top Tier: Checkbox + Image + Title/Badges + Delete Button */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+                          {/* Item Selection Box */}
                           <input 
                             type="checkbox" 
                             checked={isItemSelected} 
                             disabled={isOutOfStock}
                             onChange={() => toggleSelectItem(item.id)}
-                            style={{ width: '18px', height: '18px', accentColor: 'var(--accent-teal)', cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}
+                            style={{ width: '18px', height: '18px', accentColor: 'var(--accent-teal)', cursor: isOutOfStock ? 'not-allowed' : 'pointer', marginTop: '2px', flexShrink: 0 }}
                             title={isOutOfStock ? "Out of Stock - Cannot be selected" : (isItemSelected ? "Deselect item" : "Select item for purchase")}
                           />
-                        </div>
 
-                        <div style={{ width: '48px', height: '48px', flexShrink: 0, borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)', position: 'relative' }}>
-                          {item.imageUrl && item.imageUrl.length > 4 ? (
-                            <img src={item.imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: isOutOfStock ? 'grayscale(0.7)' : 'none' }} />
-                          ) : (
-                            <ProductIcon name={item.name} category={item.category} size={20} />
-                          )}
-                        </div>
-                        <div className="cart-item-info" style={{ flex: 1 }}>
-                          <div className="cart-item-name" style={{ fontWeight: '700', fontSize: '14px', color: isOutOfStock ? 'var(--text-muted)' : 'var(--text-primary)' }}>
-                            {item.name}
-                          </div>
-
-                          {/* Out of Stock & Inventory Warnings */}
-                          {isOutOfStock ? (
-                            <div style={{ 
-                              display: 'inline-flex', 
-                              alignItems: 'center', 
-                              gap: '5px', 
-                              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.25))',
-                              color: '#ef4444', 
-                              border: '1px solid rgba(239, 68, 68, 0.4)',
-                              fontSize: '11px', 
-                              fontWeight: '800', 
-                              padding: '2px 8px', 
-                              borderRadius: '4px',
-                              marginTop: '4px',
-                              letterSpacing: '0.3px'
-                            }}>
-                              <span>🚫</span> OUT OF STOCK
-                            </div>
-                          ) : isExceedingStock ? (
-                            <div style={{ 
-                              display: 'inline-flex', 
-                              alignItems: 'center', 
-                              gap: '4px', 
-                              background: 'rgba(245, 158, 11, 0.15)', 
-                              color: '#f59e0b', 
-                              border: '1px solid rgba(245, 158, 11, 0.35)',
-                              fontSize: '11px', 
-                              fontWeight: '700', 
-                              padding: '2px 7px', 
-                              borderRadius: '4px',
-                              marginTop: '4px'
-                            }}>
-                              ⚠️ Only {currentStock} in stock (in cart: {item.quantity})
-                            </div>
-                          ) : null}
-
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '4px' }}>
-                            <span className="cart-item-price" style={{ fontWeight: '800', color: isOutOfStock ? 'var(--text-muted)' : 'var(--text-primary)' }}>
-                              ₹{Number(item.price).toLocaleString('en-IN')}
-                            </span>
-                            {hasDiscount && (
-                              <>
-                                <span style={{ fontSize: '11px', fontWeight: '600', textDecoration: 'line-through', color: '#94a3b8', textDecorationColor: '#ef4444' }}>
-                                  ₹{Number(item.originalPrice).toLocaleString('en-IN')}
-                                </span>
-                                <span style={{ 
-                                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', 
-                                  color: '#ffffff', 
-                                  fontWeight: '800', 
-                                  fontSize: '9px', 
-                                  padding: '1px 5px', 
-                                  borderRadius: '3px' 
-                                }}>
-                                  {item.discountPercentage}% OFF
-                                </span>
-                              </>
+                          <div style={{ width: '44px', height: '44px', flexShrink: 0, borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', position: 'relative', border: '1px solid var(--border-light)' }}>
+                            {item.imageUrl && formatImageUrl(item.imageUrl).length > 4 ? (
+                              <img src={formatImageUrl(item.imageUrl)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: isOutOfStock ? 'grayscale(0.7)' : 'none' }} />
+                            ) : (
+                              <ProductIcon name={item.name} category={item.category} size={20} />
                             )}
                           </div>
-                          
+
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: '700', fontSize: '13px', color: isOutOfStock ? 'var(--text-muted)' : 'var(--text-primary)', wordBreak: 'break-word', lineHeight: '1.3' }}>
+                              {item.name}
+                            </div>
+
+                            {/* Out of Stock & Inventory Warnings */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginTop: '2px' }}>
+                              {isOutOfStock ? (
+                                <span style={{ 
+                                  background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.25))',
+                                  color: '#ef4444', 
+                                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                                  fontSize: '10px', 
+                                  fontWeight: '800', 
+                                  padding: '1px 6px', 
+                                  borderRadius: '3px'
+                                }}>
+                                  🚫 OUT OF STOCK
+                                </span>
+                              ) : isExceedingStock ? (
+                                <span style={{ 
+                                  background: 'rgba(245, 158, 11, 0.15)', 
+                                  color: '#f59e0b', 
+                                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                                  fontSize: '10px', 
+                                  fontWeight: '700', 
+                                  padding: '1px 5px', 
+                                  borderRadius: '3px'
+                                }}>
+                                  ⚠️ Only {currentStock} in stock
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <button 
+                            type="button"
+                            onClick={() => removeFromCart(item.id)} 
+                            className="btn-icon-only" 
+                            style={{ color: 'var(--accent-rose)', borderColor: 'rgba(239, 68, 68, 0.2)', width: '28px', height: '28px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                            title="Remove item from cart"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+
+                        {/* Bottom Tier: Quantity controls on Left, Total price on Right */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border-light)', width: '100%' }}>
                           {/* Quantity Toggles */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <button 
+                              type="button"
                               onClick={() => updateCartQuantity(item.id, -1, currentStock)} 
                               className="btn-icon-only"
-                              style={{ padding: '3px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                              style={{ width: '26px', height: '26px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '5px' }}
                               title="Decrease quantity"
                             >
-                              <Minus size={12} />
+                              <Minus size={11} />
                             </button>
-                            <strong style={{ fontSize: '13px', minWidth: '16px', textAlign: 'center', color: isOutOfStock ? 'var(--accent-rose)' : 'inherit' }}>
+                            <strong style={{ fontSize: '13px', minWidth: '18px', textAlign: 'center', color: isOutOfStock ? 'var(--accent-rose)' : 'inherit' }}>
                               {item.quantity}
                             </strong>
                             <button 
+                              type="button"
                               onClick={() => updateCartQuantity(item.id, 1, currentStock)} 
                               disabled={isOutOfStock || item.quantity >= currentStock}
                               className="btn-icon-only"
                               style={{ 
-                                padding: '3px', 
-                                width: '24px', 
-                                height: '24px', 
+                                width: '26px', 
+                                height: '26px', 
+                                padding: 0, 
                                 display: 'flex', 
                                 alignItems: 'center', 
-                                justifyContent: 'center',
+                                justifyContent: 'center', 
+                                borderRadius: '5px',
                                 opacity: (isOutOfStock || item.quantity >= currentStock) ? 0.35 : 1,
                                 cursor: (isOutOfStock || item.quantity >= currentStock) ? 'not-allowed' : 'pointer'
                               }}
                               title={isOutOfStock ? "Product is out of stock" : (item.quantity >= currentStock ? "Reached maximum available stock" : "Increase quantity")}
                             >
-                              <Plus size={12} />
+                              <Plus size={11} />
                             </button>
-                            <span style={{ marginLeft: 'auto', fontSize: '13px', fontWeight: '700', color: isOutOfStock ? 'var(--text-muted)' : 'var(--accent-teal)' }}>
+                          </div>
+
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: '14px', fontWeight: '800', color: isOutOfStock ? 'var(--text-muted)' : 'var(--accent-teal)' }}>
                               ₹{(item.price * item.quantity).toLocaleString('en-IN')}
                             </span>
+                            {hasDiscount && (
+                              <span style={{ marginLeft: '6px', fontSize: '11px', fontWeight: '600', textDecoration: 'line-through', color: '#94a3b8', textDecorationColor: '#ef4444' }}>
+                                ₹{(item.originalPrice * item.quantity).toLocaleString('en-IN')}
+                              </span>
+                            )}
                           </div>
                         </div>
-                        
-                        <button 
-                          onClick={() => removeFromCart(item.id)} 
-                          className="btn-icon-only" 
-                          style={{ color: 'var(--accent-rose)', borderColor: 'rgba(239, 68, 68, 0.2)', marginLeft: '4px' }}
-                          title="Remove item from cart"
-                        >
-                          <Trash2 size={14} />
-                        </button>
                       </div>
                     );
                   })}
@@ -1444,17 +1685,19 @@ export default function HomeDashboard({
       {selectedProduct && (() => {
         const allImages = [];
         if (selectedProduct.imageUrl && selectedProduct.imageUrl !== '📦') {
-          allImages.push(selectedProduct.imageUrl);
+          const formatted = formatImageUrl(selectedProduct.imageUrl);
+          if (formatted) allImages.push(formatted);
         }
         if (selectedProduct.images && selectedProduct.images.length > 0) {
           selectedProduct.images.forEach(img => {
-            if (!allImages.includes(img)) {
-              allImages.push(img);
+            const formatted = formatImageUrl(img);
+            if (formatted && !allImages.includes(formatted)) {
+              allImages.push(formatted);
             }
           });
         }
         if (allImages.length === 0) {
-          allImages.push(selectedProduct.imageUrl || '📦');
+          allImages.push(formatImageUrl(selectedProduct.imageUrl) || '📦');
         }
         const activeImg = allImages[activeImageIndex] || allImages[0] || '📦';
 
@@ -1697,6 +1940,42 @@ export default function HomeDashboard({
                               <span>Special Discount Applied! You save ₹{Number(savings).toLocaleString('en-IN')} ({disc}% discount) on this product!</span>
                             </div>
                           )}
+
+                          {/* Action Buttons: Add to Cart & Buy Now */}
+                          <div style={{ display: 'grid', gridTemplateColumns: selectedProduct.stock > 0 ? '1fr 1fr' : '1fr', gap: '12px', marginTop: '12px' }}>
+                            <button 
+                              type="button"
+                              onClick={() => addToCart(selectedProduct, showFlash)} 
+                              className="btn btn-secondary" 
+                              style={{ padding: '12px 18px', fontSize: '14px', fontWeight: '700', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px' }}
+                              disabled={selectedProduct.stock <= 0}
+                            >
+                              {selectedProduct.stock <= 0 ? "Out of Stock" : <><ShoppingCart size={17} /> Add to Cart</>}
+                            </button>
+                            
+                            {selectedProduct.stock > 0 && (
+                              <button 
+                                type="button"
+                                onClick={() => handleBuyNow(selectedProduct)} 
+                                className="btn btn-primary" 
+                                style={{ 
+                                  padding: '12px 18px', 
+                                  fontSize: '14px', 
+                                  fontWeight: '700', 
+                                  justifyContent: 'center', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  gap: '8px', 
+                                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 
+                                  borderColor: '#d97706', 
+                                  color: '#ffffff',
+                                  boxShadow: '0 4px 14px rgba(245, 158, 11, 0.35)'
+                                }}
+                              >
+                                <Zap size={17} /> Buy Now
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })()}
@@ -1900,15 +2179,17 @@ export default function HomeDashboard({
       {showLightbox && selectedProduct && (() => {
         const allImages = [];
         if (selectedProduct.imageUrl && selectedProduct.imageUrl !== '📦') {
-          allImages.push(selectedProduct.imageUrl);
+          const formatted = formatImageUrl(selectedProduct.imageUrl);
+          if (formatted) allImages.push(formatted);
         }
         if (selectedProduct.images && selectedProduct.images.length > 0) {
           selectedProduct.images.forEach(img => {
-            if (!allImages.includes(img)) allImages.push(img);
+            const formatted = formatImageUrl(img);
+            if (formatted && !allImages.includes(formatted)) allImages.push(formatted);
           });
         }
         if (allImages.length === 0) {
-          allImages.push(selectedProduct.imageUrl || '📦');
+          allImages.push(formatImageUrl(selectedProduct.imageUrl) || '📦');
         }
         const currentImg = allImages[activeImageIndex] || allImages[0] || '📦';
         const isEmoji = currentImg.length <= 4;
@@ -2001,9 +2282,19 @@ export default function HomeDashboard({
         );
       })()}
 
-      {/* Interactive Checkout & Payment Gateway Modal */}
+                  {/* Payment & Checkout Modal */}
       {showPaymentModal && (
-        <div className="modal-overlay" style={{ zIndex: 2500 }} onClick={() => { if (!isProcessingPayment) setShowPaymentModal(false); }}>
+        <div 
+          className="modal-overlay" 
+          style={{ zIndex: 2500 }} 
+          onClick={() => { 
+            if (!isProcessingPayment) { 
+              setShowPaymentModal(false); 
+              setBuyNowItem(null); 
+              setCheckoutMode('cart'); 
+            } 
+          }}
+        >
           <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             
             {/* Modal Header & Progress Stepper */}
@@ -2011,52 +2302,48 @@ export default function HomeDashboard({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <ShieldCheck size={22} style={{ color: 'var(--accent-teal)' }} />
-                  {paymentStep === 1 && "Checkout: Delivery & Review"}
+                  {paymentStep === 1 && (checkoutMode === 'buynow' ? "Direct Buy Now Checkout" : "Checkout: Delivery & Review")}
                   {paymentStep === 2 && "Secure Payment Gateway"}
                   {paymentStep === 3 && "Processing Payment"}
                   {paymentStep === 4 && "Order Confirmed!"}
                 </h2>
                 {!isProcessingPayment && (
-                  <button onClick={() => setShowPaymentModal(false)} className="btn-icon-only">
+                  <button 
+                    onClick={() => { 
+                      setShowPaymentModal(false); 
+                      setBuyNowItem(null); 
+                      setCheckoutMode('cart'); 
+                    }} 
+                    className="btn-icon-only"
+                  >
                     <X size={18} />
                   </button>
                 )}
               </div>
 
               {/* Step indicator */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px' }}>
+              <div className="checkout-stepper-container">
                 {[
-                  { num: 1, label: 'Review & Address' },
-                  { num: 2, label: 'Payment' },
-                  { num: 3, label: 'Verification' },
-                  { num: 4, label: 'Order Created' }
+                  { num: 1, label: 'Address', fullLabel: 'Review & Address' },
+                  { num: 2, label: 'Payment', fullLabel: 'Payment' },
+                  { num: 3, label: 'Verify', fullLabel: 'Verification' },
+                  { num: 4, label: 'Created', fullLabel: 'Order Created' }
                 ].map((s, idx) => {
                   const isActive = paymentStep === s.num;
                   const isCompleted = paymentStep > s.num;
                   return (
                     <React.Fragment key={s.num}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={{
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: '50%',
-                          background: isCompleted ? 'var(--accent-emerald)' : isActive ? 'var(--accent-teal)' : 'var(--bg-card-hover)',
-                          color: isCompleted || isActive ? '#fff' : 'var(--text-muted)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '11px',
-                          fontWeight: 'bold',
-                          border: '1px solid var(--border-light)'
-                        }}>
-                          {isCompleted ? <Check size={14} /> : s.num}
+                      <div className="checkout-step-item">
+                        <div className={`checkout-step-circle ${isCompleted ? 'completed' : isActive ? 'active' : ''}`}>
+                          {isCompleted ? <Check size={12} /> : s.num}
                         </div>
-                        <span style={{ fontSize: '11px', fontWeight: isActive ? '700' : '500', color: isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                          {s.label}
+                        <span className={`checkout-step-label ${isActive ? 'active' : ''}`}>
+                          <span className="step-label-desktop">{s.fullLabel}</span>
+                          <span className="step-label-mobile">{s.label}</span>
                         </span>
                       </div>
                       {idx < 3 && (
-                        <div style={{ flex: 1, height: '2px', background: paymentStep > s.num ? 'var(--accent-emerald)' : 'var(--border-light)', margin: '0 8px' }} />
+                        <div className={`checkout-step-line ${paymentStep > s.num ? 'completed' : ''}`} />
                       )}
                     </React.Fragment>
                   );
@@ -2230,17 +2517,17 @@ export default function HomeDashboard({
                   {/* Order Items Review */}
                   <div>
                     <h4 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '10px', fontWeight: '700' }}>
-                      Items to Purchase ({selectedCartItems.reduce((sum, it) => sum + it.quantity, 0)})
+                      Items to Purchase ({activeCheckoutItems.reduce((sum, it) => sum + it.quantity, 0)})
                     </h4>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
-                      {selectedCartItems.map((item) => {
+                      {activeCheckoutItems.map((item) => {
                         const hasDisc = item.originalPrice && item.originalPrice > item.price;
                         return (
                           <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-card)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <div style={{ width: '32px', height: '32px', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)' }}>
-                                {item.imageUrl && item.imageUrl.length > 4 ? (
-                                  <img src={item.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                {item.imageUrl && formatImageUrl(item.imageUrl).length > 4 ? (
+                                  <img src={formatImageUrl(item.imageUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
                                   <ProductIcon name={item.name} category={item.category} size={16} />
                                 )}
@@ -2606,6 +2893,8 @@ export default function HomeDashboard({
                       type="button" 
                       onClick={() => {
                         setShowPaymentModal(false);
+                        setBuyNowItem(null);
+                        setCheckoutMode('cart');
                         setShowOrdersModal(true);
                       }} 
                       className="btn btn-secondary" 
@@ -2615,7 +2904,11 @@ export default function HomeDashboard({
                     </button>
                     <button 
                       type="button" 
-                      onClick={() => setShowPaymentModal(false)} 
+                      onClick={() => {
+                        setShowPaymentModal(false);
+                        setBuyNowItem(null);
+                        setCheckoutMode('cart');
+                      }} 
                       className="btn btn-primary" 
                       style={{ flex: 1, padding: '12px' }}
                     >

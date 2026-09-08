@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
-  User, Package, RefreshCw, ArrowLeft, Edit2, Save, X, LogOut, 
+  User, Package, RefreshCw, ArrowLeft, Edit2, Save, X, LogOut, ChevronDown,
   CheckCircle2, AlertCircle, Phone, MapPin, Sun, Moon, Heart, 
   ShoppingCart, Plus, Minus, Trash2, Check,
   CreditCard, QrCode, Smartphone, ArrowRight, ShieldCheck, Lock, Store, Truck,
   Receipt, RotateCcw, DollarSign, Clock, HelpCircle, FileText, CheckCircle, Search, Filter, AlertTriangle
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
+import { extractErrorMessage } from '../utils/errorHandler';
+import { formatImageUrl } from '../utils/imageHelper';
 
 export default function CustomerDashboard({ 
   user, orders = [], setOrders, cart = [], setCart, wishlist = [], setWishlist, 
@@ -25,6 +27,25 @@ export default function CustomerDashboard({
   });
 
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const userMenuRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleOutsideClick);
+      document.addEventListener('touchstart', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [showDropdown]);
   
   useEffect(() => {
     setActiveTab(initialTab);
@@ -38,6 +59,15 @@ export default function CustomerDashboard({
 
   const [isEditing, setIsEditing] = useState(false);
   const [flash, setFlash] = useState({ type: '', title: '', text: '' });
+
+  const showToast = (type, title, text) => {
+    let msg = text;
+    if (typeof text === 'object' && text !== null) {
+      msg = extractErrorMessage(text);
+    }
+    setFlash({ type, title: title || (type === 'success' ? 'Success' : 'Notification'), text: msg });
+    setTimeout(() => setFlash({ type: '', title: '', text: '' }), 3500);
+  };
 
   const [showVendorPromptModal, setShowVendorPromptModal] = useState(false);
   const [switchVendorCode, setSwitchVendorCode] = useState('');
@@ -413,13 +443,6 @@ export default function CustomerDashboard({
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState(null);
 
-  const showToast = (type, title, text) => {
-    setFlash({ type, title, text });
-    setTimeout(() => {
-      setFlash({ type: '', title: '', text: '' });
-    }, 3000);
-  };
-
   // Pricing & Discount calculations (based on SELECTED items)
   const calculateOriginalSubtotal = () => {
     return selectedCartItems.reduce((sum, item) => {
@@ -724,46 +747,19 @@ export default function CustomerDashboard({
           }
         },
         modal: {
-          ondismiss: async function () {
+          ondismiss: function () {
             setIsProcessingPayment(false);
+            setPaymentStep(2);
             showToast('info', 'Payment Cancelled', 'Razorpay checkout was dismissed.');
-            try {
-              await axios.post('http://localhost:8080/api/payment/record-failed', {
-                userId: profile.id,
-                razorpayOrderId: razorpayOrderId,
-                errorMessage: 'Payment window was dismissed by customer',
-                amount: totalAmount,
-                items: selectedCartItems,
-                deliveryInfo: deliveryInfo
-              });
-              if (fetchOrders) fetchOrders();
-              fetchTransactions();
-            } catch (e) {
-              console.error("Failed to record cancelled checkout", e);
-            }
           }
         }
       };
 
       const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', async function (response) {
+      rzp.on('payment.failed', function (response) {
         setIsProcessingPayment(false);
         setPaymentStep(2);
         showToast('error', 'Payment Failed', response.error?.description || 'Razorpay transaction was unsuccessful.');
-        try {
-          await axios.post('http://localhost:8080/api/payment/record-failed', {
-            userId: profile.id,
-            razorpayOrderId: razorpayOrderId,
-            errorMessage: response.error?.description || 'Razorpay transaction unsuccessful',
-            amount: totalAmount,
-            items: selectedCartItems,
-            deliveryInfo: deliveryInfo
-          });
-          if (fetchOrders) fetchOrders();
-          fetchTransactions();
-        } catch (e) {
-          console.error("Failed to record failed checkout", e);
-        }
       });
       rzp.open();
     } catch (err) {
@@ -874,34 +870,131 @@ export default function CustomerDashboard({
 
       {/* Navbar */}
       <div className="navbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer' }}>ShopStack</h1>
-          <button onClick={onGoToHome} className="btn btn-secondary" style={{ padding: '6px 16px', fontSize: '13px' }}>
-            <ArrowLeft size={16} /> Back to Store
-          </button>
+        <div className="nav-left">
+          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>ShopStack</h1>
         </div>
 
         <div className="nav-right">
-          {/* Theme Switch Button */}
           <button 
-            type="button" 
-            onClick={onToggleTheme} 
-            className="btn-icon-only" 
-            style={{ borderRadius: 'var(--radius-md)', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            type="button"
+            onClick={onGoToHome} 
+            className="btn-store-nav"
+            title="Return to Store"
           >
-            {theme === 'dark' ? <Sun size={16} style={{ color: 'var(--accent-blue)' }} /> : <Moon size={16} style={{ color: 'var(--accent-indigo)' }} />}
+            <ArrowLeft size={15} style={{ flexShrink: 0 }} />
+            <span className="hide-on-mobile">Back to Store</span>
+            <span className="show-on-mobile">Store</span>
           </button>
 
-          <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-            Signed in as: <strong style={{ color: 'var(--text-primary)' }}>{profile.fullName}</strong>
-            <span className={`badge ${profile.role === 'VENDOR' ? 'badge-vendor' : 'badge-customer'}`} style={{ marginLeft: '10px' }}>
-              {profile.role}
-            </span>
-          </span>
-          <button onClick={onLogout} className="btn btn-danger" style={{ padding: '6px 16px', fontSize: '13px' }}>
-            <LogOut size={16} /> Logout
-          </button>
+          <div 
+            className="nav-user-menu"
+            ref={userMenuRef}
+          >
+            <div 
+              className="nav-user-trigger"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDropdown(prev => !prev);
+              }}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="nav-user-avatar">
+                <User size={14} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
+              </div>
+              <strong className="nav-user-name">{profile.fullName || user?.fullName || 'User'}</strong>
+              <ChevronDown 
+                size={13} 
+                className="nav-user-chevron"
+                style={{ 
+                  transform: showDropdown ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s ease'
+                }} 
+              />
+            </div>
+
+            {showDropdown && (
+              <div className="nav-dropdown" onClick={(e) => e.stopPropagation()}>
+                <div className="dropdown-header" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Signed in as</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                    <strong style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {profile.fullName || user?.fullName || 'User'}
+                    </strong>
+                    <span className={`badge ${profile.role === 'VENDOR' ? 'badge-vendor' : 'badge-customer'}`} style={{ fontSize: '9px', padding: '1px 6px' }}>
+                      {profile.role || 'CUSTOMER'}
+                    </span>
+                  </div>
+                </div>
+
+                <div onClick={() => { setShowDropdown(false); setActiveTab('profile'); }} className="dropdown-item">
+                  <User size={16} style={{ flexShrink: 0 }} /> <span>My Profile</span>
+                </div>
+                <div onClick={() => { setShowDropdown(false); setActiveTab('addresses'); }} className="dropdown-item">
+                  <MapPin size={16} style={{ flexShrink: 0 }} /> <span>Your Addresses</span>
+                </div>
+                <div onClick={() => { setShowDropdown(false); setActiveTab('orders'); }} className="dropdown-item">
+                  <Package size={16} style={{ flexShrink: 0 }} /> <span>Order History</span>
+                </div>
+                <div onClick={() => { setShowDropdown(false); setActiveTab('wishlist'); }} className="dropdown-item">
+                  <Heart size={16} style={{ flexShrink: 0 }} /> <span>Wishlist</span>
+                </div>
+
+                <div onClick={() => { setShowDropdown(false); onGoToHome(); }} className="dropdown-item">
+                  <ArrowLeft size={16} style={{ flexShrink: 0 }} /> <span>Back to Store</span>
+                </div>
+
+                <div className="dropdown-divider" />
+
+                {/* Light / Dark Mode Toggle Button */}
+                {onToggleTheme && (
+                  <div 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      onToggleTheme(); 
+                    }} 
+                    className="dropdown-item" 
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {theme === 'dark' ? (
+                        <Sun size={16} style={{ color: '#fbbf24', flexShrink: 0 }} />
+                      ) : (
+                        <Moon size={16} style={{ color: '#6366f1', flexShrink: 0 }} />
+                      )}
+                      <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+                    </div>
+                    <span 
+                      style={{ 
+                        fontSize: '10px', 
+                        fontWeight: '700', 
+                        padding: '2px 6px', 
+                        borderRadius: '4px', 
+                        background: 'var(--bg-input)', 
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-light)' 
+                      }}
+                    >
+                      {theme === 'dark' ? 'DARK' : 'LIGHT'}
+                    </span>
+                  </div>
+                )}
+
+                <div className="dropdown-divider" />
+
+                {/* Logout Button */}
+                <div 
+                  onClick={() => { 
+                    setShowDropdown(false); 
+                    if (onLogout) onLogout(); 
+                  }} 
+                  className="dropdown-item dropdown-item-danger" 
+                  style={{ color: 'var(--accent-rose)', fontWeight: '600' }}
+                >
+                  <LogOut size={16} style={{ flexShrink: 0 }} /> <span>Logout</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1250,14 +1343,14 @@ export default function CustomerDashboard({
                 </button>
               </div>
 
-              {orders.length === 0 ? (
+              {orders.filter(ord => ord && !ord.orderId?.startsWith('ORD-FAIL-') && ord.paymentStatus !== 'FAILED').length === 0 ? (
                 <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '10px' }}>
                   <Package className="cart-empty-icon" style={{ opacity: 0.2 }} />
                   <p>You haven't placed any orders yet.</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {orders.map((ord, i) => {
+                  {orders.filter(ord => ord && !ord.orderId?.startsWith('ORD-FAIL-') && ord.paymentStatus !== 'FAILED').map((ord, i) => {
                     const payStatus = ord.paymentStatus || 'PENDING';
                     const isPaid = payStatus === 'PAID';
                     const isRefunded = payStatus === 'REFUNDED';
@@ -1876,46 +1969,46 @@ export default function CustomerDashboard({
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {wishlist.map((prod) => (
-                    <div key={prod.id} className="cart-item" style={{ background: 'var(--bg-input)', padding: '16px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div style={{ width: '40px', height: '40px', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {prod.imageUrl && prod.imageUrl.length > 4 ? (
-                            <img src={prod.imageUrl} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div key={prod.id} className="cart-item" style={{ background: 'var(--bg-input)', padding: '14px 16px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: '180px' }}>
+                        <div style={{ width: '44px', height: '44px', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--border-light)' }}>
+                          {prod.imageUrl && formatImageUrl(prod.imageUrl).length > 4 ? (
+                            <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
                             <ProductIcon name={prod.name} category={prod.category} size={20} />
                           )}
-                         </div>
-                         <div>
-                           <h4 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: '600' }}>{prod.name}</h4>
-                           <span className="badge badge-customer" style={{ fontSize: '11px' }}>{prod.category}</span>
-                         </div>
-                       </div>
-                       
-                       <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                         <strong style={{ fontSize: '16px' }}>₹{prod.price}</strong>
-                         <div style={{ display: 'flex', gap: '10px' }}>
-                           <button 
-                             type="button" 
-                             onClick={() => addToCart(prod, (type, text) => showToast(type, type === 'success' ? 'Success' : 'Notification', text))} 
-                             className="btn btn-primary" 
-                             style={{ padding: '6px 14px', fontSize: '12px' }}
-                             disabled={prod.stock <= 0}
-                           >
-                             {prod.stock <= 0 ? "Out of Stock" : "Add to Cart"}
-                           </button>
-                           <button 
-                              type="button" 
-                              onClick={() => toggleWishlist(prod, (type, text) => showToast(type, type === 'success' ? 'Success' : 'Notification', text))} 
-                              className="btn btn-secondary" 
-                              style={{ padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-rose)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
-                              title="Remove"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: '700', wordBreak: 'break-word' }}>{prod.name}</h4>
+                          <span className="badge badge-customer" style={{ fontSize: '10px', padding: '2px 6px' }}>{prod.category}</span>
                         </div>
                       </div>
-                    ))}
+                      
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginLeft: 'auto' }}>
+                        <strong style={{ fontSize: '16px', color: 'var(--accent-teal)' }}>₹{prod.price}</strong>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button 
+                            type="button" 
+                            onClick={() => addToCart(prod, (type, text) => showToast(type, type === 'success' ? 'Success' : 'Notification', text))} 
+                            className="btn btn-primary" 
+                            style={{ padding: '6px 14px', fontSize: '12px' }}
+                            disabled={prod.stock <= 0}
+                          >
+                            {prod.stock <= 0 ? "Out of Stock" : "Add to Cart"}
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => toggleWishlist(prod, (type, text) => showToast(type, type === 'success' ? 'Success' : 'Notification', text))} 
+                            className="btn-icon-only" 
+                            style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-rose)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                            title="Remove from wishlist"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                   </div>
                 )}
             </div>
@@ -1976,49 +2069,57 @@ export default function CustomerDashboard({
                       return (
                         <div 
                           key={item.id} 
-                          className="cart-item" 
+                          className="cart-item-card-responsive" 
                           style={{ 
                             background: isOutOfStock ? 'rgba(239, 68, 68, 0.04)' : 'var(--bg-input)', 
-                            padding: '16px', 
+                            padding: '14px 16px', 
                             borderRadius: '10px', 
                             display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center',
+                            flexDirection: 'column',
+                            gap: '12px',
                             opacity: isOutOfStock ? 0.65 : (isItemSelected ? 1 : 0.65),
                             border: isOutOfStock ? '1px dashed rgba(239, 68, 68, 0.35)' : (isItemSelected ? '1px solid var(--border-light)' : '1px dashed var(--border-light)'),
-                            transition: 'all 0.2s ease'
+                            transition: 'all 0.2s ease',
+                            width: '100%',
+                            boxSizing: 'border-box'
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          {/* Top Row: Checkbox + Thumbnail + Title/Badges + Delete Button */}
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', width: '100%' }}>
                             {/* Checkbox */}
                             <input 
                               type="checkbox" 
                               checked={isItemSelected} 
                               disabled={isOutOfStock}
                               onChange={() => toggleSelectItem(item.id)}
-                              style={{ width: '18px', height: '18px', accentColor: 'var(--accent-teal)', cursor: isOutOfStock ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+                              style={{ width: '20px', height: '20px', accentColor: 'var(--accent-teal)', cursor: isOutOfStock ? 'not-allowed' : 'pointer', flexShrink: 0, marginTop: '2px' }}
                               title={isOutOfStock ? "Out of stock - cannot be selected" : (isItemSelected ? "Deselect item" : "Select item for purchase")}
                             />
 
-                            <div style={{ width: '48px', height: '48px', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              {item.imageUrl && item.imageUrl.length > 4 ? (
-                                <img src={item.imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: isOutOfStock ? 'grayscale(0.7)' : 'none' }} />
+                            {/* Product Image */}
+                            <div style={{ width: '48px', height: '48px', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--border-light)' }}>
+                              {item.imageUrl && formatImageUrl(item.imageUrl).length > 4 ? (
+                                <img src={formatImageUrl(item.imageUrl)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: isOutOfStock ? 'grayscale(0.7)' : 'none' }} />
                               ) : (
                                 <ProductIcon name={item.name} category={item.category} size={20} />
                               )}
                             </div>
-                            <div>
-                              <h4 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: '700', color: isOutOfStock ? 'var(--text-muted)' : 'var(--text-primary)' }}>{item.name}</h4>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <span className="badge badge-customer" style={{ fontSize: '11px' }}>{item.category}</span>
+
+                            {/* Title & Metadata */}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: '700', color: isOutOfStock ? 'var(--text-muted)' : 'var(--text-primary)', wordBreak: 'break-word', lineHeight: '1.3' }}>
+                                {item.name}
+                              </h4>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span className="badge badge-customer" style={{ fontSize: '10px', padding: '2px 6px' }}>{item.category}</span>
                                 
                                 {isOutOfStock ? (
                                   <span style={{ 
                                     background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.25))', 
                                     color: '#ef4444', 
                                     fontWeight: '800', 
-                                    fontSize: '11px', 
-                                    padding: '2px 8px', 
+                                    fontSize: '10px', 
+                                    padding: '2px 6px', 
                                     borderRadius: '4px',
                                     border: '1px solid rgba(239, 68, 68, 0.35)'
                                   }}>
@@ -2029,12 +2130,12 @@ export default function CustomerDashboard({
                                     background: 'rgba(245, 158, 11, 0.15)', 
                                     color: '#f59e0b', 
                                     fontWeight: '700', 
-                                    fontSize: '11px', 
-                                    padding: '2px 7px', 
+                                    fontSize: '10px', 
+                                    padding: '2px 6px', 
                                     borderRadius: '4px',
                                     border: '1px solid rgba(245, 158, 11, 0.35)'
                                   }}>
-                                    ⚠️ Only {currentStock} in stock (in cart: {item.quantity})
+                                    ⚠️ Only {currentStock} in stock
                                   </span>
                                 ) : hasDiscount ? (
                                   <span style={{ 
@@ -2051,57 +2152,68 @@ export default function CustomerDashboard({
                                 ) : null}
                               </div>
                             </div>
+
+                            {/* Trash Button */}
+                            <button 
+                              type="button" 
+                              onClick={() => removeFromCart(item.id)} 
+                              className="btn-icon-only" 
+                              style={{ color: 'var(--accent-rose)', borderColor: 'rgba(239, 68, 68, 0.2)', width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                              title="Remove item from cart"
+                            >
+                              <Trash2 size={15} />
+                            </button>
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                            {/* Quantity controls */}
+                          {/* Bottom Row: Quantity controls on Left, Total price on Right */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid var(--border-light)', width: '100%' }}>
+                            {/* Quantity Controls */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <button 
                                 type="button" 
                                 onClick={() => updateCartQuantity(item.id, -1, currentStock)} 
                                 className="btn-icon-only"
-                                style={{ padding: '3px' }}
+                                style={{ width: '30px', height: '30px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }}
                                 title="Decrease quantity"
                               >
-                                <Minus size={12} />
+                                <Minus size={13} />
                               </button>
-                              <strong style={{ fontSize: '13px', minWidth: '16px', textAlign: 'center', color: isOutOfStock ? 'var(--accent-rose)' : 'inherit' }}>{item.quantity}</strong>
+                              <strong style={{ fontSize: '14px', minWidth: '22px', textAlign: 'center', color: isOutOfStock ? 'var(--accent-rose)' : 'var(--text-primary)' }}>
+                                {item.quantity}
+                              </strong>
                               <button 
                                 type="button" 
                                 onClick={() => updateCartQuantity(item.id, 1, currentStock)} 
                                 disabled={isOutOfStock || item.quantity >= currentStock}
                                 className="btn-icon-only"
                                 style={{ 
-                                  padding: '3px',
+                                  width: '30px', 
+                                  height: '30px', 
+                                  padding: 0, 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center',
+                                  borderRadius: '6px',
                                   opacity: (isOutOfStock || item.quantity >= currentStock) ? 0.35 : 1,
                                   cursor: (isOutOfStock || item.quantity >= currentStock) ? 'not-allowed' : 'pointer'
                                 }}
                                 title={isOutOfStock ? "Product is out of stock" : (item.quantity >= currentStock ? "Reached maximum available stock" : "Increase quantity")}
                               >
-                                <Plus size={12} />
+                                <Plus size={13} />
                               </button>
                             </div>
 
-                            <div style={{ textAlign: 'right', minWidth: '95px' }}>
+                            {/* Total Item Price & Strikethrough MRP */}
+                            <div style={{ textAlign: 'right' }}>
                               <div style={{ fontSize: '16px', fontWeight: '800', color: isOutOfStock ? 'var(--text-muted)' : 'var(--text-primary)' }}>
                                 ₹{(item.price * item.quantity).toLocaleString('en-IN')}
                               </div>
                               {hasDiscount && (
-                                <div style={{ fontSize: '12px', fontWeight: '600', textDecoration: 'line-through', color: '#94a3b8', textDecorationColor: '#ef4444', textDecorationThickness: '1.5px' }}>
+                                <div style={{ fontSize: '11px', fontWeight: '600', textDecoration: 'line-through', color: '#94a3b8', textDecorationColor: '#ef4444', textDecorationThickness: '1.5px' }}>
                                   ₹{(item.originalPrice * item.quantity).toLocaleString('en-IN')}
                                 </div>
                               )}
                             </div>
-
-                            <button 
-                              type="button" 
-                              onClick={() => removeFromCart(item.id)} 
-                              className="btn-icon-only" 
-                              style={{ color: 'var(--accent-rose)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
-                              title="Remove item from cart"
-                            >
-                              <Trash2 size={14} />
-                            </button>
                           </div>
                         </div>
                       );
@@ -2363,39 +2475,28 @@ export default function CustomerDashboard({
               </div>
 
               {/* Step indicator */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px' }}>
+              <div className="checkout-stepper-container">
                 {[
-                  { num: 1, label: 'Review & Address' },
-                  { num: 2, label: 'Payment' },
-                  { num: 3, label: 'Verification' },
-                  { num: 4, label: 'Order Created' }
+                  { num: 1, label: 'Address', fullLabel: 'Review & Address' },
+                  { num: 2, label: 'Payment', fullLabel: 'Payment' },
+                  { num: 3, label: 'Verify', fullLabel: 'Verification' },
+                  { num: 4, label: 'Created', fullLabel: 'Order Created' }
                 ].map((s, idx) => {
                   const isActive = paymentStep === s.num;
                   const isCompleted = paymentStep > s.num;
                   return (
                     <React.Fragment key={s.num}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div style={{
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: '50%',
-                          background: isCompleted ? 'var(--accent-emerald)' : isActive ? 'var(--accent-teal)' : 'var(--bg-card-hover)',
-                          color: isCompleted || isActive ? '#fff' : 'var(--text-muted)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '11px',
-                          fontWeight: 'bold',
-                          border: '1px solid var(--border-light)'
-                        }}>
-                          {isCompleted ? <Check size={14} /> : s.num}
+                      <div className="checkout-step-item">
+                        <div className={`checkout-step-circle ${isCompleted ? 'completed' : isActive ? 'active' : ''}`}>
+                          {isCompleted ? <Check size={12} /> : s.num}
                         </div>
-                        <span style={{ fontSize: '11px', fontWeight: isActive ? '700' : '500', color: isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                          {s.label}
+                        <span className={`checkout-step-label ${isActive ? 'active' : ''}`}>
+                          <span className="step-label-desktop">{s.fullLabel}</span>
+                          <span className="step-label-mobile">{s.label}</span>
                         </span>
                       </div>
                       {idx < 3 && (
-                        <div style={{ flex: 1, height: '2px', background: paymentStep > s.num ? 'var(--accent-emerald)' : 'var(--border-light)', margin: '0 8px' }} />
+                        <div className={`checkout-step-line ${paymentStep > s.num ? 'completed' : ''}`} />
                       )}
                     </React.Fragment>
                   );
@@ -2575,8 +2676,8 @@ export default function CustomerDashboard({
                           <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-card)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <div style={{ width: '32px', height: '32px', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)' }}>
-                                {item.imageUrl && item.imageUrl.length > 4 ? (
-                                  <img src={item.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                {item.imageUrl && formatImageUrl(item.imageUrl).length > 4 ? (
+                                  <img src={formatImageUrl(item.imageUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
                                   <ProductIcon name={item.name} category={item.category} size={16} />
                                 )}
@@ -3144,7 +3245,7 @@ export default function CustomerDashboard({
               <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '8px' }}>
                 Return Lifecycle Stages
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', textAlign: 'center', fontSize: '11px' }}>
+              <div className="responsive-lifecycle-grid">
                 <div style={{ padding: '6px', background: 'rgba(20, 184, 166, 0.15)', borderRadius: '6px', color: 'var(--accent-teal)', fontWeight: '700' }}>
                   1. Request (Pending)
                 </div>
@@ -3413,13 +3514,13 @@ export default function CustomerDashboard({
                       {rf.customerProofImage && (
                         <div style={{ marginTop: '6px' }}>
                           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Customer Proof Photo:</span>
-                          <img src={rf.customerProofImage} alt="Customer Return Proof" style={{ width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '6px', marginTop: '4px', border: '1px solid var(--border-light)' }} />
+                          <img src={formatImageUrl(rf.customerProofImage)} alt="Customer Return Proof" style={{ width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '6px', marginTop: '4px', border: '1px solid var(--border-light)' }} />
                         </div>
                       )}
                       {rf.warehouseInspectionImage && (
                         <div style={{ marginTop: '6px' }}>
                           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Warehouse QC Photo:</span>
-                          <img src={rf.warehouseInspectionImage} alt="Warehouse QC Proof" style={{ width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '6px', marginTop: '4px', border: '1px solid var(--border-light)' }} />
+                          <img src={formatImageUrl(rf.warehouseInspectionImage)} alt="Warehouse QC Proof" style={{ width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '6px', marginTop: '4px', border: '1px solid var(--border-light)' }} />
                         </div>
                       )}
                     </div>

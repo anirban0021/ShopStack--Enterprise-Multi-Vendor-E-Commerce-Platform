@@ -11,7 +11,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/inbound-shipments")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(originPatterns = "*", allowCredentials = "true")
 public class InboundShipmentController {
 
     @Autowired

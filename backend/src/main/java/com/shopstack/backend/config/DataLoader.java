@@ -89,6 +89,13 @@ public class DataLoader implements CommandLineRunner {
                 if (blrQty > 0) {
                     inventoryRepository.save(new Inventory(whBangalore, product, blrQty));
                 }
+            } else {
+                // Synchronize global product stock with existing warehouse inventories
+                int totalAvailable = existingInv.stream().mapToInt(Inventory::getAvailableQuantity).sum();
+                if (product.getStock() == null || product.getStock() != totalAvailable) {
+                    product.setStock(totalAvailable);
+                    productRepository.save(product);
+                }
             }
         }
 

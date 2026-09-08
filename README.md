@@ -369,26 +369,26 @@ This section documents the technical enhancements, schema upgrades, API addition
 ## 📌 Day 4 Deliverables & Features
 
 ### 1. Multi-Paragraph Product Descriptions (Carriage Return & Newline Support)
-- [x] **Paragraph Formatting Preservation**: Integrated custom CSS layout styling rules on the public store catalog details viewport in [HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/HomeDashboard.jsx#L755) to render descriptions using `whiteSpace: 'pre-wrap'`. This preserves line breaks, enters, and custom paragraph separation inputted by merchants.
-- [x] **PostgreSQL TEXT Column Type Mapping**: Configured the ORM mapping in [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Product.java#L32-L33) to assign the `description` column definition type to `TEXT`. This overrides the default character limit, allowing vendors to submit rich descriptions of arbitrary length.
+- [x] **Paragraph Formatting Preservation**: Integrated custom CSS layout styling rules on the public store catalog details viewport in [HomeDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/HomeDashboard.jsx#L755) to render descriptions using `whiteSpace: 'pre-wrap'`. This preserves line breaks, enters, and custom paragraph separation inputted by merchants.
+- [x] **PostgreSQL TEXT Column Type Mapping**: Configured the ORM mapping in [Product.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Product.java#L32-L33) to assign the `description` column definition type to `TEXT`. This overrides the default character limit, allowing vendors to submit rich descriptions of arbitrary length.
 
 ### 2. Expanded Field Sizes & Live Form Validation Counters
-- [x] **Extended Product Name & Order Item Capacities**: Updated the database column configurations in [Product.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Product.java#L19-L20) and [OrderItem.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/OrderItem.java#L19-L20) to use `@Column(length = 1000)`. This prevents order logging crashes and supports descriptive product names (up to 50 words) without database truncation errors.
-- [x] **Live Word Counter UI Widgets**: Refined the product listing wizard form in [VendorDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx#L587-L633) to render dynamic counter indicators (`X / 50 words` for product name, `X / 500 words` for description) that refresh in real time as the vendor types.
+- [x] **Extended Product Name & Order Item Capacities**: Updated the database column configurations in [Product.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Product.java#L19-L20) and [OrderItem.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/OrderItem.java#L19-L20) to use `@Column(length = 1000)`. This prevents order logging crashes and supports descriptive product names (up to 50 words) without database truncation errors.
+- [x] **Live Word Counter UI Widgets**: Refined the product listing wizard form in [VendorDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx#L587-L633) to render dynamic counter indicators (`X / 50 words` for product name, `X / 500 words` for description) that refresh in real time as the vendor types.
 - [x] **Interactive Word Limit Warning & Enforcement**: The word counter widget text dynamically highlights in bright red if limits are exceeded. Furthermore, the submit handler strictly blocks request dispatching, throwing interactive toast alerts if validation rules are violated.
 
 ### 3. Fee-Free Checkout Simplification
-- [x] **Zero GST Tax & Standard Shipping Fees**: Setup clean checkout policies by setting standard `taxRate` and `shippingFee` variables to `0.0` in both storefront components ([HomeDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/HomeDashboard.jsx#L85) and [CustomerDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx#L56)).
+- [x] **Zero GST Tax & Standard Shipping Fees**: Setup clean checkout policies by setting standard `taxRate` and `shippingFee` variables to `0.0` in both storefront components ([HomeDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/HomeDashboard.jsx#L85) and [CustomerDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx#L56)).
 - [x] **Simplified Checkout Summaries**: Cleaned up checkout summary cards by removing Tax (GST) and Shipping cost rows, showing only the Items Subtotal as the final checkout Total.
 
 ### 4. Lightweight Stock Level Management API
-- [x] **Quick Inline Stock Updates**: Built a focused stock update API endpoint (`PUT /api/products/{id}/stock`) in [ProductController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/ProductController.java#L229-L246). This allows vendors in [VendorDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx#L451) and warehouse operators in [WarehouseDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/WarehouseDashboard.jsx#L46) to increment/decrement inventory count directly. Because it is a separate endpoint, it changes the stock without resetting the product's moderator state back to `PENDING` approval.
+- [x] **Quick Inline Stock Updates**: Built a focused stock update API endpoint (`PUT /api/products/{id}/stock`) in [ProductController.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/ProductController.java#L229-L246). This allows vendors in [VendorDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx#L451) and warehouse operators in [WarehouseDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/WarehouseDashboard.jsx#L46) to increment/decrement inventory count directly. Because it is a separate endpoint, it changes the stock without resetting the product's moderator state back to `PENDING` approval.
 
 ### 5. Automated Startup Database Seed Cleanup
-- [x] **PostConstruct Seeding Handler**: Configured a `cleanupSeedProducts()` hook in [ProductController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/ProductController.java#L37-L54) executing on backend startup. It automatically removes raw seeded mock catalog products that lack a VENDOR owner, ensuring a clean, production-ready workspace for live merchant registration.
+- [x] **PostConstruct Seeding Handler**: Configured a `cleanupSeedProducts()` hook in [ProductController.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/ProductController.java#L37-L54) executing on backend startup. It automatically removes raw seeded mock catalog products that lack a VENDOR owner, ensuring a clean, production-ready workspace for live merchant registration.
 
 ### 6. Upload Size Configuration Upgrades
-- [x] **Increased Spring Boot/Tomcat Upload Limit**: Added capacity rules inside [application.properties](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/resources/application.properties#L10-L14) to raise multipart/form limits to `50MB`. This accommodates large image payloads uploaded as Base64 Data URL strings.
+- [x] **Increased Spring Boot/Tomcat Upload Limit**: Added capacity rules inside [application.properties](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/resources/application.properties#L10-L14) to raise multipart/form limits to `50MB`. This accommodates large image payloads uploaded as Base64 Data URL strings.
 
 ---
 
@@ -560,7 +560,7 @@ Payment Method Selection: Razorpay Online Gateway or Cash on Delivery (COD)
 
 ### 3. Product Approval & Administrative Workflow Console
 - [x] **Moderation Status Enforcement**: Whenever a vendor creates a product or updates pricing/discounts, the product status is automatically placed in **`PENDING`** approval.
-- [x] **Admin Approval Console**: Dedicated interactive console in [AdminDashboard.jsx](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/AdminDashboard.jsx) with real-time pending notification badges.
+- [x] **Admin Approval Console**: Dedicated interactive console in [AdminDashboard.jsx](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/AdminDashboard.jsx) with real-time pending notification badges.
 - [x] **Merchant Identity Verification**: Admin console displays full merchant details for each submission:
   - **Vendor Full Name**
   - **Vendor ID & Unique 6-Digit Vendor Code** (`VND-XXXXXX`)
@@ -577,7 +577,7 @@ Payment Method Selection: Razorpay Online Gateway or Cash on Delivery (COD)
 - [x] **Free Delivery Upsell Indicator**: Real-time progress callout (`🚚 Add ₹X more for FREE Delivery!`) when order subtotal is below ₹500.
 
 ### 5. Multiple Shipping Addresses Management ("Your Addresses")
-- [x] **Database Address Entity**: Created [Address.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Address.java) and [AddressRepository.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/repository/AddressRepository.java) supporting `HOME`, `WORK`, and `OTHER` address types.
+- [x] **Database Address Entity**: Created [Address.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/model/Address.java) and [AddressRepository.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/repository/AddressRepository.java) supporting `HOME`, `WORK`, and `OTHER` address types.
 - [x] **Dedicated "Your Addresses" Tab**: New sidebar view in Customer Profile displaying all saved addresses with a prominent emerald **`✓ DEFAULT ADDRESS`** badge.
 - [x] **Address Controls**:
   - **Set as Default**: One-click default address switcher (`PUT /api/customer/{id}/addresses/{addressId}/default`).
@@ -593,7 +593,7 @@ Payment Method Selection: Razorpay Online Gateway or Cash on Delivery (COD)
 - [x] **Selective Order Execution**: Checkout only places orders for selected items. Unselected items remain safely in the customer's cart for future checkout.
 
 ### 7. Password Recovery & Security Enhancements
-- [x] **Forgot Password Verification**: Endpoints in [AuthController.java](file:///c:/Users/ASUS/Desktop/Infosys/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AuthController.java) verifying account existence before allowing password reset.
+- [x] **Forgot Password Verification**: Endpoints in [AuthController.java](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AuthController.java) verifying account existence before allowing password reset.
 - [x] **Dynamic Password Strength Checklist**: Real-time complexity validator enforcing 8+ characters, uppercase, lowercase, numbers, and symbols during password reset.
 - [x] **Password Confirmation Match**: Client-side match validation preventing mismatched passwords.
 
@@ -1792,3 +1792,347 @@ GET | `/api/vendor/{vendorId}/analytics` | Vendor revenue and order analytics wi
 1. Note the Gross Sales Volume and Platform Commission on the Admin Overview tab.
 2. Approve and disburse a refund for an order.
 3. Refresh analytics and verify that Gross Sales Volume, Platform Commission (10%), and Vendor Net Revenue deduct the refunded transaction amount.
+
+---
+
+# 🛠️ ShopStack — Day 13: System Testing & Critical Bug Fixing
+
+This milestone delivers **System Testing and Critical Enterprise Bug Fixes**, focusing on **phantom order elimination for failed checkouts**, **bi-directional multi-warehouse inventory synchronization**, and **automated database cleanup & test suite validation**.
+
+---
+
+## 📌 Architecture & Synchronization Flow (Day 13)
+
+```mermaid
+flowchart TD
+    subgraph "1. Checkout Resilience & Failed Order Guard"
+        A["Customer Initiates Checkout"] --> B{"Razorpay Payment Result"}
+        B -->|"Payment Dismissed / Failed"| C["Zero Orders Created in DB<br/>Clean Customer & Admin History"]
+        B -->|"Payment Verified"| D["Create Valid Order (ORD-XXXXXX)<br/>Status: CONFIRMED, Payment: PAID"]
+    end
+
+    subgraph "2. Multi-Warehouse Stock Synchronizer"
+        E["Vendor/Admin Stock Update"] --> F["Update Product Global Stock"]
+        F --> G["Proportional Auto-Distribution Across 4 Regional Hubs<br/>(Kolkata, Mumbai, Delhi, Bangalore)"]
+        G --> H["Live Aggregated Available Stock Computed on Read<br/>sum(inventory.quantity - allocated)"]
+    end
+```
+
+---
+
+## 📌 Key Problems Resolved & Enhancements (Day 13)
+
+### 1. Elimination of Phantom Orders on Failed / Dismissed Checkouts
+* **The Problem**: When a customer dismissed the Razorpay modal or encountered a payment failure, duplicate webhook/event handlers (`payment.failed` and `modal.ondismiss`) fired simultaneously, causing the backend to generate multiple phantom orders (e.g. `ORD-FAIL-603250`) with status `CANCELLED` and payment status `FAILED`, polluting the customer's order history and the Admin Order Monitoring dashboard.
+* **The Fix**:
+  - **Non-Persisted Diagnostics**: Modified `PaymentService.recordFailedPayment` to purely log diagnostic events without creating or saving any `Order` or `OrderItem` entities in PostgreSQL.
+  - **Automated Database Cleanup**: Added a startup `@PostConstruct` cleanup routine in `PaymentService` that automatically detects and purges legacy `ORD-FAIL-*` records and their child order items from the database.
+  - **Controller-Level Guards**: Implemented defensive filtering in `CustomerController.getCustomerOrders`, `CustomerController.getAllOrders`, `AdminController.getPaymentMonitoringOverview`, and `VendorController.getVendorOrders` to guarantee that only legitimate orders are processed and displayed.
+  - **Frontend Event Handling**: Streamlined checkout event handlers in `CustomerDashboard.jsx` and `HomeDashboard.jsx` to show non-intrusive toast notifications and maintain the payment state for effortless retry without triggering order creation.
+
+### 2. Live Bi-Directional Multi-Warehouse Stock Synchronization
+* **The Problem**: A 2:1 discrepancy existed where the Vendor Product Table showed static, stale product stock values (e.g. 800 units) while the Admin Multi-Warehouse Distribution table showed the true physical inventory sum across 4 regional hubs (400 × 4 = 1,600 units). Manual stock updates from vendors did not distribute stock into warehouse inventories.
+* **The Fix**:
+  - **Dynamic Stock Computation on Read**: Updated `populateRatings` in `ProductController` and `populateProductRatings` in `AdminController` to dynamically compute `product.stock` as the live sum of available stock (`sum(quantity - allocated)`) across all warehouses.
+  - **Startup Reconciler**: Added automated synchronization in `ProductController.initProducts()` and `DataLoader.java` to reconcile catalog stock with physical warehouse inventory on server boot.
+  - **Bi-Directional Stock Updates**: Enhanced `updateProductStock` (`PUT /api/products/{id}/stock`), `addProduct`, and `updateProduct` in `ProductController` so that any stock update from vendors or admins is automatically distributed across the regional fulfillment hubs (Kolkata, Mumbai, Delhi, Bangalore).
+
+### 3. Automated Test Suite Verification
+* Executed full unit and integration test suite (`CommissionCalculationTests.java` and `BackendApplicationTests.java`).
+* Verified 100% test pass rate (6/6 passing) covering marketplace commission calculations (10% platform fee, 90% vendor payout), COD settlements on delivery, and refund deductions.
+
+---
+
+## 📂 Project Structure Updates (Day 13)
+
+```text
+ShopStack/
+├── backend/
+│   └── src/main/java/com/shopstack/backend/
+│       ├── config/
+│       │   └── DataLoader.java                # Global stock synchronization with warehouse inventory
+│       ├── controller/
+│       │   ├── ProductController.java         # Dynamic stock calculation & bi-directional warehouse sync
+│       │   ├── CustomerController.java        # Excluded failed/phantom orders from customer history & admin
+│       │   ├── AdminController.java           # Dynamic product stock & filtered payment monitoring
+│       │   ├── VendorController.java          # Clean vendor order listings & accurate low-stock analytics
+│       │   └── PaymentController.java         # Non-persisting failure recording
+│       └── service/
+│           └── PaymentService.java            # Startup cleanup for failed orders & non-persisting failure handler
+│
+├── frontend/
+│   └── src/
+│       └── components/
+│           ├── CustomerDashboard.jsx          # Clean Razorpay dismiss/failure handling & filtered order history
+│           ├── HomeDashboard.jsx              # Clean checkout cancellation handling
+│           └── AdminDashboard.jsx             # Clean Order Monitoring table without failed attempts
+│
+└── Documentation Artifacts/
+    ├── FAILED_ORDERS_FIX_DOCUMENTATION.txt     # In-depth problem statement and fix guide for failed checkouts
+    └── PRODUCT_STOCK_SYNC_FIX_DOCUMENTATION.txt# In-depth problem statement and fix guide for stock synchronization
+```
+
+Related Code Files:
+- [`ProductController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/ProductController.java)
+- [`PaymentService.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/service/PaymentService.java)
+- [`CustomerController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/CustomerController.java)
+- [`AdminController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AdminController.java)
+- [`DataLoader.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/config/DataLoader.java)
+- [`CustomerDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx)
+- [`AdminDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/AdminDashboard.jsx)
+
+---
+
+## 📡 API Endpoints Enhanced (Day 13)
+
+### Stock & Order Integrity Endpoints
+Method | Endpoint | Description | Enhancement / Behavior
+------ | -------- | ----------- | ----------------------
+GET | `/api/products` | Fetch all approved products | Dynamically returns live available stock aggregated across all 4 fulfillment hubs
+PUT | `/api/products/{id}/stock` | Vendor quick stock update | Proportionally synchronizes and updates inventory across all 4 regional warehouses
+GET | `/api/customer/{id}/orders` | Customer order history | Strictly returns confirmed/placed orders, excluding failed/phantom checkouts
+GET | `/api/customer/orders/all` | Admin / Warehouse orders | Returns valid platform orders, excluding failed payment attempts
+POST | `/api/payment/record-failed` | Diagnostic checkout failure logging | Logs event diagnostics without creating or saving `Order` entities
+
+---
+
+## 🚦 Verification Checklist (Day 13)
+
+### 1. Checkout Failure & Dismissal Integrity
+1. Initiate a Razorpay payment as a Customer and intentionally dismiss or close the modal.
+2. Verify that a `"Payment Cancelled"` toast appears and the checkout screen remains ready for retry.
+3. Open **Customer Order History** and confirm **0** canceled/failed orders appear.
+4. Log in as Admin, open **Order Monitoring**, and verify **0** failed phantom orders are listed.
+5. Complete a successful retry payment and verify that exactly **1** confirmed order is registered.
+
+### 2. Stock Synchronization Across Catalog & Warehouses
+1. Open the **Vendor Dashboard** and note the stock for any product (e.g. iPhone 17 Pro Max showing `1,600 IN STOCK`).
+2. Open **Admin Dashboard → Warehouses & Allocation → Vendor Product Stock Distribution Across Warehouses**.
+3. Confirm that the total physical stock and available units in all hubs (400 + 400 + 400 + 400 = 1,600) match the vendor catalog stock exactly.
+4. Use the quick stock `+` / `-` buttons on the Vendor Dashboard to increment stock by 1, and verify both views update in real-time.
+
+---
+
+# 📱 ShopStack — Day 14: Ergonomic Mobile Navigation, Responsive Layout Alignment, Isolated "Buy Now" Checkout & Cross-Browser Alignment
+
+This milestone delivers **Full Multi-Device UI Responsiveness** (Desktop, Tablet, Mobile), an **Ergonomic Mobile Bottom Navigation Dock**, a **Single-Row Streamlined Mobile Top App Bar with Compact Search & Notifications**, **Centralized Marketplace Notification Center**, **Responsive Grid & Pipeline Distribution Tracker Alignment Fixes**, **Cross-Browser Custom `<select>` & `<option>` Dropdown Styling**, **Centralized Account Controls & Session Reassurance Dialog**, an **Isolated Direct "Buy Now" Checkout Engine**, **Cart Drawer Stability Fixes**, **Mobile Wi-Fi Cross-Device Media Delivery**, **Automated Backend Commission Calculation Unit Testing**, and **Standardized Enterprise Error Handling**.
+
+---
+
+## 📌 Architecture & Interaction Flows (Day 14)
+
+```mermaid
+flowchart TD
+    subgraph "1. Mobile Ergonomic Navigation & Notification Architecture"
+        A["Mobile User Viewport (<= 768px)"] --> B["Single-Row Top App Bar<br/>[Logo] + [Compact Search (36px)] + [Live Notif Bell]"]
+        A --> C["Fixed Bottom Navigation Dock (MobileBottomNav)<br/>[Home] + [Role Action / Orders] + [Cart (Live Badge)] + [Profile]"]
+        B --> D["Centralized Notification Dropdown<br/>- Admin: Pending Product Reviews<br/>- Customer: Live Order Status Tracking"]
+        C --> E["One-Thumb Ergonomic Role Switching<br/>(Customer, Vendor, Admin, Warehouse Staff)"]
+    end
+
+    subgraph "2. Isolated Direct 'Buy Now' Checkout vs Persistent Cart"
+        F["Shopper Clicks 'Buy Now'"] --> G["handleBuyNow(product)"]
+        G --> H["Set checkoutMode = 'buynow'<br/>activeProduct = [Single Item]"]
+        H --> I["Direct Checkout Overlay<br/>(Persistent Cart State Untouched)"]
+        I -->|"User Cancels Checkout"| J["Reset checkoutMode<br/>(Cart Items Preserved 100%)"]
+        I -->|"User Confirms Order"| K["Process Single Order Placement<br/>(Cart Items Retained for Future Checkout)"]
+    end
+
+    subgraph "3. Responsive Grids & Cross-Browser Select Alignment"
+        L["Pipeline Distribution Tracker & Analytics"] --> M["Desktop: 4-Column Grid (repeat(4, 1fr))<br/>Tablet / Mobile: 2x2 Balanced Grid (repeat(2, 1fr))"]
+        N["Browser Native Select Dropdown"] --> O["appearance: none + Custom Embedded SVG Chevron<br/>Theme-Aware Styled <option> (Dark: #131c31, Light: #ffffff)<br/>Consistent Width, Padding & Zero Popover Clipping"]
+    end
+
+    subgraph "4. Universal Session Guard & Error Normalization"
+        P["User Clicks 'Log Out'"] --> Q["Show Reassurance Confirmation Dialog<br/>(Are you sure you want to log out?)"]
+        Q -->|"Confirm Logout"| R["Clear Auth State & Redirect to /login"]
+        S["Backend Exception"] --> T["GlobalExceptionHandler (@RestControllerAdvice)"]
+        T --> U["ApiErrorResponse JSON -> extractErrorMessage() Toast Normalizer"]
+    end
+```
+
+---
+
+## 📌 Key Capabilities & Enhancements (Day 14)
+
+### 1. Ergonomic Mobile Bottom Navigation Dock (`MobileBottomNav.jsx`)
+* **Docked Bottom Navigation**:
+  - Implemented a fixed, frosted glassmorphism mobile bottom navigation bar docked to the bottom of the viewport (`z-index: 600`, `backdrop-filter: blur(20px)`).
+  - Provides quick thumb access across mobile devices:
+    - **Home**: Instant return to the storefront catalog.
+    - **Role Dynamic Panel**: Context-aware button displaying **Admin Console** (for Administrators), **Seller Console** (for Vendors), **Warehouse Hub** (for Warehouse Staff), or **My Orders** (for Customers).
+    - **Cart**: Direct cart checkout trigger with animated live item count badge.
+    - **Profile**: Direct navigation to user profile, saved addresses, and orders.
+  - Safe-area inset padding (`env(safe-area-inset-bottom)`) prevents collision with hardware gesture bars on modern iOS and Android devices.
+
+### 2. Streamlined Single-Row Mobile Top App Bar
+* **Single-Row Layout**:
+  - Transformed the top navbar on mobile (`<= 768px`) into a single, cohesive horizontal row containing:
+    - **ShopStack Gradient Logo** (`font-size: 18px`).
+    - **Compact Search Input** (`height: 36px`, `max-width: 210px`, reduced padding and clean placeholder).
+    - **Live Notification Bell** with pulsing badge and responsive overlay dropdown.
+* **Header Cleanup**:
+  - Removed duplicate theme toggles from the mobile storefront header for a clutter-free, professional shopping experience.
+
+### 3. Centralized Marketplace Notification Center
+* **Single Hub for Alerts**:
+  - Centralized all notification badges and dropdowns inside `HomeDashboard.jsx` (accessible across desktop and mobile headers).
+  - Displays live alerts for:
+    - **Admin / Staff**: Pending vendor product submission review counts with direct navigation to the approval drawer.
+    - **Customer**: Real-time active order status tracking (`PROCESSING`, `PLACED`, `OUT_FOR_DELIVERY`) with one-tap order inspection.
+  - Cleaned up duplicate notification bell buttons from `AdminDashboard.jsx`, `VendorDashboard.jsx`, and `WarehouseDashboard.jsx` for clean visual hierarchy.
+
+### 4. Responsive Grid & Pipeline Distribution Tracker Fix
+* **Pipeline Distribution Tracker Alignment**:
+  - Fixed mobile card overflow in the **Warehouse Logistics Hub** (`WarehouseDashboard.jsx`) where 4 pipeline steps previously extended past the right screen boundary.
+  - Replaced inline fixed styles with `.pipeline-tracker-grid` and `.pipeline-tracker-item`.
+  - On desktop (`> 868px`): Renders as 4 columns in a single row.
+  - On mobile & tablets (`<= 868px` and `<= 480px`): Automatically rearranges into a balanced **2×2 grid** (`repeat(2, 1fr)`), keeping all 4 steps (`1. STOCK ALLOCATED`, `2. PRODUCT PICKED`, `3. ORDER PACKED`, `4. READY FOR SHIPMENT`) neatly inside the screen boundary.
+* **Universal Responsive Utility Classes**:
+  - `.responsive-kpi-grid`: Auto-fits on desktop, 2 columns on tablet, 1 column on mobile.
+  - `.responsive-split-grid`: 1.2fr/0.8fr side-by-side on desktop, stacks to 1 column on mobile.
+  - `.responsive-lifecycle-grid`: 4 columns on desktop, 2×2 on mobile.
+  - `.metric-card`, `.metric-label`, `.metric-value`: Scaled typography and padding for high-density mobile screens.
+
+### 5. Cross-Browser Custom `<select>` & `<option>` Dropdown Styling
+* **Elimination of OS / Popover Clipping**:
+  - Resolved browser-native select popover distortion where `<option>` lists extended past container edges with misaligned system backgrounds.
+  - Applied `appearance: none`, `-webkit-appearance: none`, and `-moz-appearance: none` with custom inline SVG chevrons.
+  - Set `width: 100%`, `max-width: 100%`, and `box-sizing: border-box`.
+* **Theme-Aware `<option>` Styling**:
+  - Explicitly styled `<option>` elements with dark theme (`#131c31`) and light theme (`#ffffff`) background colors, `#f8fafc` / `#0f172a` text, left-alignment (`text-align: left`), and `#6366f1` indigo active selection highlight.
+
+### 6. Isolated Direct "Buy Now" Checkout Engine
+* **Dedicated Single-Product Flow**:
+  - Prominent **"⚡ Buy Now"** button on product cards and details modals.
+  - Triggers direct checkout in `checkoutMode = 'buynow'` containing strictly the chosen product.
+* **Persistent Cart Immunity**:
+  - Does **not** mutate or clear persistent cart items.
+  - Canceling or completing a Buy Now order leaves existing cart items intact for future purchases.
+
+### 7. Cart Drawer Stability & Strikethrough Pricing
+* **Zero-Crash Drawer**:
+  - Fixed `hasDiscount` scope error in `HomeDashboard.jsx` that caused blank screen crashes on opening the cart drawer.
+  - Displays original price strikethroughs, discount percentages, and real-time quantity steppers.
+
+### 8. Cross-Device Wi-Fi Media Streaming & Proxy Configuration
+* **Mobile Image Streaming**:
+  - Implemented [`imageHelper.js`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/utils/imageHelper.js) (`formatImageUrl`) converting absolute backend URLs to relative `/uploads/...` paths.
+  - Configured Vite reverse proxy in [`vite.config.js`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/vite.config.js) to forward `/uploads` and `/api` to the Spring Boot backend (`http://127.0.0.1:8080`).
+
+### 9. Standardized Backend Exception Interceptor & Frontend Normalizer
+* **Backend Error Advice**:
+  - Implemented [`GlobalExceptionHandler.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/config/GlobalExceptionHandler.java) (`@RestControllerAdvice`) returning structured `ApiErrorResponse` JSON.
+* **Frontend Error Normalizer**:
+  - Implemented [`errorHandler.js`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/utils/errorHandler.js) (`extractErrorMessage`) converting API errors into user-friendly toast notifications.
+
+### 10. Automated Backend Commission Calculation Unit Test Suite
+* **JUnit 5 Suite** ([`CommissionCalculationTests.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/test/java/com/shopstack/backend/CommissionCalculationTests.java)):
+  - Validates 10% platform commission, dynamic promotional rate simulation, automated COD settlement generation, and refund deductions.
+
+---
+
+## 📂 Project Structure Updates (Day 14)
+
+```text
+ShopStack/
+├── backend/
+│   ├── src/main/java/com/shopstack/backend/
+│   │   ├── config/
+│   │   │   ├── GlobalExceptionHandler.java    # @RestControllerAdvice standardized JSON error interceptor
+│   │   │   ├── SecurityConfig.java            # Permissive CORS & preflight filter configuration
+│   │   │   └── WebConfig.java                 # Universal origin mapper for local and Wi-Fi clients
+│   │   ├── controller/
+│   │   │   └── CommissionController.java      # Financial commission calculation & simulation APIs
+│   │   └── service/
+│   │       └── PaymentService.java            # Automated settlement creation & refund reversal logic
+│   └── src/test/java/com/shopstack/backend/
+│       └── CommissionCalculationTests.java    # JUnit 5 suite for commission, payout & refund tests
+│
+├── frontend/
+│   ├── vite.config.js                         # Reverse proxy for /api and /uploads with header rewriting
+│   └── src/
+│       ├── App.jsx                            # Global session reassurance logout modal & route guards
+│       ├── index.css                          # Universal responsive layout, pipeline 2x2 grid & custom select styles
+│       ├── utils/
+│       │   ├── errorHandler.js                # extractErrorMessage universal error normalizer
+│       │   └── imageHelper.js                 # formatImageUrl cross-device media URL adapter
+│       └── components/
+│           ├── MobileBottomNav.jsx            # Fixed ergonomic bottom dock (Home, Orders/Admin/Vendor/WH, Cart, Profile)
+│           ├── HomeDashboard.jsx              # Single-row mobile app bar, compact search, centralized notifications
+│           ├── CustomerDashboard.jsx          # Mobile touch pills, responsive stepper & buy now checkout
+│           ├── VendorDashboard.jsx            # Streamlined header, clean merchant controls
+│           ├── WarehouseDashboard.jsx         # Responsive pipeline distribution tracker (2x2 grid on mobile)
+│           ├── AdminDashboard.jsx             # Responsive KPI grids, split distribution charts
+│           ├── Login.jsx                      # Form validation & normalized auth error handling
+│           └── Register.jsx                   # Role domain enforcement (@admin, @staff) & password rules
+│
+└── Documentation Artifacts/
+    └── UI_RESPONSIVENESS_AND_ERROR_HANDLING_DOCUMENTATION.txt
+```
+
+Related Code Files:
+- [`MobileBottomNav.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/MobileBottomNav.jsx)
+- [`HomeDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/HomeDashboard.jsx)
+- [`WarehouseDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/WarehouseDashboard.jsx)
+- [`CustomerDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx)
+- [`AdminDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/AdminDashboard.jsx)
+- [`App.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/App.jsx)
+- [`CommissionCalculationTests.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/test/java/com/shopstack/backend/CommissionCalculationTests.java)
+- [`GlobalExceptionHandler.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/config/GlobalExceptionHandler.java)
+- [`errorHandler.js`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/utils/errorHandler.js)
+- [`imageHelper.js`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/utils/imageHelper.js)
+- [`index.css`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/index.css)
+
+---
+
+## 📡 API Endpoints Enhanced (Day 14)
+
+### Commission & Financial Simulation Endpoints
+Method | Endpoint | Description | Payload Format / Response Model
+------ | -------- | ----------- | ------------------------------
+GET | `/api/commission/calculate` | Calculates splits on-the-fly for gross `amount` and optional `rate` | Returns `{"grossAmount", "rate", "commissionAmount", "netVendorPayout"}`
+GET | `/api/commission/records` | Retrieves commission/settlement records by `vendorId` or `orderId` | Returns List of `Settlement`
+GET | `/api/admin/dashboard-summary` | Marketplace KPI summary with net refunds and commission deducted | Returns `totalSalesVolume`, `totalCommission`, `totalPayouts`
+
+---
+
+## 🚦 Verification Checklist (Day 14)
+
+### 1. Mobile Bottom Navigation Dock & Single-Row Top App Bar
+1. Open the application on a mobile viewport (375px–480px width).
+2. Verify the **Mobile Bottom Navigation Dock** appears fixed at the bottom with 4 actions:
+   - Tap **Home** → Returns to catalog.
+   - Tap **Orders / Admin / Seller / Warehouse** → Navigates directly to the role dashboard.
+   - Tap **Cart** → Opens cart drawer.
+   - Tap **Profile** → Opens customer profile & addresses.
+3. Verify the top header renders in a **single horizontal line**: Logo + Compact Search Input (`height: 36px`) + Live Notification Bell.
+
+### 2. Pipeline Distribution Tracker 2×2 Grid on Mobile
+1. Log in as Warehouse Staff or open the **Warehouse Dashboard**.
+2. Resize viewport to mobile width (`<= 768px` or `400px`).
+3. Scroll down to **Pipeline Distribution Tracker**:
+   - Verify all 4 status cards (`1. STOCK ALLOCATED`, `2. PRODUCT PICKED`, `3. ORDER PACKED`, `4. READY FOR SHIPMENT`) display as a neat **2×2 grid**.
+   - Verify zero horizontal overflow or card cutoff.
+
+### 3. Cross-Browser Dropdown `<select>` & `<option>` Alignment
+1. In **Home Dashboard**, tap the **Product Category** or **Minimum Rating** dropdown.
+2. Verify the options list opens with custom styling, left alignment, dark background (`#131c31`), and no OS popover clipping or text overflow.
+3. Switch theme to Light Mode → Verify select background is white (`#ffffff`) with dark text (`#0f172a`).
+
+### 4. Isolated "Buy Now" Checkout
+1. Add Item A to your shopping cart (Cart badge shows **1**).
+2. On any catalog product card, click **"⚡ Buy Now"** on Item B.
+3. Verify the checkout screen opens with **only Item B**.
+4. Cancel checkout → Open cart and verify Item A is still in the cart.
+5. Click **"⚡ Buy Now"** on Item B again and complete order → Verify Item A remains in your cart.
+
+### 5. Automated Commission Test Suite
+1. Run backend unit tests:
+   ```bash
+   mvn test -Dtest=CommissionCalculationTests
+   ```
+2. Verify that all commission calculation, settlement generation, and refund reversal tests pass with `BUILD SUCCESS`.
+
+
+

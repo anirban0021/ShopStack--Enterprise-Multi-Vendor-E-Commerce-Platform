@@ -25,7 +25,7 @@ import com.shopstack.backend.repository.ReviewRepository;
 
 @RestController
 @RequestMapping("/api/products")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(originPatterns = "*", allowCredentials = "true")
 public class ProductController {
 
     @Autowired
@@ -54,6 +54,12 @@ public class ProductController {
 
     @Autowired
     private com.shopstack.backend.repository.WarehouseAllocationRepository warehouseAllocationRepository;
+
+    @Autowired
+    private com.shopstack.backend.repository.WarehouseRepository warehouseRepository;
+
+    @Autowired
+    private com.shopstack.backend.service.WarehouseService warehouseService;
 
     @Autowired
     private com.shopstack.backend.service.FileStorageService fileStorageService;
@@ -123,6 +129,17 @@ public class ProductController {
             if (p.getStatus() == null || "PENDING".equalsIgnoreCase(p.getStatus())) {
                 p.setStatus("APPROVED");
                 changed = true;
+            }
+            // Sync stock with sum of available warehouse inventory
+            List<com.shopstack.backend.model.Inventory> invs = inventoryRepository.findByProductId(p.getId());
+            if (invs != null && !invs.isEmpty()) {
+                int totalAvailable = invs.stream()
+                        .mapToInt(com.shopstack.backend.model.Inventory::getAvailableQuantity)
+                        .sum();
+                if (p.getStock() == null || !p.getStock().equals(totalAvailable)) {
+                    p.setStock(totalAvailable);
+                    changed = true;
+                }
             }
             // Check if any existing product has base64 data and migrate it to disk
             if (p.getImageUrl() != null && p.getImageUrl().startsWith("data:image/")) {
@@ -202,12 +219,33 @@ public class ProductController {
         // Always require admin approval for new products
         product.setStatus("PENDING");
         Product saved = productRepository.save(product);
-        return ResponseEntity.ok(saved);
+
+        // Distribute initial stock across warehouses
+        int totalStock = saved.getStock() != null ? saved.getStock() : 0;
+        List<com.shopstack.backend.model.Warehouse> whs = warehouseRepository.findAll();
+        if (whs != null && !whs.isEmpty()) {
+            int kolQty = (int) Math.round(totalStock * 0.4);
+            int mumQty = (int) Math.round(totalStock * 0.3);
+            int delQty = (int) Math.round(totalStock * 0.2);
+            int blrQty = Math.max(0, totalStock - (kolQty + mumQty + delQty));
+
+            for (com.shopstack.backend.model.Warehouse wh : whs) {
+                int q = 0;
+                if ("Kolkata".equalsIgnoreCase(wh.getCity()) || (wh.getCode() != null && wh.getCode().contains("KOL"))) q = kolQty;
+                else if ("Mumbai".equalsIgnoreCase(wh.getCity()) || (wh.getCode() != null && wh.getCode().contains("MUM"))) q = mumQty;
+                else if ("Delhi".equalsIgnoreCase(wh.getCity()) || (wh.getCode() != null && wh.getCode().contains("DEL"))) q = delQty;
+                else if ("Bangalore".equalsIgnoreCase(wh.getCity()) || (wh.getCode() != null && wh.getCode().contains("BLR"))) q = blrQty;
+                inventoryRepository.save(new com.shopstack.backend.model.Inventory(wh, saved, q));
+            }
+        }
+
+        return ResponseEntity.ok(populateRatings(saved));
     }
 
     // Vendor: Update product price, discount, stock, category, name
     // Whenever vendor updates product price or discount, status goes back to PENDING for Admin review
     @PutMapping("/{id}")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody Product updated) {
         Optional<Product> optional = productRepository.findById(id);
         if (optional.isPresent()) {
@@ -238,7 +276,9 @@ public class ProductController {
                 p.setDiscountPercentage(0.0);
             }
             p.setFinalPrice(p.calculateFinalPrice());
-            p.setStock(updated.getStock());
+            if (updated.getStock() != null) {
+                p.setStock(updated.getStock());
+            }
             p.setImageUrl(updated.getImageUrl());
             p.setBrand(updated.getBrand());
             p.setDescription(updated.getDescription());
@@ -275,13 +315,14 @@ public class ProductController {
             p.setStatus("PENDING");
             p.setRejectionReason(null);
             Product saved = productRepository.save(p);
-            return ResponseEntity.ok(saved);
+            return ResponseEntity.ok(populateRatings(saved));
         }
         return ResponseEntity.notFound().build();
     }
 
     // Vendor: Directly update product stock inventory without triggering re-approval
     @PutMapping("/{id}/stock")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> updateProductStock(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
         Optional<Product> optional = productRepository.findById(id);
         if (optional.isPresent()) {
@@ -294,7 +335,58 @@ public class ProductController {
                 return ResponseEntity.badRequest().body("Stock cannot be negative.");
             }
             p.setStock(newStock);
-            // Stock changes apply immediately with zero approval needed, maintaining current status
+
+            // Sync with warehouse inventories proportionally
+            List<com.shopstack.backend.model.Inventory> invs = inventoryRepository.findByProductId(id);
+            if (invs != null && !invs.isEmpty()) {
+                int currentPhysicalTotal = invs.stream().mapToInt(com.shopstack.backend.model.Inventory::getQuantity).sum();
+                if (newStock == 0) {
+                    for (com.shopstack.backend.model.Inventory inv : invs) {
+                        inv.setQuantity(0);
+                        inventoryRepository.save(inv);
+                    }
+                } else if (currentPhysicalTotal > 0) {
+                    int distributedSoFar = 0;
+                    for (int i = 0; i < invs.size(); i++) {
+                        com.shopstack.backend.model.Inventory inv = invs.get(i);
+                        if (i == invs.size() - 1) {
+                            inv.setQuantity(Math.max(0, newStock - distributedSoFar));
+                        } else {
+                            double ratio = (double) inv.getQuantity() / currentPhysicalTotal;
+                            int allocatedQty = (int) Math.round(newStock * ratio);
+                            inv.setQuantity(Math.max(0, allocatedQty));
+                            distributedSoFar += inv.getQuantity();
+                        }
+                        inventoryRepository.save(inv);
+                    }
+                } else {
+                    int perHub = newStock / invs.size();
+                    int remainder = newStock % invs.size();
+                    for (int i = 0; i < invs.size(); i++) {
+                        com.shopstack.backend.model.Inventory inv = invs.get(i);
+                        inv.setQuantity(perHub + (i == 0 ? remainder : 0));
+                        inventoryRepository.save(inv);
+                    }
+                }
+            } else {
+                List<com.shopstack.backend.model.Warehouse> whs = warehouseRepository.findAll();
+                if (whs != null && !whs.isEmpty()) {
+                    int kolQty = (int) Math.round(newStock * 0.4);
+                    int mumQty = (int) Math.round(newStock * 0.3);
+                    int delQty = (int) Math.round(newStock * 0.2);
+                    int blrQty = Math.max(0, newStock - (kolQty + mumQty + delQty));
+
+                    for (com.shopstack.backend.model.Warehouse wh : whs) {
+                        int q = 0;
+                        if ("Kolkata".equalsIgnoreCase(wh.getCity()) || (wh.getCode() != null && wh.getCode().contains("KOL"))) q = kolQty;
+                        else if ("Mumbai".equalsIgnoreCase(wh.getCity()) || (wh.getCode() != null && wh.getCode().contains("MUM"))) q = mumQty;
+                        else if ("Delhi".equalsIgnoreCase(wh.getCity()) || (wh.getCode() != null && wh.getCode().contains("DEL"))) q = delQty;
+                        else if ("Bangalore".equalsIgnoreCase(wh.getCity()) || (wh.getCode() != null && wh.getCode().contains("BLR"))) q = blrQty;
+                        inventoryRepository.save(new com.shopstack.backend.model.Inventory(wh, p, q));
+                    }
+                }
+            }
+
             Product saved = productRepository.save(p);
             return ResponseEntity.ok(populateRatings(saved));
         }
@@ -530,6 +622,15 @@ public class ProductController {
                 p.setVendorCode(v.getVendorCode());
                 p.setVendorAddress(v.getAddress());
             }
+        }
+
+        // Dynamically populate actual available stock from warehouse inventory
+        List<com.shopstack.backend.model.Inventory> invs = inventoryRepository.findByProductId(p.getId());
+        if (invs != null && !invs.isEmpty()) {
+            int totalAvailable = invs.stream()
+                    .mapToInt(com.shopstack.backend.model.Inventory::getAvailableQuantity)
+                    .sum();
+            p.setStock(totalAvailable);
         }
 
         return p;

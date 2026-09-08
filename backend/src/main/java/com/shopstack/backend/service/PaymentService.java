@@ -1,5 +1,6 @@
 package com.shopstack.backend.service;
 
+import jakarta.annotation.PostConstruct;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -931,62 +932,48 @@ public class PaymentService {
     }
 
     /**
-     * Record a failed or cancelled Razorpay checkout attempt
+     * Clean up any orphaned failed/cancelled checkout attempts from database on startup
+     */
+    @PostConstruct
+    public void cleanupFailedOrders() {
+        try {
+            List<Order> failedOrders = orderRepository.findAll().stream()
+                    .filter(o -> (o.getOrderId() != null && o.getOrderId().startsWith("ORD-FAIL-"))
+                            || "FAILED".equalsIgnoreCase(o.getPaymentStatus()))
+                    .collect(Collectors.toList());
+            for (Order o : failedOrders) {
+                List<OrderItem> items = orderItemRepository.findByOrderId(o.getOrderId());
+                if (items != null && !items.isEmpty()) {
+                    orderItemRepository.deleteAll(items);
+                }
+                orderRepository.delete(o);
+            }
+            if (!failedOrders.isEmpty()) {
+                System.out.println("Cleaned up " + failedOrders.size() + " orphaned failed checkout order records from database.");
+            }
+        } catch (Exception e) {
+            System.err.println("Warning during cleanup of failed orders: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Record a failed or cancelled Razorpay checkout attempt without creating phantom orders
      */
     @Transactional
     public Order recordFailedPayment(Long userId, String razorpayOrderId, String errorMessage, 
                                      Double amount, List<Map<String, Object>> items, 
                                      Map<String, Object> deliveryInfo) {
-        String orderIdStr = "ORD-FAIL-" + (int) (100000 + Math.random() * 900000);
-        String dateStr = new SimpleDateFormat("MMM dd, yyyy").format(new Date());
-
-        String recipientName = deliveryInfo != null && deliveryInfo.get("name") != null ? deliveryInfo.get("name").toString() : "";
-        String recipientPhone = deliveryInfo != null && deliveryInfo.get("phone") != null ? deliveryInfo.get("phone").toString() : "";
-        String deliveryAddress = deliveryInfo != null && deliveryInfo.get("address") != null ? deliveryInfo.get("address").toString() : "";
-
-        double totalAmount = amount != null ? amount : 0.0;
-
-        Order failedOrder = new Order(
-                orderIdStr,
-                userId,
-                dateStr,
-                totalAmount,
-                "CANCELLED",
-                "FAILED",
-                "RAZORPAY",
-                razorpayOrderId,
-                null,
-                recipientName,
-                recipientPhone,
-                deliveryAddress
-        );
-        Order savedOrder = orderRepository.save(failedOrder);
-
-        if (items != null) {
-            for (Map<String, Object> itemData : items) {
-                try {
-                    Long productId = Long.parseLong(itemData.get("id").toString());
-                    String productName = itemData.get("name") != null ? itemData.get("name").toString() : "Product #" + productId;
-                    double price = Double.parseDouble(itemData.get("price").toString());
-                    int quantity = Integer.parseInt(itemData.get("quantity").toString());
-
-                    Optional<Product> prodOpt = productRepository.findById(productId);
-                    Long vendorId = prodOpt.map(Product::getVendorId).orElse(null);
-
-                    OrderItem orderItem = new OrderItem(orderIdStr, productId, productName, price, quantity, vendorId);
-                    orderItemRepository.save(orderItem);
-                } catch (Exception ignored) {}
-            }
-        }
-
-        return savedOrder;
+        System.out.println("Payment failed/cancelled for user: " + userId + ", razorpayOrderId: " + razorpayOrderId + ", reason: " + errorMessage);
+        return null;
     }
 
     /**
      * Get combined transaction history with payment method, status, refunds, and order info
      */
     public List<Map<String, Object>> getTransactions(Long userId, Long vendorId, String status, String paymentStatus) {
-        List<Order> orders = orderRepository.findAllByOrderByIdDesc();
+        List<Order> orders = orderRepository.findAllByOrderByIdDesc().stream()
+                .filter(o -> o.getOrderId() != null && !o.getOrderId().startsWith("ORD-FAIL-") && !"FAILED".equalsIgnoreCase(o.getPaymentStatus()))
+                .collect(Collectors.toList());
 
         if (userId != null) {
             orders = orders.stream().filter(o -> userId.equals(o.getUserId())).collect(Collectors.toList());

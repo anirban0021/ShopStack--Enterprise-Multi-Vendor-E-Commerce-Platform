@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
   Truck, Calendar, ShoppingBag, Check, X, ShieldAlert, ShieldCheck, Package, CheckCircle2, 
   RotateCcw, Clock, RefreshCw, Eye, Plus, Edit, PlusCircle, Trash, Box, 
   MapPin, CheckCircle, BarChart3, AlertCircle, PlayCircle, Loader2, Bell,
-  Layers, Repeat, ArrowRightLeft, FileText, ArrowRight, Store, Search, AlertTriangle
+  Layers, Repeat, ArrowRightLeft, FileText, ArrowRight, Store, Search, AlertTriangle,
+  Sun, Moon, ArrowLeft, ChevronDown, User, LogOut
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
+import { extractErrorMessage } from '../utils/errorHandler';
+import { formatImageUrl } from '../utils/imageHelper';
 
-export default function WarehouseDashboard({ user, onGoToHome }) {
+export default function WarehouseDashboard({ user, onGoToHome, theme, onToggleTheme, onLogout }) {
   const [warehouses, setWarehouses] = useState([]);
   const [inventories, setInventories] = useState([]);
   const [allocations, setAllocations] = useState([]);
@@ -17,6 +20,25 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
   const [returnsList, setReturnsList] = useState([]);
   const [analytics, setAnalytics] = useState({});
   const [loading, setLoading] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const userMenuRef = useRef(null);
+
+  // Close user dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowUserDropdown(false);
+      }
+    };
+    if (showUserDropdown) {
+      document.addEventListener('mousedown', handleOutsideClick);
+      document.addEventListener('touchstart', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [showUserDropdown]);
 
   // Tabs: 'analytics' | 'fulfillment' | 'warehouses' | 'inventory' | 'returns'
   const [activeTab, setActiveTab] = useState('analytics');
@@ -88,8 +110,12 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
   );
 
   const showFlash = (type, text) => {
-    setFlashMessage({ type, text });
-    setTimeout(() => setFlashMessage({ type: '', text: '' }), 3000);
+    let msg = text;
+    if (typeof text === 'object' && text !== null) {
+      msg = extractErrorMessage(text);
+    }
+    setFlashMessage({ type, text: msg });
+    setTimeout(() => setFlashMessage({ type: '', text: '' }), 3500);
   };
 
   const fetchData = async () => {
@@ -390,83 +416,124 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
 
       {/* Header */}
       <div className="navbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer' }}>ShopStack</h1>
-          <button onClick={onGoToHome} className="btn btn-secondary" style={{ padding: '6px 16px', fontSize: '13px' }}>
-            Browse Store
-          </button>
+        <div className="nav-left">
+          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>ShopStack</h1>
         </div>
 
-        <div className="nav-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* Allocation Notification Bell */}
-          <div className="notification-bell-container" style={{ position: 'relative' }}>
-            <button 
-              onClick={() => setShowNotifications(!showNotifications)} 
-              className="btn-icon-only" 
-              style={{ position: 'relative', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              title="Allocation Alerts"
+        <div className="nav-right">
+          <button 
+            type="button"
+            onClick={onGoToHome} 
+            className="btn-store-nav"
+            title="Browse ShopStack Storefront"
+          >
+            <ArrowLeft size={15} style={{ flexShrink: 0 }} />
+            <span className="hide-on-mobile">Browse Store</span>
+            <span className="show-on-mobile">Store</span>
+          </button>
+
+          <div 
+            className="nav-user-menu"
+            ref={userMenuRef}
+          >
+            <div 
+              className="nav-user-trigger"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowUserDropdown(prev => !prev);
+              }}
+              style={{ cursor: 'pointer' }}
             >
-              <Bell size={18} />
-              {staffPendingAllocations.length > 0 && (
-                <span className="notification-badge">
-                  {staffPendingAllocations.length}
-                </span>
-              )}
-            </button>
-            
-            {showNotifications && (
-              <div className="notifications-dropdown" style={{ right: 0, left: 'auto', width: '360px' }}>
-                <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-light)', fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Admin Allocation Alerts</span>
-                  <span className="badge badge-vendor" style={{ fontSize: '10px' }}>{staffPendingAllocations.length} Orders</span>
+              <div className="nav-user-avatar">
+                <User size={14} style={{ color: 'var(--accent-indigo)', flexShrink: 0 }} />
+              </div>
+              <strong className="nav-user-name">{user?.fullName || 'Staff'}</strong>
+              <ChevronDown 
+                size={13} 
+                className="nav-user-chevron"
+                style={{ 
+                  transform: showUserDropdown ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s ease'
+                }} 
+              />
+            </div>
+
+            {showUserDropdown && (
+              <div className="nav-dropdown" onClick={(e) => e.stopPropagation()}>
+                <div className="dropdown-header" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Warehouse Panel</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                    <strong style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {user?.fullName || 'Staff'}
+                    </strong>
+                    <span className="badge badge-vendor" style={{ fontSize: '9px', padding: '1px 6px' }}>
+                      STAFF
+                    </span>
+                  </div>
                 </div>
-                <div style={{ overflowY: 'auto', flex: 1, maxHeight: '320px' }}>
-                  {staffPendingAllocations.length === 0 ? (
-                    <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)' }}>
-                      No new order allocations pending for your facility.
+
+                <div onClick={() => { setShowUserDropdown(false); onGoToHome(); }} className="dropdown-item">
+                  <ArrowLeft size={16} style={{ flexShrink: 0 }} /> <span>Browse Store</span>
+                </div>
+
+                <div className="dropdown-divider" />
+
+                {/* Light / Dark Mode Toggle Button */}
+                {onToggleTheme && (
+                  <div 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      onToggleTheme(); 
+                    }} 
+                    className="dropdown-item" 
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {theme === 'dark' ? (
+                        <Sun size={16} style={{ color: '#fbbf24', flexShrink: 0 }} />
+                      ) : (
+                        <Moon size={16} style={{ color: '#6366f1', flexShrink: 0 }} />
+                      )}
+                      <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
                     </div>
-                  ) : (
-                    staffPendingAllocations.map(alloc => (
-                      <div 
-                        key={alloc.id}
-                        onClick={() => {
-                          setActiveTab('fulfillment');
-                          setFulfillmentSubTab('pick');
-                          setShowNotifications(false);
-                        }}
-                        className="dropdown-item-notification"
-                        style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-light)', cursor: 'pointer', display: 'flex', gap: '10px', alignItems: 'flex-start' }}
-                      >
-                        <Package size={18} style={{ color: 'var(--accent-indigo)', flexShrink: 0, marginTop: '2px' }} />
-                        <div>
-                          <strong style={{ fontSize: '12px', color: 'var(--text-primary)' }}>Order #{alloc.orderId}</strong>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                            {alloc.quantity}x {alloc.productName}
-                          </div>
-                          <div style={{ fontSize: '10px', color: 'var(--accent-teal)', marginTop: '4px', fontWeight: '700' }}>
-                            ✓ Allocated by Admin • Ready for Picking
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+                    <span 
+                      style={{ 
+                        fontSize: '10px', 
+                        fontWeight: '700', 
+                        padding: '2px 6px', 
+                        borderRadius: '4px', 
+                        background: 'var(--bg-input)', 
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-light)' 
+                      }}
+                    >
+                      {theme === 'dark' ? 'DARK' : 'LIGHT'}
+                    </span>
+                  </div>
+                )}
+
+                <div className="dropdown-divider" />
+
+                {/* Logout Button */}
+                {onLogout && (
+                  <div 
+                    onClick={() => { 
+                      setShowUserDropdown(false); 
+                      onLogout(); 
+                    }} 
+                    className="dropdown-item dropdown-item-danger" 
+                    style={{ color: 'var(--accent-rose)', fontWeight: '600' }}
+                  >
+                    <LogOut size={16} style={{ flexShrink: 0 }} /> <span>Logout</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              Supervisor: <strong style={{ color: 'var(--text-primary)' }}>{user.fullName}</strong>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--accent-teal)', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', marginTop: '2px' }}>
-              <MapPin size={12} />
-              <span>Assigned: <strong>{user.warehouseName || (user.warehouseId ? `Facility #${user.warehouseId}` : 'Central Hub (All Facilities)')}</strong></span>
-            </div>
-          </div>
-          <button onClick={fetchData} className="btn btn-secondary" style={{ padding: '6px 12px', display: 'flex', gap: '6px', alignItems: 'center' }}>
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Reload
+          <button onClick={fetchData} className="btn btn-secondary" style={{ padding: '6px 10px', display: 'flex', gap: '4px', alignItems: 'center', fontSize: '12px' }}>
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            <span className="hide-on-mobile">Reload</span>
           </button>
         </div>
       </div>
@@ -636,7 +703,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
 
                 return (
                   <>
-                    <div className="analytics-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+                    <div className="analytics-grid">
                       <div className="metric-card">
                         <div className="flex-between">
                           <span className="metric-label">{facilityFilter === 'ALL' ? 'Active Facilities' : 'Facility Status'}</span>
@@ -694,39 +761,39 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                     </div>
 
                     {/* Status Breakdown Tracker */}
-                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px', marginBottom: '30px' }}>
+                    <div className="pipeline-tracker-container">
                       <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px' }}>Pipeline Distribution Tracker</h3>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', textAlign: 'center' }}>
-                        <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>1. STOCK ALLOCATED</div>
-                          <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-blue)' }}>
+                      <div className="pipeline-tracker-grid">
+                        <div className="pipeline-tracker-item">
+                          <div className="pipeline-tracker-step">1. STOCK ALLOCATED</div>
+                          <div className="pipeline-tracker-val" style={{ color: 'var(--accent-blue)' }}>
                             {facilityStatusAllocated}
                           </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Awaiting Pick list check</div>
+                          <div className="pipeline-tracker-desc">Awaiting Pick list check</div>
                         </div>
 
-                        <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>2. PRODUCT PICKED</div>
-                          <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-teal)' }}>
+                        <div className="pipeline-tracker-item">
+                          <div className="pipeline-tracker-step">2. PRODUCT PICKED</div>
+                          <div className="pipeline-tracker-val" style={{ color: 'var(--accent-teal)' }}>
                             {facilityStatusPicked}
                           </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pending carton packing</div>
+                          <div className="pipeline-tracker-desc">Pending carton packing</div>
                         </div>
 
-                        <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>3. ORDER PACKED</div>
-                          <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-indigo)' }}>
+                        <div className="pipeline-tracker-item">
+                          <div className="pipeline-tracker-step">3. ORDER PACKED</div>
+                          <div className="pipeline-tracker-val" style={{ color: 'var(--accent-indigo)' }}>
                             {facilityStatusPacked}
                           </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pending courier shipment</div>
+                          <div className="pipeline-tracker-desc">Pending courier shipment</div>
                         </div>
 
-                        <div style={{ padding: '16px', background: 'var(--bg-input)', borderRadius: '8px' }}>
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>4. READY FOR SHIPMENT</div>
-                          <div style={{ fontSize: '24px', fontWeight: '800', margin: '8px 0', color: 'var(--accent-emerald)' }}>
+                        <div className="pipeline-tracker-item">
+                          <div className="pipeline-tracker-step">4. READY FOR SHIPMENT</div>
+                          <div className="pipeline-tracker-val" style={{ color: 'var(--accent-emerald)' }}>
                             {facilityStatusShipped}
                           </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Deducted from physically stored</div>
+                          <div className="pipeline-tracker-desc">Deducted from physical stock</div>
                         </div>
                       </div>
                     </div>
@@ -744,7 +811,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                     const pct = Math.min(100, Math.round((totalWhStock / limit) * 100));
                     return (
                       <div key={wh.id} style={{ borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
-                        <div className="flex-between" style={{ marginBottom: '6px' }}>
+                        <div className="flex-between" style={{ marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
                           <div>
                             <strong style={{ fontSize: '14px' }}>{wh.name} ({wh.code})</strong>
                             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '12px' }}>
@@ -1228,7 +1295,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <div style={{ width: '32px', height: '32px', borderRadius: '6px', overflow: 'hidden', background: 'var(--bg-input)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {inv.productImageUrl ? (
-                                  <img src={inv.productImageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  <img src={formatImageUrl(inv.productImageUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
                                   <ProductIcon name={inv.productName} category={inv.productCategory} size={16} />
                                 )}
@@ -1438,7 +1505,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
               </div>
 
               {/* Damaged KPI Cards */}
-              <div className="dashboard-metrics" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+              <div className="responsive-kpi-grid">
                 <div className="metric-card" style={{ borderLeft: '4px solid #ef4444' }}>
                   <div className="flex-between">
                     <span className="metric-label" style={{ color: '#ef4444' }}>Total Quarantined Items</span>
@@ -1529,7 +1596,7 @@ export default function WarehouseDashboard({ user, onGoToHome }) {
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 {item.productImageUrl ? (
                                   <img 
-                                    src={item.productImageUrl} 
+                                    src={formatImageUrl(item.productImageUrl)} 
                                     alt={item.productName} 
                                     style={{ width: '38px', height: '38px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border-light)' }} 
                                     onError={(e) => { e.target.style.display = 'none'; }}

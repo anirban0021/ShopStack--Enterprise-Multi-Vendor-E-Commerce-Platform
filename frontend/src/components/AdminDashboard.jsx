@@ -6,14 +6,35 @@ import {
   Clock, AlertTriangle, Eye, DollarSign, Package, ShieldCheck, ArrowRight,
   Truck, CornerUpLeft, ThumbsUp, ThumbsDown, Users, BarChart3, Settings, 
   FileSpreadsheet, HardDrive, Database, TrendingUp, Ticket, ArrowRightLeft, Plus, FileText,
-  Trash2, Layers, Tag, ExternalLink, Power, Ban
+  Trash2, Layers, Tag, ExternalLink, Power, Ban, Sun, Moon, ArrowLeft, ChevronDown, LogOut
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
+import { extractErrorMessage } from '../utils/errorHandler';
+import { formatImageUrl } from '../utils/imageHelper';
 
-export default function AdminDashboard({ user, onGoToHome }) {
+export default function AdminDashboard({ user, onGoToHome, theme, onToggleTheme, onLogout }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'vendors' | 'products' | 'returns' | 'monitoring' | 'transactions' | 'settlements' | 'system' | 'reports'
   const [pendingProducts, setPendingProducts] = useState([]);
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const userMenuRef = useRef(null);
+
+  // Close user dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowUserDropdown(false);
+      }
+    };
+    if (showUserDropdown) {
+      document.addEventListener('mousedown', handleOutsideClick);
+      document.addEventListener('touchstart', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [showUserDropdown]);
 
   // Promo Coupons States
   const [coupons, setCoupons] = useState([]);
@@ -628,7 +649,11 @@ export default function AdminDashboard({ user, onGoToHome }) {
   }, []);
 
   const showFlash = (type, text) => {
-    setFlashMessage({ type, text });
+    let msg = text;
+    if (typeof text === 'object' && text !== null) {
+      msg = extractErrorMessage(text);
+    }
+    setFlashMessage({ type, text: msg });
     setTimeout(() => setFlashMessage({ type: '', text: '' }), 3500);
   };
 
@@ -661,7 +686,8 @@ export default function AdminDashboard({ user, onGoToHome }) {
         setMonitoringMetrics(res.data.metrics);
       }
       const ordersRes = await axios.get('http://localhost:8080/api/customer/orders/all');
-      setMonitoringOrders(ordersRes.data || []);
+      const cleanOrders = (ordersRes.data || []).filter(o => o && !o.orderId?.startsWith('ORD-FAIL-') && o.paymentStatus !== 'FAILED');
+      setMonitoringOrders(cleanOrders);
     } catch (err) {
       console.error("Failed to load payment monitoring overview", err);
     } finally {
@@ -988,97 +1014,120 @@ export default function AdminDashboard({ user, onGoToHome }) {
 
       {/* Header Navbar */}
       <div className="navbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer' }}>ShopStack</h1>
-          <button onClick={onGoToHome} className="btn btn-secondary" style={{ padding: '6px 16px', fontSize: '13px' }}>
-            Browse Store
+        <div className="nav-left">
+          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>ShopStack</h1>
+        </div>
+
+        <div className="nav-right">
+          <button 
+            type="button"
+            onClick={onGoToHome} 
+            className="btn-store-nav"
+            title="Browse ShopStack Storefront"
+          >
+            <ArrowLeft size={15} style={{ flexShrink: 0 }} />
+            <span className="hide-on-mobile">Browse Store</span>
+            <span className="show-on-mobile">Store</span>
           </button>
 
-          {/* Notification Bell */}
-          <div className="notification-bell-container" ref={dropdownRef}>
-            <button 
-              onClick={() => setShowNotifications(!showNotifications)} 
-              className="btn-icon-only" 
-              style={{ position: 'relative', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              title="Notifications"
+          <div 
+            className="nav-user-menu"
+            ref={userMenuRef}
+          >
+            <div 
+              className="nav-user-trigger"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowUserDropdown(prev => !prev);
+              }}
+              style={{ cursor: 'pointer' }}
             >
-              <Bell size={18} />
-              {(pendingProducts.length > 0 || pendingReturnsCount > 0) && (
-                <span className="notification-badge">
-                  {pendingProducts.length + pendingReturnsCount}
-                </span>
-              )}
-            </button>
-            
-            {showNotifications && (
-              <div className="notifications-dropdown" style={{ left: 0, right: 'auto' }}>
-                <div style={{ padding: '8px 16px 10px 16px', borderBottom: '1px solid var(--border-light)', fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Pending Reviews ({pendingProducts.length + pendingReturnsCount})
-                </div>
-                <div style={{ overflowY: 'auto', flex: 1, maxHeight: '320px' }}>
-                  {pendingReturnsCount > 0 && (
-                    <div 
-                      onClick={() => {
-                        setActiveTab('returns');
-                        setShowNotifications(false);
-                      }}
-                      className="dropdown-item-notification"
-                      style={{ background: 'rgba(245, 158, 11, 0.08)', borderBottom: '1px solid var(--border-light)' }}
-                    >
-                      <RotateCcw size={18} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                      <div>
-                        <strong style={{ fontSize: '13px', color: '#f59e0b' }}>{pendingReturnsCount} Customer Return(s) Pending QC</strong>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Click to review inspection & execute refunds</div>
-                      </div>
-                    </div>
-                  )}
+              <div className="nav-user-avatar">
+                <User size={14} style={{ color: 'var(--accent-rose)', flexShrink: 0 }} />
+              </div>
+              <strong className="nav-user-name">{user?.fullName || 'Admin'}</strong>
+              <ChevronDown 
+                size={13} 
+                className="nav-user-chevron"
+                style={{ 
+                  transform: showUserDropdown ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s ease'
+                }} 
+              />
+            </div>
 
-                  {pendingProducts.length === 0 && pendingReturnsCount === 0 ? (
-                    <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)' }}>
-                      No new pending tasks or reviews
-                    </div>
-                  ) : (
-                    pendingProducts.map(prod => (
-                      <div 
-                        key={prod.id} 
-                        onClick={() => {
-                          setSelectedProduct(prod);
-                          setShowNotifications(false);
-                          setShowRejectionInput(false);
-                          setRejectionReason('');
-                          setShowReviewModal(true);
-                        }}
-                        className="dropdown-item-notification"
-                      >
-                        <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', overflow: 'hidden', background: 'var(--bg-input)', flexShrink: 0 }}>
-                          {prod.imageUrl && prod.imageUrl.length > 4 ? (
-                            <img src={prod.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <ProductIcon name={prod.name} category={prod.category} size={16} />
-                          )}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-primary)' }}>
-                            {prod.name}
-                          </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                            by <strong>{prod.vendorName || `Vendor #${prod.vendorId || 'SYSTEM'}`}</strong>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
+            {showUserDropdown && (
+              <div className="nav-dropdown" onClick={(e) => e.stopPropagation()}>
+                <div className="dropdown-header" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Admin Console</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                    <strong style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {user?.fullName || 'Admin'}
+                    </strong>
+                    <span className="badge badge-rejected" style={{ fontSize: '9px', padding: '1px 6px' }}>
+                      ADMIN
+                    </span>
+                  </div>
                 </div>
+
+                <div onClick={() => { setShowUserDropdown(false); onGoToHome(); }} className="dropdown-item">
+                  <ArrowLeft size={16} style={{ flexShrink: 0 }} /> <span>Browse Store</span>
+                </div>
+
+                <div className="dropdown-divider" />
+
+                {/* Light / Dark Mode Toggle Button */}
+                {onToggleTheme && (
+                  <div 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      onToggleTheme(); 
+                    }} 
+                    className="dropdown-item" 
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {theme === 'dark' ? (
+                        <Sun size={16} style={{ color: '#fbbf24', flexShrink: 0 }} />
+                      ) : (
+                        <Moon size={16} style={{ color: '#6366f1', flexShrink: 0 }} />
+                      )}
+                      <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+                    </div>
+                    <span 
+                      style={{ 
+                        fontSize: '10px', 
+                        fontWeight: '700', 
+                        padding: '2px 6px', 
+                        borderRadius: '4px', 
+                        background: 'var(--bg-input)', 
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-light)' 
+                      }}
+                    >
+                      {theme === 'dark' ? 'DARK' : 'LIGHT'}
+                    </span>
+                  </div>
+                )}
+
+                <div className="dropdown-divider" />
+
+                {/* Logout Button */}
+                {onLogout && (
+                  <div 
+                    onClick={() => { 
+                      setShowUserDropdown(false); 
+                      onLogout(); 
+                    }} 
+                    className="dropdown-item dropdown-item-danger" 
+                    style={{ color: 'var(--accent-rose)', fontWeight: '600' }}
+                  >
+                    <LogOut size={16} style={{ flexShrink: 0 }} /> <span>Logout</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
-        </div>
-
-        <div className="nav-right" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <span style={{ fontSize: '14px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}>
-            Admin Security: <strong style={{ color: 'var(--text-primary)', marginLeft: '4px' }}>{user.fullName}</strong>
-            <span className="badge badge-rejected" style={{ marginLeft: '10px' }}>ADMIN MODE</span>
-          </span>
         </div>
       </div>
 
@@ -1321,7 +1370,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
               </div>
 
               {/* Secondary KPIs */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '30px' }}>
+              <div className="responsive-kpi-grid">
                 <div style={{ background: 'var(--bg-card)', padding: '16px', borderRadius: '10px', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Active Vendors</div>
@@ -1364,7 +1413,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
               </div>
 
               {/* Charts & Distribution Section */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px', marginBottom: '30px' }}>
+              <div className="responsive-split-grid">
                 <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px', color: 'var(--text-primary)' }}>Product Category Share</h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -1980,8 +2029,8 @@ export default function AdminDashboard({ user, onGoToHome }) {
                           <tr key={prod.id}>
                             <td style={{ fontSize: '20px' }}>
                               <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', overflow: 'hidden' }}>
-                                {prod.imageUrl && prod.imageUrl.length > 4 ? (
-                                  <img src={prod.imageUrl} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                {prod.imageUrl && formatImageUrl(prod.imageUrl).length > 4 ? (
+                                  <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
                                   <ProductIcon name={prod.name} category={prod.category} size={16} />
                                 )}
@@ -3289,7 +3338,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                     <div style={{ width: '32px', height: '32px', borderRadius: '6px', overflow: 'hidden', background: 'var(--bg-input)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                       {p.imageUrl ? (
-                                        <img src={p.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        <img src={formatImageUrl(p.imageUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                       ) : (
                                         <ProductIcon name={p.name} category={p.category} size={16} />
                                       )}
@@ -3650,7 +3699,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
               </div>
 
               {/* Orders Monitoring Table */}
-              {monitoringOrders.length === 0 ? (
+              {monitoringOrders.filter(o => o && !o.orderId?.startsWith('ORD-FAIL-') && o.paymentStatus !== 'FAILED').length === 0 ? (
                 <div className="cart-empty-state" style={{ background: 'var(--bg-input)', borderRadius: '10px' }}>
                   <Activity className="cart-empty-icon" style={{ opacity: 0.2 }} />
                   <p>No orders registered on the platform yet.</p>
@@ -3673,6 +3722,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     </thead>
                     <tbody>
                       {monitoringOrders
+                        .filter(ord => ord && !ord.orderId?.startsWith('ORD-FAIL-') && ord.paymentStatus !== 'FAILED')
                         .filter(ord => {
                           const pStat = ord.paymentStatus || 'PENDING';
                           if (monitoringFilter !== 'ALL') {
@@ -4533,8 +4583,8 @@ export default function AdminDashboard({ user, onGoToHome }) {
                 <div 
                   style={{ width: '120px', height: '120px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)', flexShrink: 0 }}
                 >
-                  {selectedProduct.imageUrl && selectedProduct.imageUrl.length > 4 ? (
-                    <img src={selectedProduct.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {selectedProduct.imageUrl && formatImageUrl(selectedProduct.imageUrl).length > 4 ? (
+                    <img src={formatImageUrl(selectedProduct.imageUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
                     <ProductIcon name={selectedProduct.name} category={selectedProduct.category} size={48} />
                   )}
@@ -4705,7 +4755,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                   <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '6px' }}>
                     <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', marginBottom: '4px' }}>Customer Proof Attachment:</span>
                     <img 
-                      src={selectedReturnCase.customerProofImage.startsWith('http') ? selectedReturnCase.customerProofImage : `http://localhost:8080${selectedReturnCase.customerProofImage}`} 
+                      src={formatImageUrl(selectedReturnCase.customerProofImage)} 
                       alt="Customer Proof" 
                       style={{ maxWidth: '100%', maxHeight: '180px', borderRadius: '6px', border: '1px solid var(--border-light)', objectFit: 'contain' }}
                       onError={(e) => { e.target.style.display = 'none'; }}
@@ -4722,7 +4772,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                   <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '6px' }}>
                     <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', marginBottom: '4px' }}>Warehouse Inspection Image:</span>
                     <img 
-                      src={selectedReturnCase.warehouseInspectionImage.startsWith('http') ? selectedReturnCase.warehouseInspectionImage : `http://localhost:8080${selectedReturnCase.warehouseInspectionImage}`} 
+                      src={formatImageUrl(selectedReturnCase.warehouseInspectionImage)} 
                       alt="Warehouse Inspection" 
                       style={{ maxWidth: '100%', maxHeight: '180px', borderRadius: '6px', border: '1px solid var(--border-light)', objectFit: 'contain' }}
                       onError={(e) => { e.target.style.display = 'none'; }}
@@ -5147,8 +5197,8 @@ export default function AdminDashboard({ user, onGoToHome }) {
                               <tr key={prod.id}>
                                 <td>
                                   <div style={{ width: '32px', height: '32px', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)' }}>
-                                    {prod.imageUrl && prod.imageUrl.length > 4 ? (
-                                      <img src={prod.imageUrl} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    {prod.imageUrl && formatImageUrl(prod.imageUrl).length > 4 ? (
+                                      <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     ) : (
                                       <ProductIcon name={prod.name} category={prod.category} size={16} />
                                     )}
@@ -5325,8 +5375,8 @@ export default function AdminDashboard({ user, onGoToHome }) {
               {/* Product Header & Images */}
               <div style={{ display: 'flex', gap: '18px', alignItems: 'flex-start' }}>
                 <div style={{ width: '130px', height: '130px', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-input)', flexShrink: 0 }}>
-                  {inspectingProductDetail.imageUrl && inspectingProductDetail.imageUrl.length > 4 ? (
-                    <img src={inspectingProductDetail.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {inspectingProductDetail.imageUrl && formatImageUrl(inspectingProductDetail.imageUrl).length > 4 ? (
+                    <img src={formatImageUrl(inspectingProductDetail.imageUrl)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
                     <ProductIcon name={inspectingProductDetail.name} category={inspectingProductDetail.category} size={48} />
                   )}
@@ -5366,7 +5416,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
                     {inspectingProductDetail.images.map((img, idx) => (
                       <img 
                         key={idx} 
-                        src={img} 
+                        src={formatImageUrl(img)} 
                         alt={`Gallery ${idx}`} 
                         style={{ width: '60px', height: '60px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border-light)' }} 
                       />
@@ -5628,7 +5678,7 @@ export default function AdminDashboard({ user, onGoToHome }) {
 
                 {/* Product Summary Details */}
                 {selectedProd && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '8px', padding: '10px 14px', fontSize: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '8px', padding: '10px 14px', fontSize: '12px' }}>
                     <div>
                       <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Vendor Listed Stock</div>
                       <strong style={{ fontSize: '15px', color: 'var(--accent-teal)' }}>{listedStock} units</strong>

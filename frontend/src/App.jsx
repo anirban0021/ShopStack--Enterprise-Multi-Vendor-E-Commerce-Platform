@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LogOut, X, AlertTriangle } from 'lucide-react';
 import Register from './components/Register';
 import Login from './components/Login';
 import HomeDashboard from './components/HomeDashboard';
@@ -6,6 +7,7 @@ import CustomerDashboard from './components/CustomerDashboard';
 import VendorDashboard from './components/VendorDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import WarehouseDashboard from './components/WarehouseDashboard';
+import MobileBottomNav from './components/MobileBottomNav';
 import axios from 'axios';
 
 function App() {
@@ -101,13 +103,25 @@ function App() {
     navigateTo('home');
   };
 
+  // Logout Confirmation Modal state
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
   const handleLogout = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const confirmLogout = () => {
+    setShowLogoutConfirm(false);
     setCurrentUser(null);
     setCart([]);
     localStorage.removeItem('shopstack_cart');
     localStorage.removeItem('shopstack_user');
     localStorage.removeItem('shopstack_orders');
     navigateTo('login');
+  };
+
+  const cancelLogout = () => {
+    setShowLogoutConfirm(false);
   };
 
   const handleUpdateUser = (updatedUser) => {
@@ -219,6 +233,29 @@ function App() {
     }
   }, [currentUser]);
 
+  // Cart open state (coordinated across navigation)
+  const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // Pending submissions count for Admin badge in bottom nav
+  const [pendingAdminCount, setPendingAdminCount] = useState(0);
+
+  useEffect(() => {
+    if (currentUser && (currentUser.role === 'ADMINISTRATOR' || currentUser.role === 'ADMIN')) {
+      axios.get('http://localhost:8080/api/products/admin/pending')
+        .then(res => setPendingAdminCount(Array.isArray(res.data) ? res.data.length : 0))
+        .catch(err => console.error("Error fetching pending products for admin badge:", err));
+    } else {
+      setPendingAdminCount(0);
+    }
+  }, [currentUser]);
+
+  const handleOpenCart = () => {
+    if (view !== 'home') {
+      navigateTo('home');
+    }
+    setIsCartOpen(true);
+  };
+
   return (
     <div>
       {view === 'home' && currentUser ? (
@@ -235,14 +272,26 @@ function App() {
           fetchOrders={fetchOrders}
           onLogout={handleLogout} 
           onGoToProfile={(tab) => {
+            setIsCartOpen(false);
             setProfileTab(tab || 'profile');
             navigateTo('profile');
           }} 
-          onGoToVendor={() => navigateTo('vendor-dashboard')}
-          onGoToAdmin={() => navigateTo('admin-dashboard')}
-          onGoToWarehouse={() => navigateTo('warehouse-dashboard')}
+          onGoToVendor={() => {
+            setIsCartOpen(false);
+            navigateTo('vendor-dashboard');
+          }}
+          onGoToAdmin={() => {
+            setIsCartOpen(false);
+            navigateTo('admin-dashboard');
+          }}
+          onGoToWarehouse={() => {
+            setIsCartOpen(false);
+            navigateTo('warehouse-dashboard');
+          }}
           theme={theme}
           onToggleTheme={handleToggleTheme}
+          isCartOpen={isCartOpen}
+          setIsCartOpen={setIsCartOpen}
         />
       ) : view === 'profile' && currentUser ? (
         <CustomerDashboard 
@@ -270,6 +319,7 @@ function App() {
           onGoToHome={() => navigateTo('home')} 
           theme={theme}
           onToggleTheme={handleToggleTheme}
+          onLogout={handleLogout}
         />
       ) : view === 'admin-dashboard' && currentUser ? (
         <AdminDashboard 
@@ -277,6 +327,7 @@ function App() {
           onGoToHome={() => navigateTo('home')} 
           theme={theme}
           onToggleTheme={handleToggleTheme}
+          onLogout={handleLogout}
         />
       ) : view === 'warehouse-dashboard' && currentUser ? (
         <WarehouseDashboard 
@@ -284,6 +335,7 @@ function App() {
           onGoToHome={() => navigateTo('home')} 
           theme={theme}
           onToggleTheme={handleToggleTheme}
+          onLogout={handleLogout}
         />
       ) : view === 'login' ? (
         <Login 
@@ -297,6 +349,110 @@ function App() {
           switchToLogin={() => navigateTo('login')} 
           theme={theme}
           onToggleTheme={handleToggleTheme}
+        />
+      )}
+
+      {/* Logout Re-assurance / Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div 
+          className="modal-overlay" 
+          style={{ zIndex: 99999, padding: '16px' }}
+          onClick={cancelLogout}
+        >
+          <div 
+            className="dialog-content" 
+            style={{ 
+              maxWidth: '400px', 
+              width: '100%', 
+              padding: '24px 20px', 
+              textAlign: 'center', 
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.45), var(--shadow-glow)', 
+              borderRadius: 'var(--radius-lg)',
+              animation: 'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              type="button" 
+              onClick={cancelLogout} 
+              className="btn-icon-only" 
+              style={{ position: 'absolute', top: '14px', right: '14px', padding: '6px' }}
+              title="Close"
+            >
+              <X size={16} />
+            </button>
+
+            <div 
+              style={{ 
+                width: '56px', 
+                height: '56px', 
+                borderRadius: '50%', 
+                background: 'rgba(239, 68, 68, 0.12)', 
+                border: '1px solid rgba(239, 68, 68, 0.25)', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                margin: '0 auto 16px', 
+                color: 'var(--accent-rose)' 
+              }}
+            >
+              <LogOut size={26} />
+            </div>
+
+            <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px' }}>
+              Log Out of ShopStack?
+            </h3>
+            
+            <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '22px' }}>
+              Are you sure you want to sign out? You will need to log back in to access your orders, cart, and account settings.
+            </p>
+
+            <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+              <button 
+                type="button" 
+                onClick={cancelLogout} 
+                className="btn btn-secondary" 
+                style={{ flex: 1, padding: '10px 14px', justifyContent: 'center', fontWeight: '600' }}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                onClick={confirmLogout} 
+                className="btn btn-danger" 
+                style={{ flex: 1, padding: '10px 14px', justifyContent: 'center', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <LogOut size={15} /> Yes, Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Bottom Navigation Bar */}
+      {currentUser && view !== 'login' && view !== 'register' && (
+        <MobileBottomNav 
+          currentView={view}
+          currentUser={currentUser}
+          cartCount={Array.isArray(cart) ? cart.reduce((sum, item) => sum + (Number(item?.quantity) || 1), 0) : 0}
+          pendingAdminCount={pendingAdminCount}
+          profileTab={profileTab}
+          isCartOpen={view === 'home' && isCartOpen}
+          onNavigateHome={() => {
+            setIsCartOpen(false);
+            navigateTo('home');
+          }}
+          onNavigateProfile={(tab = 'profile') => {
+            setIsCartOpen(false);
+            setProfileTab(tab);
+            navigateTo('profile');
+          }}
+          onNavigateDashboard={(dashView) => {
+            setIsCartOpen(false);
+            navigateTo(dashView);
+          }}
+          onOpenCart={handleOpenCart}
         />
       )}
     </div>

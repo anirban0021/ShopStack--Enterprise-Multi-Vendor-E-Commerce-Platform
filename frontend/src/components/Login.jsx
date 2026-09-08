@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Mail, Lock, Eye, EyeOff, Check, X, Sun, Moon, Briefcase } from 'lucide-react';
+import { extractErrorMessage } from '../utils/errorHandler';
 
 const passwordRules = [
   { id: 'length', label: 'Minimum 8 characters', test: (pwd) => pwd.length >= 8 },
@@ -29,7 +30,7 @@ export default function Login({ switchToRegister, onLoginSuccess, theme, onToggl
     if (flashMessage.text) {
       const timer = setTimeout(() => {
         setFlashMessage({ type: '', title: '', text: '' });
-      }, 3000);
+      }, 3500);
       return () => clearTimeout(timer);
     }
   }, [flashMessage]);
@@ -60,7 +61,7 @@ export default function Login({ switchToRegister, onLoginSuccess, theme, onToggl
       setFlashMessage({
         type: 'error',
         title: 'Verification failed.',
-        text: err.response?.data || 'No account found with this email address.'
+        text: extractErrorMessage(err, 'No account found with this email address.')
       });
     } finally {
       setResetLoading(false);
@@ -106,7 +107,7 @@ export default function Login({ switchToRegister, onLoginSuccess, theme, onToggl
       setFlashMessage({
         type: 'error',
         title: 'Reset failed.',
-        text: err.response?.data || 'Failed to reset password.'
+        text: extractErrorMessage(err, 'Failed to reset password.')
       });
     } finally {
       setResetLoading(false);
@@ -142,7 +143,7 @@ export default function Login({ switchToRegister, onLoginSuccess, theme, onToggl
       setFlashMessage({ 
         type: 'error', 
         title: 'Authentication failed.', 
-        text: error.response?.data || 'Invalid email, password, or role details.' 
+        text: extractErrorMessage(error, 'Invalid email, password, or role details.') 
       });
     }
   };

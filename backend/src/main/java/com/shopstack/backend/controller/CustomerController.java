@@ -37,7 +37,7 @@ import com.shopstack.backend.service.WarehouseService;
 
 @RestController
 @RequestMapping("/api/customer")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(originPatterns = "*", allowCredentials = "true")
 public class CustomerController {
 
     @Autowired
@@ -237,7 +237,9 @@ public class CustomerController {
     // Orders: Get order history for customer
     @GetMapping("/{id}/orders")
     public ResponseEntity<?> getCustomerOrders(@PathVariable Long id) {
-        List<Order> orders = orderRepository.findByUserIdOrderByIdDesc(id);
+        List<Order> orders = orderRepository.findByUserIdOrderByIdDesc(id).stream()
+                .filter(o -> o.getOrderId() != null && !o.getOrderId().startsWith("ORD-FAIL-") && !"FAILED".equalsIgnoreCase(o.getPaymentStatus()))
+                .collect(Collectors.toList());
 
         // Map order headers along with their order items
         List<Map<String, Object>> response = orders.stream().map(order -> {
@@ -265,7 +267,9 @@ public class CustomerController {
     // Orders: Get all orders across the platform (Warehouse/Admin usage)
     @GetMapping("/orders/all")
     public ResponseEntity<?> getAllOrders() {
-        List<Order> orders = orderRepository.findAllByOrderByIdDesc();
+        List<Order> orders = orderRepository.findAllByOrderByIdDesc().stream()
+                .filter(o -> o.getOrderId() != null && !o.getOrderId().startsWith("ORD-FAIL-") && !"FAILED".equalsIgnoreCase(o.getPaymentStatus()))
+                .collect(Collectors.toList());
 
         List<Map<String, Object>> response = orders.stream().map(order -> {
             List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());

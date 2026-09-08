@@ -26,7 +26,7 @@ import com.shopstack.backend.service.PaymentService;
 
 @RestController
 @RequestMapping("/api/payment")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(originPatterns = "*", allowCredentials = "true")
 public class PaymentController {
 
     @Autowired
@@ -324,12 +324,17 @@ public class PaymentController {
             Map<String, Object> deliveryInfo = payload.containsKey("deliveryInfo") 
                     ? (Map<String, Object>) payload.get("deliveryInfo") : null;
 
-            Order failedOrder = paymentService.recordFailedPayment(userId, razorpayOrderId, errorMessage, amount, items, deliveryInfo);
-            return ResponseEntity.ok(failedOrder);
+            paymentService.recordFailedPayment(userId, razorpayOrderId, errorMessage, amount, items, deliveryInfo);
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("status", "recorded");
+            resp.put("message", "Payment failure logged");
+            return ResponseEntity.ok(resp);
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to record failed payment: " + e.getMessage());
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("status", "error");
+            resp.put("message", e.getMessage());
+            return ResponseEntity.ok(resp);
         }
     }
 }

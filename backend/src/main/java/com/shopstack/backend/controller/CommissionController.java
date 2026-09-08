@@ -21,8 +21,8 @@ import com.shopstack.backend.repository.SettlementRepository;
 import com.shopstack.backend.repository.UserRepository;
 
 @RestController
-@RequestMapping("/api/commission")
-@CrossOrigin(origins = "http://localhost:5173")
+@RequestMapping("/api/commissions")
+@CrossOrigin(originPatterns = "*", allowCredentials = "true")
 public class CommissionController {
 
     @Autowired

@@ -18,7 +18,7 @@ import com.shopstack.backend.repository.UserRepository;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "http://localhost:5173") // Allow React Frontend
+@CrossOrigin(originPatterns = "*", allowCredentials = "true") // Allow React Frontend & Mobile devices
 public class AuthController {
 
     @Autowired

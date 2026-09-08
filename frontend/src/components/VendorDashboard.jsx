@@ -1,19 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
   TrendingUp, Package, AlertTriangle, IndianRupee, Plus, Edit2, 
   Trash2, X, Check, Save, Truck, Calendar, ShoppingBag, Eye, EyeOff, Power, Layers,
-  DollarSign, RefreshCw, CheckCircle, Clock, ShieldCheck, FileText, Search, Ticket, RotateCcw
+  DollarSign, RefreshCw, CheckCircle, Clock, ShieldCheck, FileText, Search, Ticket, RotateCcw,
+  Sun, Moon, ArrowLeft, ChevronDown, User, LogOut
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
+import { extractErrorMessage } from '../utils/errorHandler';
+import { formatImageUrl } from '../utils/imageHelper';
 
 const getWordCount = (text) => {
   if (!text) return 0;
   return text.trim().split(/\s+/).filter(Boolean).length;
 };
 
-export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme }) {
+export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme, onLogout }) {
   const [activeTab, setActiveTab] = useState('analytics');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const userMenuRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleOutsideClick);
+      document.addEventListener('touchstart', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [showDropdown]);
   const [analytics, setAnalytics] = useState({
     totalRevenue: 0,
     totalOrders: 0,
@@ -87,7 +109,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
   const showFlash = (type, text) => {
     let msg = text;
     if (typeof text === 'object' && text !== null) {
-      msg = text.message || text.error || JSON.stringify(text);
+      msg = extractErrorMessage(text);
     }
     setFlashMessage({ type, text: msg });
     setTimeout(() => setFlashMessage({ type: '', text: '' }), 3500);
@@ -480,18 +502,120 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
 
       {/* Header */}
       <div className="navbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer' }}>ShopStack</h1>
-          <button onClick={onGoToHome} className="btn btn-secondary" style={{ padding: '6px 16px', fontSize: '13px' }}>
-            Browse Store
-          </button>
+        <div className="nav-left">
+          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>ShopStack</h1>
         </div>
 
         <div className="nav-right">
-          <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-            Merchant Seller: <strong style={{ color: 'var(--text-primary)' }}>{user.fullName}</strong>
-            <span className="badge badge-vendor" style={{ marginLeft: '10px' }}>VENDOR MODE</span>
-          </span>
+          <button 
+            type="button"
+            onClick={onGoToHome} 
+            className="btn-store-nav"
+            title="Browse ShopStack Storefront"
+          >
+            <ArrowLeft size={15} style={{ flexShrink: 0 }} />
+            <span className="hide-on-mobile">Browse Store</span>
+            <span className="show-on-mobile">Store</span>
+          </button>
+
+          <div 
+            className="nav-user-menu"
+            ref={userMenuRef}
+          >
+            <div 
+              className="nav-user-trigger"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDropdown(prev => !prev);
+              }}
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="nav-user-avatar">
+                <User size={14} style={{ color: 'var(--accent-emerald)', flexShrink: 0 }} />
+              </div>
+              <strong className="nav-user-name">{user?.fullName || 'Vendor'}</strong>
+              <ChevronDown 
+                size={13} 
+                className="nav-user-chevron"
+                style={{ 
+                  transform: showDropdown ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s ease'
+                }} 
+              />
+            </div>
+
+            {showDropdown && (
+              <div className="nav-dropdown" onClick={(e) => e.stopPropagation()}>
+                <div className="dropdown-header" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Merchant Console</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                    <strong style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {user?.fullName || 'Vendor'}
+                    </strong>
+                    <span className="badge badge-vendor" style={{ fontSize: '9px', padding: '1px 6px' }}>
+                      VENDOR
+                    </span>
+                  </div>
+                </div>
+
+                <div onClick={() => { setShowDropdown(false); onGoToHome(); }} className="dropdown-item">
+                  <ArrowLeft size={16} style={{ flexShrink: 0 }} /> <span>Browse Store</span>
+                </div>
+
+                <div className="dropdown-divider" />
+
+                {/* Light / Dark Mode Toggle Button */}
+                {onToggleTheme && (
+                  <div 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      onToggleTheme(); 
+                    }} 
+                    className="dropdown-item" 
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {theme === 'dark' ? (
+                        <Sun size={16} style={{ color: '#fbbf24', flexShrink: 0 }} />
+                      ) : (
+                        <Moon size={16} style={{ color: '#6366f1', flexShrink: 0 }} />
+                      )}
+                      <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+                    </div>
+                    <span 
+                      style={{ 
+                        fontSize: '10px', 
+                        fontWeight: '700', 
+                        padding: '2px 6px', 
+                        borderRadius: '4px', 
+                        background: 'var(--bg-input)', 
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-light)' 
+                      }}
+                    >
+                      {theme === 'dark' ? 'DARK' : 'LIGHT'}
+                    </span>
+                  </div>
+                )}
+
+                <div className="dropdown-divider" />
+
+                {/* Logout Button */}
+                {onLogout && (
+                  <div 
+                    onClick={() => { 
+                      setShowDropdown(false); 
+                      onLogout(); 
+                    }} 
+                    className="dropdown-item dropdown-item-danger" 
+                    style={{ color: 'var(--accent-rose)', fontWeight: '600' }}
+                  >
+                    <LogOut size={16} style={{ flexShrink: 0 }} /> <span>Logout</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -651,8 +775,8 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                         <tr key={prod.id}>
                           <td style={{ fontSize: '20px' }}>
                             <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', overflow: 'hidden' }}>
-                              {prod.imageUrl && prod.imageUrl.length > 4 ? (
-                                <img src={prod.imageUrl} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              {prod.imageUrl && formatImageUrl(prod.imageUrl).length > 4 ? (
+                                <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                               ) : (
                                 <ProductIcon name={prod.name} category={prod.category} size={16} />
                               )}
@@ -1662,7 +1786,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                           {isEmoji ? (
                             <span style={{ fontSize: '24px' }}>{img}</span>
                           ) : (
-                            <img src={img} alt="Product" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={formatImageUrl(img)} alt="Product" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           )}
 
                           {/* Hover action banner */}
@@ -1810,8 +1934,8 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                                 </td>
                                 <td style={{ padding: '6px' }}>
                                   <div style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', overflow: 'hidden', background: 'var(--bg-card)' }}>
-                                    {prod.imageUrl && prod.imageUrl.length > 4 ? (
-                                      <img src={prod.imageUrl} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    {prod.imageUrl && formatImageUrl(prod.imageUrl).length > 4 ? (
+                                      <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     ) : (
                                       <ProductIcon name={prod.name} category={prod.category} size={14} />
                                     )}

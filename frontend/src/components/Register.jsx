@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { User, Mail, Lock, Briefcase, Eye, EyeOff, Check, X, Sun, Moon, CheckCircle2, MapPin } from 'lucide-react';
+import { extractErrorMessage } from '../utils/errorHandler';
 
 const passwordRules = [
   { id: 'length', label: 'Minimum 8 characters', test: (pwd) => pwd.length >= 8 },
@@ -125,7 +126,7 @@ export default function Register({ switchToLogin, theme, onToggleTheme }) {
       setFlashMessage({
         type: 'error',
         title: 'Registration failed.',
-        text: err.response?.data || 'Please check your inputs and try again.'
+        text: extractErrorMessage(err, 'Please check your inputs and try again.')
       });
     }
   };

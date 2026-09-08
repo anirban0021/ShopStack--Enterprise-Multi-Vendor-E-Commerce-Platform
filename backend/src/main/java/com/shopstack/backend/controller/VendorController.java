@@ -34,7 +34,7 @@ import com.shopstack.backend.service.WarehouseService;
 
 @RestController
 @RequestMapping("/api/vendor")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(originPatterns = "*", allowCredentials = "true")
 public class VendorController {
 
     @Autowired
@@ -146,6 +146,9 @@ public class VendorController {
             
             if (orderOpt.isPresent()) {
                 Order order = orderOpt.get();
+                if (order.getOrderId() != null && order.getOrderId().startsWith("ORD-FAIL-") || "FAILED".equalsIgnoreCase(order.getPaymentStatus())) {
+                    continue;
+                }
                 Map<String, Object> orderMap = new HashMap<>();
                 orderMap.put("orderItemId", item.getId());
                 orderMap.put("orderId", order.getOrderId());

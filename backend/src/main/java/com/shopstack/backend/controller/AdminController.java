@@ -37,7 +37,7 @@ import com.shopstack.backend.service.PaymentService;
 
 @RestController
 @RequestMapping("/api/admin")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(originPatterns = "*", allowCredentials = "true")
 public class AdminController {
 
     @Autowired
@@ -62,6 +62,9 @@ public class AdminController {
     private com.shopstack.backend.repository.ReviewRepository reviewRepository;
 
     @Autowired
+    private com.shopstack.backend.repository.InventoryRepository inventoryRepository;
+
+    @Autowired
     private com.shopstack.backend.service.FileStorageService fileStorageService;
 
     @Autowired
@@ -69,9 +72,6 @@ public class AdminController {
 
     @Autowired
     private com.shopstack.backend.repository.ProductCouponRepository productCouponRepository;
-
-    @Autowired
-    private com.shopstack.backend.repository.InventoryRepository inventoryRepository;
 
     @Autowired
     private com.shopstack.backend.repository.InboundShipmentRepository inboundShipmentRepository;
@@ -190,7 +190,9 @@ public class AdminController {
     @GetMapping("/payment-monitoring")
     public ResponseEntity<?> getPaymentMonitoringOverview() {
         try {
-            List<Order> allOrders = orderRepository.findAllByOrderByIdDesc();
+            List<Order> allOrders = orderRepository.findAllByOrderByIdDesc().stream()
+                    .filter(o -> o.getOrderId() != null && !o.getOrderId().startsWith("ORD-FAIL-") && !"FAILED".equalsIgnoreCase(o.getPaymentStatus()))
+                    .collect(Collectors.toList());
 
             long totalOrders = allOrders.size();
             long paidCount = allOrders.stream().filter(o -> "PAID".equalsIgnoreCase(o.getPaymentStatus())).count();
@@ -309,7 +311,9 @@ public class AdminController {
     @GetMapping("/dashboard-summary")
     public ResponseEntity<?> getDashboardSummary() {
         try {
-            List<Order> orders = orderRepository.findAll();
+            List<Order> orders = orderRepository.findAll().stream()
+                    .filter(o -> o.getOrderId() != null && !o.getOrderId().startsWith("ORD-FAIL-") && !"FAILED".equalsIgnoreCase(o.getPaymentStatus()))
+                    .collect(Collectors.toList());
             List<Refund> allRefunds = refundRepository.findAll();
             long totalOrdersCount = orders.size();
 
@@ -370,7 +374,9 @@ public class AdminController {
                 }
             }
 
-            List<Order> recentOrders = orderRepository.findAllByOrderByIdDesc();
+            List<Order> recentOrders = orders.stream()
+                    .sorted((a, b) -> Long.compare(b.getId() != null ? b.getId() : 0, a.getId() != null ? a.getId() : 0))
+                    .collect(Collectors.toList());
             if (recentOrders.size() > 5) {
                 recentOrders = recentOrders.subList(0, 5);
             }
@@ -855,6 +861,18 @@ public class AdminController {
                 p.setVendorAddress(v.getAddress());
             }
         }
+
+        // Dynamically populate actual available stock from warehouse inventory
+        if (inventoryRepository != null) {
+            List<com.shopstack.backend.model.Inventory> invs = inventoryRepository.findByProductId(p.getId());
+            if (invs != null && !invs.isEmpty()) {
+                int totalAvailable = invs.stream()
+                        .mapToInt(com.shopstack.backend.model.Inventory::getAvailableQuantity)
+                        .sum();
+                p.setStock(totalAvailable);
+            }
+        }
+
         return p;
     }
 }
