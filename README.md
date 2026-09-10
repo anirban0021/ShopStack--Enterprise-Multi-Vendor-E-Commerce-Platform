@@ -2350,14 +2350,15 @@ flowchart TD
         Dev["Developer commits changes<br/>git push origin main"] --> GHA["GitHub Actions Workflow<br/>.github/workflows/deploy.yml"]
     end
 
-    subgraph "2. Automated CI/CD Pipeline"
+    subgraph "2. Automated CI/CD Pipeline (Ubuntu Runner)"
         GHA -->|"1. Checkout Repository"| GH1["actions/checkout@v4"]
-        GH1 -->|"2. Secure SCP File Sync"| GH2["appleboy/scp-action (Port 22)"]
-        GH2 -->|"3. Remote SSH Build & Launch"| GH3["appleboy/ssh-action<br/>sudo docker compose build & up -d"]
+        GH1 -->|"2. Validate Secrets"| GH2["Check EC2_HOST, EC2_USER, EC2_SSH_KEY"]
+        GH2 -->|"3. Native Rsync Sync"| GH3["rsync over OpenSSH (Port 22)<br/>Fast Delta Sync (Excludes .git, .env, *.pem)"]
+        GH3 -->|"4. Remote SSH Execution"| GH4["Docker Compose Orchestration<br/>Builder Prune + Compose Build + Up -d"]
     end
 
     subgraph "3. AWS EC2 Cloud Host (Ubuntu 24.04 LTS — 13.48.47.35)"
-        GH3 --> Docker["Docker Compose Orchestration (shopstack-network)"]
+        GH4 --> Docker["Docker Compose Orchestration (shopstack-network)"]
         
         subgraph "Containerized Application Stack"
             Frontend["shopstack-frontend (Port 80)<br/>- Nginx Alpine Web Server<br/>- React 19 Vite Production Bundle<br/>- SPA Client-Side Routing<br/>- ^~ /uploads/ & ^~ /api/ Reverse Proxy"]
@@ -2404,10 +2405,11 @@ flowchart TD
 
 ### 3. Automated Push-to-Deploy CI/CD Pipeline (`.github/workflows/deploy.yml`)
 * **Zero-Touch Cloud Updates**: Whenever changes are pushed to `main`, GitHub Actions automatically:
-  1. Checks out the updated repository code.
-  2. Syncs changed files to the AWS EC2 instance via SCP using repository secret `EC2_SSH_KEY`.
-  3. Triggers `docker compose build` and `docker compose up -d` on EC2.
-  4. Deploys the latest code live to `http://13.48.47.35` in seconds without manual SSH intervention.
+  1. Validates all required repository secrets (`EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY`).
+  2. Sets up OpenSSH with Windows-safe CRLF normalization (`tr -d '\r'`).
+  3. Uses native `rsync` over SSH for high-speed delta syncing while protecting `.env`, `.pem` keys, and `.git`.
+  4. Automatically cleans older Docker build cache (`docker builder prune`) and rebuilds/launches containers.
+  5. Deploys the latest code live to `http://13.48.47.35` in under 2 minutes with zero manual SSH needed.
 
 ### 4. Database Migration & Cloud Synchronization
 * **19 Relational SQL Tables**: Migrated all local database records to the cloud PostgreSQL database, including:
@@ -2438,9 +2440,20 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 ├── docker-compose.yml                       # Multi-service stack (db, backend, frontend, volumes, networks)
 ├── .env.example                             # Production environment variables template
 ├── .gitignore                               # Protects credentials, .pem keys, and build outputs
-├── DOCKER_AND_CLOUD_DEPLOYMENT_DOCUMENTATION.txt  # Full deployment specifications & database details
-└── GITHUB_ACTIONS_CICD_DEPLOYMENT_GUIDE.txt       # Step-by-step GitHub repository secrets & CI/CD setup
+└── DOCKER_AND_CLOUD_DEPLOYMENT_DOCUMENTATION.txt  # Full deployment specifications & database details
 ```
+
+---
+
+## 🔐 GitHub Repository Secrets Configuration
+
+Configure the following secrets in **Repository Settings** ➡️ **Secrets and variables** ➡️ **Actions**:
+
+| Secret Name | Value Description | Example / Target Value |
+| :--- | :--- | :--- |
+| `EC2_HOST` | Public IPv4 address of AWS EC2 instance | `13.48.47.35` |
+| `EC2_USER` | EC2 Ubuntu user login | `ubuntu` |
+| `EC2_SSH_KEY` | Entire RSA Private Key starting from `-----BEGIN RSA PRIVATE KEY-----` to `-----END RSA PRIVATE KEY-----` | `deploy/ec2_key.pem` content |
 
 ---
 
@@ -2507,7 +2520,7 @@ bash deploy/setup-aws-ec2.sh
 ## 🚦 Verification Checklist (Day 16)
 
 ### 1. Live Public Storefront & Authentication
-1. Open `http://<your-cloud-ip>` in your browser.
+1. Open `http://13.48.47.35` in your browser.
 2. Verify role-based login and registration flows for all 4 distinct actor profiles:
    - **Administrator**: `admin@shopstack.admin` / `<admin-password>`
    - **Customer**: `customer@example.com` / `<customer-password>`
