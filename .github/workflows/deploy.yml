@@ -5,6 +5,10 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+concurrency:
+  group: aws-ec2-deployment
+  cancel-in-progress: true
+
 jobs:
   deploy:
     name: Deploy to AWS EC2
@@ -111,8 +115,9 @@ jobs:
             # Build and deploy with Docker Compose
             echo "🏗️ Rebuilding Docker containers..."
             sudo docker compose down --remove-orphans || true
+            sudo docker container prune -f || true
             sudo docker compose build
-            sudo docker compose up -d
+            sudo docker compose up -d --force-recreate --remove-orphans
 
             # Clean up dangling images
             sudo docker image prune -f || true

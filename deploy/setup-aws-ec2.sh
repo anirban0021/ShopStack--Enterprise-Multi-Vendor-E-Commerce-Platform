@@ -61,8 +61,9 @@ fi
 # 7. Build and Run Containers
 echo "🏗️ Building and deploying ShopStack multi-container stack..."
 sudo docker compose down --remove-orphans || true
+sudo docker container prune -f || true
 sudo docker compose build --no-cache
-sudo docker compose up -d
+sudo docker compose up -d --force-recreate --remove-orphans
 
 # 8. Check Running Containers
 echo "========================================================"
