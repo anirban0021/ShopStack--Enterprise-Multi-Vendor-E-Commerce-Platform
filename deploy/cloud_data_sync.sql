@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict cErMM0IC3MPP5IRgSc2hYLGBinLQ7JhdISas7Xeycgl7bkXvyuCSz7R4OUKsRu1
+\restrict 9bsTDipGj5d6Zm5Bk0FBpekhIo7uYjPVAVteTF1PqxtBOuRxYQdrmBE0HDWoawF
 
 -- Dumped from database version 16.15
 -- Dumped by pg_dump version 16.15
@@ -1027,6 +1027,8 @@ COPY public.users (id, address, commission_rate, email, full_name, password, pho
 87	Salt Lake Sector V, Kolkata	\N	staff@staff	Kolkata Hub Staff	staff123	+91 98765 99887	WAREHOUSE_STAFF	\N	1	Kolkata Regional Fulfillment Hub (WH-KOL-01)
 88	12 Park Street, Kolkata	\N	customer@gmail.com	Demo Customer	customer123	+91 98765 00001	CUSTOMER	\N	\N	\N
 89	\N	\N	anirbansasmal55@gmail.com	Anirban test	Anirban@055	\N	CUSTOMER	\N	\N	
+90	\N	\N	anirbansasmal56@gmail.com	Anirban test2	Anirban@056	\N	CUSTOMER	\N	\N	
+91	\N	\N	anirbansasmal57@gmail.com	Anirban3	Anirban@057	\N	CUSTOMER	\N	\N	
 \.
 
 
@@ -1168,7 +1170,7 @@ SELECT pg_catalog.setval('public.user_addresses_id_seq', 1, true);
 -- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.users_id_seq', 89, true);
+SELECT pg_catalog.setval('public.users_id_seq', 91, true);
 
 
 --
@@ -1451,5 +1453,5 @@ ALTER TABLE ONLY public.inbound_shipments
 -- PostgreSQL database dump complete
 --
 
-\unrestrict cErMM0IC3MPP5IRgSc2hYLGBinLQ7JhdISas7Xeycgl7bkXvyuCSz7R4OUKsRu1
+\unrestrict 9bsTDipGj5d6Zm5Bk0FBpekhIo7uYjPVAVteTF1PqxtBOuRxYQdrmBE0HDWoawF
 

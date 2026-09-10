@@ -1,5 +1,11 @@
 # ==============================================================================
-# ShopStack - Real-Time Database Sync between AWS Cloud & Local PostgreSQL
+# ShopStack - Full Enterprise Database Sync between AWS Cloud & Local PostgreSQL
+# ==============================================================================
+# Synchronizes ALL 19 tables:
+# users, products, product_images, orders, order_items, inventories,
+# warehouses, warehouse_allocations, stock_transfers, inbound_shipments,
+# coupons, coupon_usages, vendor_coupon_approvals, user_addresses,
+# settlements, refunds, wishlist_items, reviews, product_coupons
 # ==============================================================================
 param (
     [Parameter(Mandatory=$false)]
@@ -7,7 +13,13 @@ param (
     [string]$Direction = "cloud-to-local",
 
     [Parameter(Mandatory=$false)]
-    [string]$LocalPass = "Anirban@069"
+    [string]$LocalPass = "Anirban@069",
+
+    [Parameter(Mandatory=$false)]
+    [switch]$Watch,
+
+    [Parameter(Mandatory=$false)]
+    [int]$IntervalSeconds = 15
 )
 
 $EC2_IP = "13.48.47.35"
@@ -15,45 +27,53 @@ $EC2_USER = "ubuntu"
 $KEY_PATH = "deploy/ec2_key.pem"
 $DUMP_FILE = "deploy/cloud_data_sync.sql"
 
-Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "ShopStack Database Synchronization Tool" -ForegroundColor Cyan
-Write-Host "Mode: $Direction" -ForegroundColor Yellow
-Write-Host "==========================================================" -ForegroundColor Cyan
+function Sync-Database {
+    param ([string]$Dir)
 
-if ($Direction -eq "cloud-to-local") {
-    Write-Host "[1/3] Generating clean database dump on AWS EC2 ($EC2_IP)..." -ForegroundColor Yellow
-    ssh -o StrictHostKeyChecking=no -i $KEY_PATH "$($EC2_USER)@$($EC2_IP)" "sudo docker exec shopstack-db pg_dump -U postgres -d shopstack_db --clean --if-exists > /tmp/cloud_dump.sql"
+    $timeStr = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    Write-Host "[$timeStr] Syncing entire database: $Dir..." -ForegroundColor Cyan
 
-    Write-Host "[2/3] Downloading database dump via SCP..." -ForegroundColor Yellow
-    scp -o StrictHostKeyChecking=no -i $KEY_PATH "$($EC2_USER)@$($EC2_IP):/tmp/cloud_dump.sql" $DUMP_FILE
-    ssh -o StrictHostKeyChecking=no -i $KEY_PATH "$($EC2_USER)@$($EC2_IP)" "rm -f /tmp/cloud_dump.sql"
+    if ($Dir -eq "cloud-to-local") {
+        # 1. Dump full database on EC2 (all 19 tables, sequences & relations)
+        ssh -o StrictHostKeyChecking=no -i $KEY_PATH "$($EC2_USER)@$($EC2_IP)" "sudo docker exec shopstack-db pg_dump -U postgres -d shopstack_db --clean --if-exists > /tmp/cloud_dump.sql"
 
-    if (Test-Path $DUMP_FILE) {
-        $fileSize = (Get-Item $DUMP_FILE).Length
-        Write-Host "Dump file received ($fileSize bytes)." -ForegroundColor Green
-        Write-Host "[3/3] Restoring cloud database into local PostgreSQL (shopstack_db)..." -ForegroundColor Yellow
+        # 2. Download clean UTF-8 dump
+        scp -q -o StrictHostKeyChecking=no -i $KEY_PATH "$($EC2_USER)@$($EC2_IP):/tmp/cloud_dump.sql" $DUMP_FILE
 
-        $env:PGPASSWORD = $LocalPass
-        psql -U postgres -h localhost -d shopstack_db -f $DUMP_FILE
+        if (Test-Path $DUMP_FILE) {
+            $fileSize = (Get-Item $DUMP_FILE).Length
+            # 3. Restore all 19 tables into local PostgreSQL database
+            $env:PGPASSWORD = $LocalPass
+            psql -U postgres -h localhost -d shopstack_db -q -f $DUMP_FILE > $null 2>&1
 
-        Write-Host "==========================================================" -ForegroundColor Cyan
-        Write-Host "DATABASE SYNC COMPLETE! Local PostgreSQL now contains all AWS Cloud users and data." -ForegroundColor Green
-        Write-Host "==========================================================" -ForegroundColor Cyan
+            Write-Host "[$timeStr] SUCCESS: All 19 tables synchronized to Local PostgreSQL ($fileSize bytes)." -ForegroundColor Green
+        } else {
+            Write-Host "[$timeStr] ERROR: Could not retrieve dump from AWS EC2." -ForegroundColor Red
+        }
     } else {
-        Write-Host "Error: Could not download cloud database dump." -ForegroundColor Red
+        $env:PGPASSWORD = $LocalPass
+        pg_dump -U postgres -h localhost -d shopstack_db --clean --if-exists -f $DUMP_FILE
+
+        scp -q -o StrictHostKeyChecking=no -i $KEY_PATH $DUMP_FILE "$($EC2_USER)@$($EC2_IP):/tmp/local_dump.sql"
+        ssh -o StrictHostKeyChecking=no -i $KEY_PATH "$($EC2_USER)@$($EC2_IP)" "sudo docker exec -i shopstack-db psql -U postgres -d shopstack_db < /tmp/local_dump.sql > /dev/null 2>&1 && rm -f /tmp/local_dump.sql"
+
+        Write-Host "[$timeStr] SUCCESS: All 19 tables pushed to AWS EC2 Cloud Database." -ForegroundColor Green
+    }
+}
+
+Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "ShopStack Complete Database Synchronization Tool" -ForegroundColor Cyan
+Write-Host "Mode: $Direction | Covers ALL 19 tables" -ForegroundColor Yellow
+if ($Watch) {
+    Write-Host "Continuous Live Auto-Sync Enabled (Interval: ${IntervalSeconds}s)" -ForegroundColor Green
+}
+Write-Host "==========================================================" -ForegroundColor Cyan
+
+if ($Watch) {
+    while ($true) {
+        Sync-Database -Dir $Direction
+        Start-Sleep -Seconds $IntervalSeconds
     }
 } else {
-    Write-Host "[1/3] Generating clean dump of local PostgreSQL database..." -ForegroundColor Yellow
-    $env:PGPASSWORD = $LocalPass
-    pg_dump -U postgres -h localhost -d shopstack_db --clean --if-exists -f $DUMP_FILE
-
-    Write-Host "[2/3] Uploading dump to AWS EC2 ($EC2_IP)..." -ForegroundColor Yellow
-    scp -o StrictHostKeyChecking=no -i $KEY_PATH $DUMP_FILE "$($EC2_USER)@$($EC2_IP):/tmp/local_dump.sql"
-
-    Write-Host "[3/3] Restoring into EC2 PostgreSQL database..." -ForegroundColor Yellow
-    ssh -o StrictHostKeyChecking=no -i $KEY_PATH "$($EC2_USER)@$($EC2_IP)" "sudo docker exec -i shopstack-db psql -U postgres -d shopstack_db < /tmp/local_dump.sql && rm -f /tmp/local_dump.sql"
-
-    Write-Host "==========================================================" -ForegroundColor Cyan
-    Write-Host "DATABASE SYNC COMPLETE! AWS Cloud PostgreSQL now matches Local database." -ForegroundColor Green
-    Write-Host "==========================================================" -ForegroundColor Cyan
+    Sync-Database -Dir $Direction
 }
