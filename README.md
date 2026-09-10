@@ -2237,6 +2237,26 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 │   └── pom.xml                                      # Added spring-boot-starter-mail & thymeleaf
 ```
 
+Related Code Files:
+- [`AsyncConfig.java`](file:///backend/src/main/java/com/shopstack/backend/config/AsyncConfig.java)
+- [`EmailService.java`](file:///backend/src/main/java/com/shopstack/backend/service/EmailService.java)
+- [`NotificationService.java`](file:///backend/src/main/java/com/shopstack/backend/service/NotificationService.java)
+- [`NotificationEventListener.java`](file:///backend/src/main/java/com/shopstack/backend/listener/NotificationEventListener.java)
+- [`OrderPlacedEvent.java`](file:///backend/src/main/java/com/shopstack/backend/event/OrderPlacedEvent.java)
+- [`PaymentSuccessEvent.java`](file:///backend/src/main/java/com/shopstack/backend/event/PaymentSuccessEvent.java)
+- [`PaymentFailedEvent.java`](file:///backend/src/main/java/com/shopstack/backend/event/PaymentFailedEvent.java)
+- [`OrderShippedEvent.java`](file:///backend/src/main/java/com/shopstack/backend/event/OrderShippedEvent.java)
+- [`OrderDeliveredEvent.java`](file:///backend/src/main/java/com/shopstack/backend/event/OrderDeliveredEvent.java)
+- [`RefundCompletedEvent.java`](file:///backend/src/main/java/com/shopstack/backend/event/RefundCompletedEvent.java)
+- [`order-placed.html`](file:///backend/src/main/resources/templates/email/order-placed.html)
+- [`payment-success.html`](file:///backend/src/main/resources/templates/email/payment-success.html)
+- [`payment-failed.html`](file:///backend/src/main/resources/templates/email/payment-failed.html)
+- [`order-shipped.html`](file:///backend/src/main/resources/templates/email/order-shipped.html)
+- [`order-delivered.html`](file:///backend/src/main/resources/templates/email/order-delivered.html)
+- [`refund-completed.html`](file:///backend/src/main/resources/templates/email/refund-completed.html)
+- [`EmailServiceTest.java`](file:///backend/src/test/java/com/shopstack/backend/service/EmailServiceTest.java)
+- [`OrderEventPublishingTest.java`](file:///backend/src/test/java/com/shopstack/backend/service/OrderEventPublishingTest.java)
+
 ---
 
 ## ⚙️ Environment Variables & Mail Configuration
