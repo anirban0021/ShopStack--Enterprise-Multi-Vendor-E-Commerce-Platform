@@ -29,6 +29,9 @@ public class AuthController {
     @Autowired
     private com.shopstack.backend.repository.WarehouseRepository warehouseRepository;
 
+    @Autowired
+    private com.shopstack.backend.service.CloudSyncService cloudSyncService;
+
     @GetMapping("/users")
     public ResponseEntity<?> getAllUsers() {
         return ResponseEntity.ok(userRepository.findAll());
@@ -91,6 +94,7 @@ public class AuthController {
 
         User savedUser = userRepository.saveAndFlush(user);
         System.out.println(">>> User registered and saved in PostgreSQL database: " + savedUser.getEmail() + " [ID: " + savedUser.getId() + ", Role: " + savedUser.getRole() + "]");
+        cloudSyncService.pushUserToCloud(savedUser);
 
         java.util.Map<String, Object> response = new java.util.HashMap<>();
         response.put("message", "User registered successfully!");
@@ -151,6 +155,7 @@ public class AuthController {
 
             User persistedUser = userRepository.saveAndFlush(newUser);
             System.out.println(">>> User auto-provisioned and saved on login in PostgreSQL database: " + persistedUser.getEmail() + " [ID: " + persistedUser.getId() + ", Role: " + persistedUser.getRole() + "]");
+            cloudSyncService.pushUserToCloud(persistedUser);
             return ResponseEntity.ok(persistedUser);
         }
 
@@ -202,6 +207,7 @@ public class AuthController {
 
         User updatedUser = userRepository.saveAndFlush(user);
         System.out.println(">>> User login verified and synced to PostgreSQL database: " + updatedUser.getEmail() + " [ID: " + updatedUser.getId() + ", Role: " + updatedUser.getRole() + "]");
+        cloudSyncService.pushUserToCloud(updatedUser);
         return ResponseEntity.ok(updatedUser);
     }
 
