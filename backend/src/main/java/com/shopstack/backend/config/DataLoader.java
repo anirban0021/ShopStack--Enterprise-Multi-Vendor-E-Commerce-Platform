@@ -12,6 +12,8 @@ import com.shopstack.backend.model.WarehouseAllocation;
 import com.shopstack.backend.repository.RefundRepository;
 import com.shopstack.backend.repository.OrderItemRepository;
 import com.shopstack.backend.repository.WarehouseAllocationRepository;
+import com.shopstack.backend.model.User;
+import com.shopstack.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
@@ -21,6 +23,9 @@ import java.util.Optional;
 
 @Component
 public class DataLoader implements CommandLineRunner {
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Autowired
     private WarehouseRepository warehouseRepository;
@@ -63,6 +68,35 @@ public class DataLoader implements CommandLineRunner {
         }
 
         System.out.println("Default warehouses (Kolkata, Mumbai, Delhi, Bangalore) verified.");
+
+        // Ensure default seed accounts exist in PostgreSQL database
+        if (!userRepository.existsByEmailIgnoreCase("admin@admin")) {
+            User admin = new User("System Administrator", "admin@admin", "admin123", "ADMINISTRATOR", "+91 98765 43210", "ShopStack HQ, Tech City");
+            userRepository.saveAndFlush(admin);
+            System.out.println("Default Administrator seeded: admin@admin");
+        }
+
+        if (!userRepository.existsByEmailIgnoreCase("seller@seller")) {
+            User vendor = new User("Prime Merchant", "seller@seller", "seller123", "VENDOR", "+91 98765 11223", "Merchant Boulevard, Sector 5");
+            vendor.setVendorCode("123456");
+            vendor.setCommissionRate(10.0);
+            userRepository.saveAndFlush(vendor);
+            System.out.println("Default Vendor seeded: seller@seller (Vendor Code: 123456)");
+        }
+
+        if (!userRepository.existsByEmailIgnoreCase("staff@staff")) {
+            User staff = new User("Kolkata Hub Staff", "staff@staff", "staff123", "WAREHOUSE_STAFF", "+91 98765 99887", "Salt Lake Sector V, Kolkata");
+            staff.setWarehouseId(whKolkata.getId());
+            staff.setWarehouseName(whKolkata.getName() + " (" + whKolkata.getCode() + ")");
+            userRepository.saveAndFlush(staff);
+            System.out.println("Default Warehouse Staff seeded: staff@staff");
+        }
+
+        if (!userRepository.existsByEmailIgnoreCase("customer@gmail.com")) {
+            User customer = new User("Demo Customer", "customer@gmail.com", "customer123", "CUSTOMER", "+91 98765 00001", "12 Park Street, Kolkata");
+            userRepository.saveAndFlush(customer);
+            System.out.println("Default Customer seeded: customer@gmail.com");
+        }
 
         // Distribute stock for any product that has no warehouse inventory yet
         List<Product> products = productRepository.findAll();

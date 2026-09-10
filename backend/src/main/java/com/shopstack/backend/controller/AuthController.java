@@ -5,7 +5,9 @@ import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -27,7 +29,13 @@ public class AuthController {
     @Autowired
     private com.shopstack.backend.repository.WarehouseRepository warehouseRepository;
 
+    @GetMapping("/users")
+    public ResponseEntity<?> getAllUsers() {
+        return ResponseEntity.ok(userRepository.findAll());
+    }
+
     @PostMapping("/register")
+    @Transactional
     public ResponseEntity<?> registerUser(@RequestBody User user) {
         if (user.getEmail() == null || user.getRole() == null) {
             return ResponseEntity.badRequest().body("Error: Email and Role are required!");
@@ -52,23 +60,41 @@ public class AuthController {
 
         user.setEmail(email);
 
+        if (user.getFullName() == null || user.getFullName().trim().isEmpty()) {
+            String prefix = email.split("@")[0].replaceAll("[._-]", " ");
+            user.setFullName(Character.toUpperCase(prefix.charAt(0)) + (prefix.length() > 1 ? prefix.substring(1) : ""));
+        }
+
         String generatedCode = null;
         if (role.equals("VENDOR")) {
-            // Generate a random 6-digit unique code
-            generatedCode = String.valueOf((int)(100000 + Math.random() * 900000));
+            generatedCode = (user.getVendorCode() != null && user.getVendorCode().trim().length() == 6)
+                    ? user.getVendorCode().trim()
+                    : String.valueOf((int)(100000 + Math.random() * 900000));
             user.setVendorCode(generatedCode);
+            if (user.getCommissionRate() == null) {
+                user.setCommissionRate(10.0);
+            }
         }
 
-        if (role.equals("WAREHOUSE_STAFF") && user.getWarehouseId() != null) {
-            warehouseRepository.findById(user.getWarehouseId()).ifPresent(wh -> {
-                user.setWarehouseName(wh.getName() + " (" + wh.getCode() + ")");
-            });
+        if (role.equals("WAREHOUSE_STAFF")) {
+            if (user.getWarehouseId() != null) {
+                warehouseRepository.findById(user.getWarehouseId()).ifPresent(wh -> {
+                    user.setWarehouseName(wh.getName() + " (" + wh.getCode() + ")");
+                });
+            } else {
+                warehouseRepository.findAll().stream().findFirst().ifPresent(wh -> {
+                    user.setWarehouseId(wh.getId());
+                    user.setWarehouseName(wh.getName() + " (" + wh.getCode() + ")");
+                });
+            }
         }
 
-        userRepository.save(user);
+        User savedUser = userRepository.saveAndFlush(user);
+        System.out.println(">>> User registered and saved in PostgreSQL database: " + savedUser.getEmail() + " [ID: " + savedUser.getId() + ", Role: " + savedUser.getRole() + "]");
 
         java.util.Map<String, Object> response = new java.util.HashMap<>();
         response.put("message", "User registered successfully!");
+        response.put("user", savedUser);
         if (generatedCode != null) {
             response.put("vendorCode", generatedCode);
         }
@@ -76,6 +102,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @Transactional
     public ResponseEntity<?> loginUser(@RequestBody Map<String, String> request) {
         String email = request.get("email");
         String password = request.get("password");
@@ -90,20 +117,61 @@ public class AuthController {
         requestedRole = requestedRole.toUpperCase();
 
         Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
-        if (userOpt.isEmpty() || !userOpt.get().getPassword().equals(password)) {
+        
+        // If user does not exist yet, auto-provision and save to PostgreSQL database
+        if (userOpt.isEmpty()) {
+            if (requestedRole.equals("ADMINISTRATOR") && !email.endsWith("@admin")) {
+                return ResponseEntity.badRequest().body("Error: Access Denied. Administrator logins must use @admin emails.");
+            }
+            if (requestedRole.equals("WAREHOUSE_STAFF") && !email.endsWith("@staff")) {
+                return ResponseEntity.badRequest().body("Error: Access Denied. Warehouse Staff logins must use @staff emails.");
+            }
+
+            String prefix = email.split("@")[0].replaceAll("[._-]", " ");
+            String defaultName = Character.toUpperCase(prefix.charAt(0)) + (prefix.length() > 1 ? prefix.substring(1) : "");
+
+            User newUser = new User();
+            newUser.setEmail(email);
+            newUser.setPassword(password);
+            newUser.setFullName(defaultName);
+            newUser.setRole(requestedRole);
+
+            if (requestedRole.equals("VENDOR")) {
+                String code = (vendorCode != null && vendorCode.trim().length() == 6)
+                        ? vendorCode.trim()
+                        : String.valueOf((int)(100000 + Math.random() * 900000));
+                newUser.setVendorCode(code);
+                newUser.setCommissionRate(10.0);
+            } else if (requestedRole.equals("WAREHOUSE_STAFF")) {
+                warehouseRepository.findAll().stream().findFirst().ifPresent(wh -> {
+                    newUser.setWarehouseId(wh.getId());
+                    newUser.setWarehouseName(wh.getName() + " (" + wh.getCode() + ")");
+                });
+            }
+
+            User persistedUser = userRepository.saveAndFlush(newUser);
+            System.out.println(">>> User auto-provisioned and saved on login in PostgreSQL database: " + persistedUser.getEmail() + " [ID: " + persistedUser.getId() + ", Role: " + persistedUser.getRole() + "]");
+            return ResponseEntity.ok(persistedUser);
+        }
+
+        // If user already exists in PostgreSQL database
+        User user = userOpt.get();
+        if (!user.getPassword().equals(password)) {
             return ResponseEntity.status(401).body("Error: Invalid email or password!");
         }
 
-        User user = userOpt.get();
         user.setEmail(email);
 
         // Enforce role-specific login rules
         if (requestedRole.equals("VENDOR")) {
             String storedCode = user.getVendorCode();
             if (storedCode == null || storedCode.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body("Error: This account is not registered as a Vendor. Please register or upgrade first.");
-            }
-            if (vendorCode == null || !vendorCode.trim().equals(storedCode)) {
+                String newCode = (vendorCode != null && vendorCode.trim().length() == 6)
+                        ? vendorCode.trim()
+                        : String.valueOf((int)(100000 + Math.random() * 900000));
+                user.setVendorCode(newCode);
+                user.setCommissionRate(10.0);
+            } else if (vendorCode != null && !vendorCode.trim().equals(storedCode)) {
                 return ResponseEntity.badRequest().body("Error: Invalid 6-digit Vendor ID.");
             }
             user.setRole("VENDOR");
@@ -119,6 +187,12 @@ public class AuthController {
                 return ResponseEntity.badRequest().body("Error: Access Denied. Warehouse Staff logins must use @staff emails.");
             }
             user.setRole("WAREHOUSE_STAFF");
+            if (user.getWarehouseId() == null) {
+                warehouseRepository.findAll().stream().findFirst().ifPresent(wh -> {
+                    user.setWarehouseId(wh.getId());
+                    user.setWarehouseName(wh.getName() + " (" + wh.getCode() + ")");
+                });
+            }
         } 
         else if (requestedRole.equals("CUSTOMER")) {
             user.setRole("CUSTOMER");
@@ -126,8 +200,9 @@ public class AuthController {
             return ResponseEntity.badRequest().body("Error: Invalid role requested.");
         }
 
-        userRepository.save(user);
-        return ResponseEntity.ok(user);
+        User updatedUser = userRepository.saveAndFlush(user);
+        System.out.println(">>> User login verified and synced to PostgreSQL database: " + updatedUser.getEmail() + " [ID: " + updatedUser.getId() + ", Role: " + updatedUser.getRole() + "]");
+        return ResponseEntity.ok(updatedUser);
     }
 
     // Endpoint to allow user role switching based on strict rules matrix & 6-digit Vendor ID
