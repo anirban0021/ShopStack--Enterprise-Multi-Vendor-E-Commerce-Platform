@@ -104,11 +104,18 @@ jobs:
             # Set execution permissions for scripts
             chmod +x deploy/*.sh 2>/dev/null || true
 
+            # Free up Docker build cache and unused layers
+            echo "🧹 Cleaning old Docker build cache..."
+            sudo docker builder prune -af --filter "until=24h" || true
+
             # Build and deploy with Docker Compose
             echo "🏗️ Rebuilding Docker containers..."
             sudo docker compose down --remove-orphans || true
             sudo docker compose build
             sudo docker compose up -d
+
+            # Clean up dangling images
+            sudo docker image prune -f || true
 
             echo "========================================="
             echo "📊 Docker Container Status:"
