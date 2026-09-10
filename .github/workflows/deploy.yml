@@ -14,16 +14,65 @@ jobs:
       - name: Checkout Repository Code
         uses: actions/checkout@v4
 
-      - name: Configure SSH Key
+      - name: Validate GitHub Secrets
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          echo "🔍 Validating GitHub Repository Secrets..."
+          ERRORS=0
+          if [ -z "$EC2_HOST" ]; then
+            echo "❌ Missing secret: EC2_HOST (should be 13.48.47.35)"
+            ERRORS=$((ERRORS + 1))
+          else
+            echo "✅ EC2_HOST is configured: $EC2_HOST"
+          fi
+
+          if [ -z "$EC2_USER" ]; then
+            echo "❌ Missing secret: EC2_USER (should be ubuntu)"
+            ERRORS=$((ERRORS + 1))
+          else
+            echo "✅ EC2_USER is configured: $EC2_USER"
+          fi
+
+          if [ -z "$EC2_SSH_KEY" ]; then
+            echo "❌ Missing secret: EC2_SSH_KEY (your RSA private key)"
+            ERRORS=$((ERRORS + 1))
+          else
+            echo "✅ EC2_SSH_KEY is configured."
+          fi
+
+          if [ $ERRORS -gt 0 ]; then
+            echo "⚠️ Please configure the missing secrets in GitHub Repository Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Setup SSH Key
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" | tr -d '\r' > ~/.ssh/ec2_key
+          chmod 700 ~/.ssh
+          printf "%s\n" "$SSH_KEY" | tr -d '\r' > ~/.ssh/ec2_key
           chmod 600 ~/.ssh/ec2_key
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Sync Files to AWS EC2 via Rsync
+      - name: Test SSH Connection to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          echo "🚀 Syncing files to EC2 (${{ secrets.EC2_HOST }})..."
+          echo "🔌 Verifying SSH connection to EC2 ($EC2_USER@$EC2_HOST)..."
+          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${EC2_USER}@${EC2_HOST}" "echo '✅ SSH connection established successfully!'"
+
+      - name: Sync Repository Files to EC2 via Rsync
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          echo "🚀 Syncing files to EC2..."
+          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no "${EC2_USER}@${EC2_HOST}" "mkdir -p /home/ubuntu/ShopStack"
+          
           rsync -avz \
             -e "ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no" \
             --exclude '.git' \
@@ -34,12 +83,15 @@ jobs:
             --exclude '*.pem' \
             --exclude '*.key' \
             --exclude '.env' \
-            ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ubuntu/ShopStack/
+            ./ "${EC2_USER}@${EC2_HOST}:/home/ubuntu/ShopStack/"
 
-      - name: Rebuild and Restart Docker Containers on EC2
+      - name: Rebuild & Restart Docker Containers on EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          echo "🐳 Rebuilding and restarting Docker containers on EC2..."
-          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          echo "🐳 Rebuilding and starting Docker containers on EC2..."
+          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no "${EC2_USER}@${EC2_HOST}" 'bash -s' << 'EOF'
             set -e
             cd /home/ubuntu/ShopStack
 
@@ -49,10 +101,11 @@ jobs:
               cp .env.example .env
             fi
 
-            # Ensure script execution permissions
+            # Set execution permissions for scripts
             chmod +x deploy/*.sh 2>/dev/null || true
 
-            # Rebuild and restart containers
+            # Build and deploy with Docker Compose
+            echo "🏗️ Rebuilding Docker containers..."
             sudo docker compose down --remove-orphans || true
             sudo docker compose build
             sudo docker compose up -d
