@@ -2431,10 +2431,18 @@ flowchart TD
   4. Automatically cleans older Docker build cache (`docker builder prune`) and rebuilds/launches containers.
   5. Deploys the latest code live to `http://13.48.47.35` in under 2 minutes with zero manual SSH needed.
 
-### 4. Database Migration & Cloud Synchronization
-* **19 Relational SQL Tables**: Migrated all local database records to the cloud PostgreSQL database, including:
-  `users`, `products`, `product_images`, `orders`, `order_items`, `settlements`, `warehouses`, `inventories`, `warehouse_allocations`, `inbound_shipments`, `stock_transfers`, `coupons`, `product_coupons`, `vendor_coupon_approvals`, `coupon_usages`, `refunds`, `reviews`, `user_addresses`, `wishlist_items`.
-* **Product Catalog & Media Sync**: Synchronized all 9 catalog items and 75 high-resolution product images into the persistent Docker volume (`shopstack_backend_uploads`).
+### 4. Real-Time Dual-Database Synchronization Architecture
+* **Bi-Directional Cloud & Local Sync (`CloudSyncService.java`)**:
+  - Implemented an automated background sync daemon running `@Scheduled(fixedDelay = 5000)` and `@Async` within the Spring Boot engine.
+  - Automatically polls the AWS Cloud REST API (`http://13.48.47.35:8080/api/auth/users`) to replicate any new cloud registrations or credential updates into the local PostgreSQL database (`shopstack_db`) with zero manual commands.
+  - Automatically pushes local registrations and logins up to the AWS Cloud database in the background.
+* **19-Table Enterprise Database Synchronization Tool (`deploy/sync-db.ps1`)**:
+  - Full-schema automated sync covering all 19 PostgreSQL tables:
+    `users`, `products`, `product_images`, `orders`, `order_items`, `inventories`, `warehouses`, `warehouse_allocations`, `stock_transfers`, `inbound_shipments`, `coupons`, `coupon_usages`, `vendor_coupon_approvals`, `product_coupons`, `user_addresses`, `settlements`, `refunds`, `reviews`, `wishlist_items`.
+  - Supports instant 1-click cloud-to-local pull, local-to-cloud push, and continuous live auto-sync (`-Watch`) mode.
+* **Database Migration & Seeding**:
+  - Automated initial database seeding in `DataLoader.java` for default baseline actors (`admin@admin`, `seller@seller`, `staff@staff`, `customer@gmail.com`).
+  - Synchronized all 9 catalog items and 75 high-resolution product images into the persistent Docker volume (`shopstack_backend_uploads`).
 
 ---
 
@@ -2444,8 +2452,15 @@ flowchart TD
 ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml                       # GitHub Actions automated CI/CD push-to-deploy workflow
+│       └── deploy.yml                       # GitHub Actions CI/CD push-to-deploy workflow with concurrency locks
 ├── backend/
+│   ├── src/main/java/com/shopstack/backend/
+│   │   ├── config/                          # Security, CORS, and startup DataLoader configurations
+│   │   ├── controller/                      # REST API endpoints (/api/auth, /api/products, etc.)
+│   │   ├── model/                           # JPA Entities for all 19 relational tables
+│   │   ├── repository/                      # Spring Data JPA Repository interfaces
+│   │   └── service/
+│   │       └── CloudSyncService.java        # Real-time automated cloud & local DB synchronization service
 │   ├── Dockerfile                           # Multi-stage Maven + Eclipse Temurin 21 production image
 │   └── .dockerignore                        # Ignores target/, .git/, local uploads from build context
 ├── frontend/
@@ -2455,6 +2470,7 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 ├── deploy/
 │   ├── setup-aws-ec2.sh                     # Automated Ubuntu host bootstrap, swap config & container launcher
 │   ├── deploy-to-ec2.ps1                    # One-click Windows PowerShell deployment script
+│   ├── sync-db.ps1                          # Full 19-table database synchronization CLI tool (-Watch mode)
 │   ├── ec2_key.pem                          # Protected AWS SSH RSA private key (in .gitignore)
 │   └── AWS_DEPLOYMENT_GUIDE.md              # Step-by-step evaluator review & operational guide
 ├── docker-compose.yml                       # Multi-service stack (db, backend, frontend, volumes, networks)
@@ -2514,17 +2530,17 @@ MAIL_FROM=support@shopstack.com
 
 ---
 
-## 🚀 Deployment & CI/CD Commands
+## 🚀 Deployment & Synchronization Commands
 
-### Option A: Push-to-Deploy via GitHub Actions (Automated CI/CD)
+### 1. Push-to-Deploy via GitHub Actions (Automated CI/CD)
 ```bash
 git add .
 git commit -m "feat: updates for cloud deployment"
 git push origin main
-# GitHub Actions automatically builds and deploys to the cloud instance
+# GitHub Actions automatically builds and deploys to AWS EC2 in under 2 minutes
 ```
 
-### Option B: One-Click Direct Deployment Script
+### 2. One-Click Direct Deployment Script
 ```powershell
 # Windows PowerShell
 powershell -ExecutionPolicy Bypass -File deploy\deploy-to-ec2.ps1
@@ -2535,6 +2551,18 @@ powershell -ExecutionPolicy Bypass -File deploy\deploy-to-ec2.ps1
 bash deploy/setup-aws-ec2.sh
 ```
 
+### 3. Database Synchronization Commands (`deploy/sync-db.ps1`)
+```powershell
+# Pull all cloud users, orders, products & tables into Local PostgreSQL:
+powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction cloud-to-local
+
+# Continuous Live Auto-Sync (Automatically syncs all 19 tables every 15s in background):
+powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Watch -IntervalSeconds 15
+
+# Push local database changes up to AWS Cloud:
+powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-cloud
+```
+
 ---
 
 ## 🚦 Verification Checklist (Day 16)
@@ -2542,14 +2570,14 @@ bash deploy/setup-aws-ec2.sh
 ### 1. Live Public Storefront & Authentication
 1. Open `http://13.48.47.35` in your browser.
 2. Verify role-based login and registration flows for all 4 distinct actor profiles:
-   - **Administrator**: `admin@shopstack.admin` / `<admin-password>`
-   - **Customer**: `customer@example.com` / `<customer-password>`
-   - **Vendor**: `vendor@shopstack.com` / `<vendor-password>`
-   - **Warehouse Staff**: `staff@shopstack.staff` / `<staff-password>`
+   - **Administrator**: `admin@admin` / `admin123`
+   - **Customer**: `customer@gmail.com` / `customer123`
+   - **Vendor**: `seller@seller` / `seller123` (Vendor ID: `123456`)
+   - **Warehouse Staff**: `staff@staff` / `staff123`
 3. Verify session authentication, JWT/CORS headers, and dynamic role switching through the Nginx reverse proxy.
 
 ### 2. Product Catalog & High-Resolution Image Delivery
-1. Browse catalog items on the live public storefront.
+1. Browse catalog items on the live public storefront (`http://13.48.47.35`).
 2. Verify that high-resolution product media files load smoothly via the `/uploads/products/...` reverse proxy with HTTP 200 responses.
 3. Open product details and test the multi-image gallery carousels and zoom previews.
 
@@ -2565,7 +2593,12 @@ bash deploy/setup-aws-ec2.sh
    `1. STOCK ALLOCATED` ➡️ `2. PRODUCT PICKED` ➡️ `3. ORDER PACKED` ➡️ `4. READY FOR SHIPMENT` ➡️ `SHIPPED`.
 3. Verify delivery handover (`DELIVERED`) and automated financial settlement generation in the Admin console.
 
-### 5. Automated GitHub Actions CI/CD Verification
+### 5. Automated Real-Time Database Synchronization
+1. Register a new user or place an order on `http://13.48.47.35/`.
+2. Observe real-time automatic synchronization to your local PostgreSQL database (`shopstack_db`) via `CloudSyncService.java` or `deploy\sync-db.ps1 -Watch`.
+3. Inspect local database rows in pgAdmin to verify all relational records match.
+
+### 6. Automated GitHub Actions CI/CD Verification
 1. Make a code update in `frontend/src/` or `backend/src/`.
 2. Commit and push to `main` branch (`git push origin main`).
 3. Open the **Actions** tab on GitHub and confirm that the deployment workflow executes and passes with a green checkmark.
