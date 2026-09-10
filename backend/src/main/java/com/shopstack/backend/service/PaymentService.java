@@ -42,6 +42,11 @@ import com.shopstack.backend.repository.RefundRepository;
 import com.shopstack.backend.repository.SettlementRepository;
 import com.shopstack.backend.repository.UserRepository;
 import com.shopstack.backend.model.User;
+import com.shopstack.backend.event.OrderPlacedEvent;
+import com.shopstack.backend.event.PaymentSuccessEvent;
+import com.shopstack.backend.event.PaymentFailedEvent;
+import com.shopstack.backend.event.RefundCompletedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 @Service
 public class PaymentService {
@@ -84,6 +89,9 @@ public class PaymentService {
 
     @Autowired
     private CouponService couponService;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     @Value("${shopstack.commission.percentage:10.0}")
     private double commissionPercentage;
@@ -256,6 +264,17 @@ public class PaymentService {
         // Auto-generate per-vendor Settlement records when paymentStatus is PAID
         if ("PAID".equalsIgnoreCase(calculatedPaymentStatus)) {
             createSettlementsForOrder(order, savedItems);
+        }
+
+        // Publish OrderPlacedEvent and PaymentSuccessEvent asynchronously for customer email notifications
+        try {
+            User user = (userId != null) ? userRepository.findById(userId).orElse(null) : null;
+            eventPublisher.publishEvent(new OrderPlacedEvent(order, savedItems, user));
+            if ("PAID".equalsIgnoreCase(calculatedPaymentStatus)) {
+                eventPublisher.publishEvent(new PaymentSuccessEvent(order, razorpayPaymentId, totalAmount, paymentMethod, user));
+            }
+        } catch (Exception e) {
+            System.err.println("[PaymentService] Error publishing order notification events: " + e.getMessage());
         }
 
         // Order is CONFIRMED and queued for Administrator warehouse allocation
@@ -686,7 +705,19 @@ public class PaymentService {
             }
         }
 
-        return refundRepository.save(refund);
+        Refund savedRefund = refundRepository.save(refund);
+
+        if ("REFUND".equalsIgnoreCase(resolution)) {
+            // Publish RefundCompletedEvent
+            try {
+                User user = (order.getUserId() != null) ? userRepository.findById(order.getUserId()).orElse(null) : null;
+                eventPublisher.publishEvent(new RefundCompletedEvent(savedRefund, order, user));
+            } catch (Exception e) {
+                System.err.println("[PaymentService] Error publishing RefundCompletedEvent in resolveReturnRequest: " + e.getMessage());
+            }
+        }
+
+        return savedRefund;
     }
 
     /**
@@ -763,6 +794,14 @@ public class PaymentService {
             order.setStatus("PARTIALLY_REFUNDED");
         }
         orderRepository.save(order);
+
+        // Publish RefundCompletedEvent
+        try {
+            User user = (order.getUserId() != null) ? userRepository.findById(order.getUserId()).orElse(null) : null;
+            eventPublisher.publishEvent(new RefundCompletedEvent(refund, order, user));
+        } catch (Exception e) {
+            System.err.println("[PaymentService] Error publishing RefundCompletedEvent: " + e.getMessage());
+        }
 
         // Update vendor settlements to REFUNDED so profits/commissions are properly deducted
         List<Settlement> settlements = settlementRepository.findByOrderId(order.getOrderId());
@@ -910,6 +949,14 @@ public class PaymentService {
         }
         orderRepository.save(order);
 
+        // Publish RefundCompletedEvent
+        try {
+            User user = (order.getUserId() != null) ? userRepository.findById(order.getUserId()).orElse(null) : null;
+            eventPublisher.publishEvent(new RefundCompletedEvent(refund, order, user));
+        } catch (Exception e) {
+            System.err.println("[PaymentService] Error publishing direct RefundCompletedEvent: " + e.getMessage());
+        }
+
         // Update vendor settlements to REFUNDED so profits/commissions are properly deducted
         List<Settlement> settlements = settlementRepository.findByOrderId(order.getOrderId());
         for (Settlement s : settlements) {
@@ -964,6 +1011,31 @@ public class PaymentService {
                                      Double amount, List<Map<String, Object>> items, 
                                      Map<String, Object> deliveryInfo) {
         System.out.println("Payment failed/cancelled for user: " + userId + ", razorpayOrderId: " + razorpayOrderId + ", reason: " + errorMessage);
+
+        try {
+            User user = (userId != null) ? userRepository.findById(userId).orElse(null) : null;
+            String customerEmail = (deliveryInfo != null && deliveryInfo.get("email") != null) 
+                    ? deliveryInfo.get("email").toString() 
+                    : (user != null ? user.getEmail() : null);
+            String customerName = (deliveryInfo != null && deliveryInfo.get("name") != null) 
+                    ? deliveryInfo.get("name").toString() 
+                    : (user != null ? user.getFullName() : "Customer");
+            double failureAmount = amount != null ? amount : 0.0;
+
+            eventPublisher.publishEvent(new PaymentFailedEvent(
+                    userId, 
+                    customerEmail, 
+                    customerName, 
+                    null, 
+                    razorpayOrderId, 
+                    failureAmount, 
+                    errorMessage != null ? errorMessage : "Payment transaction cancelled or failed.", 
+                    user
+            ));
+        } catch (Exception e) {
+            System.err.println("[PaymentService] Error publishing PaymentFailedEvent: " + e.getMessage());
+        }
+
         return null;
     }
 

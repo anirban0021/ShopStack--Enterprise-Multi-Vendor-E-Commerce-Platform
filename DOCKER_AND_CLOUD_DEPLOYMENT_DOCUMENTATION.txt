@@ -1,0 +1,236 @@
+================================================================================
+SHOPSTACK ENTERPRISE MULTI-VENDOR PLATFORM
+MILESTONE 4 — TASK 3: DOCKER & CLOUD DEPLOYMENT DOCUMENTATION (DAY 16)
+================================================================================
+
+1. OVERVIEW & OBJECTIVES
+--------------------------------------------------------------------------------
+This milestone delivers production-ready containerization and live cloud deployment 
+for the complete ShopStack platform on Amazon Web Services (AWS) EC2.
+
+Key Accomplishments:
+1. Dockerized Spring Boot 4.x backend using multi-stage Maven + Eclipse Temurin OpenJDK 21.
+2. Dockerized React 19 Vite frontend using multi-stage Node.js 20 + Nginx Alpine.
+3. Configured production Nginx reverse proxy for single-port routing (SPA fallback, /api/, /uploads/).
+4. Orchestrated multi-container stack with Docker Compose (PostgreSQL 16, Backend, Frontend, Persistent Volumes).
+5. Provisioned automated one-click host bootstrap script with 2GB Swap memory on Ubuntu EC2.
+6. Live application verified and accessible via public IPv4 URL.
+
+
+2. HOW TO RETRIEVE YOUR AWS EC2 IP & INSTANCE DETAILS
+--------------------------------------------------------------------------------
+If you need to retrieve or verify the Public IP, Public DNS, or SSH details from AWS:
+
+Step 1: Open AWS Management Console
+   - Go to https://console.aws.amazon.com/ec2/
+   - Ensure your region is set to the correct region (e.g., eu-north-1 Stockholm / ap-south-1 Mumbai / us-east-1).
+
+Step 2: Navigate to Instances
+   - In the left sidebar, click on "Instances".
+   - Select your running ShopStack EC2 instance.
+
+Step 3: View Instance Summary
+   - "Public IPv4 address": 13.48.47.35
+   - "Public IPv4 DNS": ec2-13-48-47-35.eu-north-1.compute.amazonaws.com
+   - "Instance state": Running
+   - "Instance type": t3.small / t2.small (Ubuntu 24.04 LTS)
+
+Step 4: Verify Security Group Inbound Rules
+   - Click the "Security" tab under your instance.
+   - Click your Security Group ID -> "Edit inbound rules".
+   - Required rules:
+     * Port 80 (HTTP)        | Source: 0.0.0.0/0 (Storefront UI & Nginx Reverse Proxy)
+     * Port 443 (HTTPS)      | Source: 0.0.0.0/0 (SSL/TLS Traffic)
+     * Port 22 (SSH)         | Source: 0.0.0.0/0 (Terminal Administration)
+     * Port 8080 (Custom TCP)| Source: 0.0.0.0/0 (Backend REST API Gateway)
+
+
+3. LIVE DEPLOYED APPLICATION ENDPOINTS
+--------------------------------------------------------------------------------
+Service                     | Public URL / Endpoint                                 | Status
+--------------------------- | ----------------------------------------------------- | -------
+Storefront Web App (UI)     | http://13.48.47.35                                    | ONLINE
+Backend REST API Gateway    | http://13.48.47.35:8080/api/products                  | ONLINE
+Nginx Reverse Proxy API     | http://13.48.47.35/api/products                       | ONLINE
+Public DNS Hostname         | ec2-13-48-47-35.eu-north-1.compute.amazonaws.com     | ONLINE
+SSH Connection String       | ssh -i deploy/ec2_key.pem ubuntu@13.48.47.35         | ACTIVE
+
+
+4. ARCHITECTURE & MULTI-CONTAINER TOPOLOGY
+--------------------------------------------------------------------------------
+Client Browser / Mobile (Port 80)
+      │
+      ▼
+[shopstack-frontend] (Nginx Alpine Web Server :80)
+      │
+      ├─► Serves React 19 Vite Production SPA Static Bundle
+      ├─► Handles Client-Side Routing (try_files $uri /index.html)
+      ├─► Reverse Proxies /api/ ────► [shopstack-backend] (Spring Boot :8080)
+      └─► Reverse Proxies /uploads/ ─► [shopstack-backend] (Spring Boot :8080)
+                                                │
+                                                ▼ (JDBC)
+                                      [shopstack-db] (PostgreSQL 16 Alpine :5432)
+                                                │
+                                                ▼ (Persistent Docker Volumes)
+                                      ├── shopstack_postgres_data (/var/lib/postgresql/data)
+                                      └── shopstack_backend_uploads (/app/uploads)
+
+
+5. CONTAINER IMPLEMENTATION DETAILS
+--------------------------------------------------------------------------------
+A. Backend Dockerfile (`backend/Dockerfile`):
+   - Stage 1 (Builder): maven:3.9.6-eclipse-temurin-21-alpine
+     * Pre-downloads Maven dependencies using `mvn dependency:go-offline -B` for Docker layer caching.
+     * Packages executable jar with `mvn clean package -DskipTests -B`.
+   - Stage 2 (Runtime): eclipse-temurin:21-jre-alpine
+     * JVM memory configuration: `-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0`
+     * Built-in curl healthcheck querying `/api/products` every 30s.
+     * Creates persistent upload directory `/app/uploads/products`.
+
+B. Frontend Dockerfile (`frontend/Dockerfile` & `frontend/nginx.conf`):
+   - Stage 1 (Builder): node:20-alpine
+     * Installs dependencies via `npm install` and creates minified production build via `npm run build`.
+   - Stage 2 (Runtime): nginx:alpine
+     * Single-port unified reverse proxy on port 80.
+     * SPA routing fallback `try_files $uri $uri/ /index.html;`.
+     * Reverse proxies `/api/` -> `http://backend:8080/api/` with upstream header forwarding.
+     * Reverse proxies `/uploads/` -> `http://backend:8080/uploads/`.
+     * High-capacity upload limit `client_max_body_size 50M;`.
+     * Gzip compression enabled for CSS, JS, JSON, and SVG assets.
+
+C. Multi-Container Orchestration (`docker-compose.yml`):
+   - Service `db`: postgres:16-alpine with healthcheck `pg_isready` and volume `shopstack_postgres_data`.
+   - Service `backend`: depends_on `db` (condition: service_healthy), volume `shopstack_backend_uploads`.
+   - Service `frontend`: depends_on `backend`, port `80:80`.
+   - Bridge network: `shopstack-network`.
+
+
+6. STEP-BY-STEP DEPLOYMENT WORKFLOW
+--------------------------------------------------------------------------------
+Option A: One-Click Automated Deployment from Windows PowerShell
+   1. Open PowerShell in project root:
+      cd "C:\Users\ASUS\Desktop\Infosys\ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform-main(Copy)"
+   2. Run deployment script:
+      powershell -ExecutionPolicy Bypass -File deploy\deploy-to-ec2.ps1
+   3. The script automatically archives source code, uploads via SCP, configures 2GB Swap, 
+      installs Docker Engine, builds containers, and starts the stack.
+
+Option B: Manual SSH Deployment on EC2
+   1. Connect to EC2 instance:
+      ssh -i deploy/ec2_key.pem ubuntu@13.48.47.35
+   2. Navigate to project:
+      cd /home/ubuntu/ShopStack
+   3. Run bootstrap script:
+      bash deploy/setup-aws-ec2.sh
+   4. Verify running containers:
+      sudo docker compose ps
+
+
+7. ENVIRONMENT VARIABLES CONFIGURATION (`.env`)
+--------------------------------------------------------------------------------
+Variable Name                    | Production Value / Example          | Purpose
+-------------------------------- | ----------------------------------- | ------------------------------------------
+POSTGRES_DB                      | shopstack_db                        | PostgreSQL database name
+POSTGRES_USER                    | postgres                            | Database master user
+POSTGRES_PASSWORD                | ShopStack@Prod2026                  | Database master password
+APP_BACKEND_BASE_URL             | http://13.48.47.35:8080             | Backend public URL for image links
+SHOPSTACK_COMMISSION_PERCENTAGE  | 10.0                                | Platform commission percentage
+RAZORPAY_KEY_ID                  | rzp_test_TOD9vXSNPzLLOn             | Razorpay test mode API Key ID
+RAZORPAY_KEY_SECRET              | w29deAvwjgp46fRzaVGc45NT            | Razorpay test mode Key Secret
+MAIL_HOST                        | smtp.gmail.com                      | SMTP server host
+MAIL_PORT                        | 587                                 | SMTP port (STARTTLS)
+MAIL_USERNAME                    | anirbansasmal21@gmail.com           | Notification email account
+MAIL_PASSWORD                    | qjqkpuykvvtobsya                    | Gmail 16-character App Password
+MAIL_FROM                        | anirbansasmal21@gmail.com           | Sender email address
+
+
+8. SQL DATABASE CONFIGURATION & CONNECTIVITY
+--------------------------------------------------------------------------------
+A. Connection Configuration in `application.properties`:
+   - URL:      `spring.datasource.url=${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/shopstack_db}`
+   - User:     `spring.datasource.username=${SPRING_DATASOURCE_USERNAME:postgres}`
+   - Password: `spring.datasource.password=${SPRING_DATASOURCE_PASSWORD:Anirban@069}`
+   - Driver:   `org.postgresql.Driver`
+   - Dialect:  `org.hibernate.dialect.PostgreSQLDialect`
+   - DDL Auto: `update` (automatically creates & updates tables on boot)
+
+B. Docker Environment Connection (AWS EC2):
+   - In `docker-compose.yml`, the Spring Boot backend connects to the `db` service:
+     `SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/shopstack_db`
+     `SPRING_DATASOURCE_USERNAME: postgres`
+     `SPRING_DATASOURCE_PASSWORD: ShopStack@Prod2026`
+   - Database health check: `pg_isready -U postgres -d shopstack_db`
+   - Persistent Volume: `shopstack_postgres_data` mounted at `/var/lib/postgresql/data`.
+
+C. Verified SQL Tables Created in PostgreSQL:
+   1.  `users`                   - User accounts, encrypted passwords, roles & addresses
+   2.  `products`                - Catalog items, pricing, discounts, stock, vendor associations
+   3.  `product_images`          - Multi-image gallery URLs per product
+   4.  `orders`                  - Customer orders, shipping addresses, totals & payment statuses
+   5.  `order_items`             - Line items, quantities, snapshot unit prices & vendor IDs
+   6.  `settlements`             - Platform commissions, net vendor payouts & refund deductions
+   7.  `warehouses`              - Physical fulfillment hubs (North, South, East, West)
+   8.  `inventories`             - Bin locations, warehouse stock counts & damaged stock tracking
+   9.  `warehouse_allocations`   - Order fulfillment pipeline steps & courier tracking numbers
+   10. `inbound_shipments`       - Vendor stock replenishment intake records
+   11. `stock_transfers`         - Inter-warehouse stock redistribution records
+   12. `coupons`                 - Platform & vendor discount coupons
+   13. `product_coupons`         - Specific product-to-coupon mapping
+   14. `vendor_coupon_approvals` - Vendor participation opt-in & approvals
+   15. `coupon_usages`           - Customer redemption tracking & one-time use guards
+   16. `refunds`                 - Return requests, QC inspection notes & Razorpay refund references
+   17. `reviews`                 - Verified purchaser ratings & feedback comments
+   18. `user_addresses`          - Saved shipping & billing address books
+   19. `wishlist_items`          - Customer saved wishlist products
+
+D. Database Verification Command:
+   ssh -i deploy/ec2_key.pem ubuntu@13.48.47.35 "sudo docker exec shopstack-db psql -U postgres -d shopstack_db -c '\dt'"
+
+
+9. EVALUATOR REVIEW & DEMONSTRATION GUIDE
+--------------------------------------------------------------------------------
+During your project evaluation, present the deployment using this sequence:
+
+1. Live Public Storefront Demo:
+   - Open browser at http://13.48.47.35.
+   - Demonstrate customer registration and login.
+   - Add products to cart, apply coupon, and test "⚡ Buy Now" direct checkout.
+   - Complete checkout via Razorpay test mode.
+   - View order confirmation and check customer order tracking.
+
+2. Role-Based Dashboards:
+   - Login as Admin (admin@shopstack.com / password):
+     * Review analytics, commission payouts, multi-warehouse stock allocations, and return approvals.
+   - Login as Vendor / Warehouse Staff:
+     * Demonstrate shipment dispatch (SHIPPED) and final delivery (DELIVERED).
+
+3. Container Infrastructure Demonstration:
+   - Show Dockerfiles: `backend/Dockerfile` and `frontend/Dockerfile`.
+   - Show Compose file: `docker-compose.yml`.
+   - Show live running containers via SSH:
+     ssh -i deploy/ec2_key.pem ubuntu@13.48.47.35 "sudo docker compose -f /home/ubuntu/ShopStack/docker-compose.yml ps"
+
+
+10. USEFUL DOCKER & SERVER MANAGEMENT COMMANDS
+--------------------------------------------------------------------------------
+Command                                                       | Description
+------------------------------------------------------------- | --------------------------------------------
+sudo docker compose ps                                        | View status and health of all containers
+sudo docker compose logs -f backend                           | Stream real-time Spring Boot logs
+sudo docker compose logs -f frontend                          | Stream Nginx access/error logs
+sudo docker compose logs -f db                                | Stream PostgreSQL logs
+sudo docker compose restart                                   | Restart all containers without rebuild
+sudo docker compose down                                      | Stop and remove containers (data preserved)
+sudo docker compose up -d --build                             | Rebuild and restart after code changes
+free -h                                                       | Check RAM and Swap usage on EC2 host
+df -h                                                         | Check disk space usage on EC2 host
+
+
+11. CONCLUSION & SUBMISSION SUMMARY
+--------------------------------------------------------------------------------
+Milestone 4 — Task 3 (Day 16) is 100% completed:
+- Dockerfiles created and verified.
+- Docker Compose orchestration active.
+- AWS EC2 instance running in region eu-north-1 at http://13.48.47.35.
+- Spring Boot backend, React Vite frontend, and PostgreSQL database fully connected and healthy.
+================================================================================

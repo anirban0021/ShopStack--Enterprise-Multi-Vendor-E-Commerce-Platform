@@ -2134,5 +2134,406 @@ GET | `/api/admin/dashboard-summary` | Marketplace KPI summary with net refunds 
    ```
 2. Verify that all commission calculation, settlement generation, and refund reversal tests pass with `BUILD SUCCESS`.
 
+---
 
+# 📬 ShopStack — Day 15: Real-Time Customer Notification & Transactional Email Module
 
+This milestone delivers an enterprise-grade, asynchronous, event-driven **Transactional Notification & Email Module** for ShopStack built with **Spring Boot**, **JavaMailSender**, **Thymeleaf HTML templates**, and **Spring Events (`@EventListener` + `@Async`)**.
+
+---
+
+## 📌 Architecture & Interaction Flows (Day 15)
+
+```mermaid
+flowchart TD
+    subgraph "1. Business Domain Events (Decoupled Publishing)"
+        A1["Customer Checkout / Payment Verified"] -->|"publishEvent"| B1["OrderPlacedEvent<br/>PaymentSuccessEvent"]
+        A2["Payment Failure / Dismissal"] -->|"publishEvent"| B2["PaymentFailedEvent"]
+        A3["Warehouse / Vendor Dispatch (SHIPPED)"] -->|"publishEvent"| B3["OrderShippedEvent"]
+        A4["Final Delivery Handover (DELIVERED)"] -->|"publishEvent"| B4["OrderDeliveredEvent"]
+        A5["Return Approved & QC Passed (REFUND)"] -->|"publishEvent"| B5["RefundCompletedEvent"]
+    end
+
+    subgraph "2. Asynchronous Event Dispatcher"
+        B1 & B2 & B3 & B4 & B5 --> C["NotificationEventListener<br/>(@EventListener + @Async('emailTaskExecutor'))"]
+        C --> D["Dedicated ThreadPoolTaskExecutor<br/>(Core: 2, Max: 5, Queue: 50, Prefix: ShopStack-Mail-)"]
+    end
+
+    subgraph "3. Notification Context & Template Engine"
+        D --> E["NotificationService<br/>- Resolves Customer User & Recipient Email<br/>- Formats Dates, Currency & Line Items"]
+        E --> F["EmailService (TemplateEngine)<br/>- Thymeleaf HTML Template Compilation<br/>- Injects Model Context Attributes"]
+    end
+
+    subgraph "4. Resilient SMTP Transport & Delivery"
+        F --> G["JavaMailSender (MimeMessageHelper)<br/>- SMTP Host: smtp.gmail.com:587 (STARTTLS)<br/>- From: ShopStack Support <support@shopstack.com>"]
+        G --> H["Customer Inbox (Responsive HTML Email)"]
+        G -.->|"SMTP Failure / Timeout"| I["Error Isolation<br/>(Logs error, NEVER rolls back DB transaction)"]
+    end
+```
+
+---
+
+## 📌 Key Capabilities & Notification Events (Day 15)
+
+### 1. Decoupled, Non-Blocking Event-Driven Architecture
+* **Total Business Logic Isolation**: Controllers and services (`PaymentService`, `WarehouseService`, `VendorController`) do not contain mail transport code. They publish lightweight domain events via `ApplicationEventPublisher`.
+* **Asynchronous Thread Pool (`AsyncConfig.java`)**: Configured a dedicated `ThreadPoolTaskExecutor` bean (`emailTaskExecutor`) with custom thread naming (`ShopStack-Mail-1`, `ShopStack-Mail-2`). Email transmission runs entirely in the background and will never slow down customer checkout or API response times.
+* **Fault-Tolerant & Transaction-Safe**: `EmailService` isolates all `MailException` and `MessagingException` instances. If SMTP credentials or network connectivity fail, the error is logged and the primary database transaction (order creation, inventory deduction, payment capture) completes successfully.
+
+### 2. Six Real-Time Customer Lifecycle Email Notifications
+
+| Notification | Trigger Event | Source Trigger | Thymeleaf Template | Injected Variables |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Order Placed** | `OrderPlacedEvent` | `PaymentService.placeVerifiedOrder` / `CustomerController.placeOrder` | `email/order-placed.html` | Order ID, items table, quantities, unit prices, discounts, total amount, shipping address |
+| **2. Payment Successful** | `PaymentSuccessEvent` | `PaymentService.placeVerifiedOrder` | `email/payment-success.html` | Order ID, Razorpay Payment ID, paid amount, payment status, payment method, timestamp |
+| **3. Payment Failed** | `PaymentFailedEvent` | `PaymentService.recordFailedPayment` | `email/payment-failed.html` | Order ID, Razorpay Order ID, attempted amount, failure reason, timestamp |
+| **4. Order Shipped** | `OrderShippedEvent` | `WarehouseService.updateAllocationStatus` / `VendorController.updateOrderStatus` | `email/order-shipped.html` | Order ID, carrier name, tracking number, dispatched timestamp, shipping address |
+| **5. Order Delivered** | `OrderDeliveredEvent` | `WarehouseService.updateAllocationStatus` / `VendorController.updateOrderStatus` | `email/order-delivered.html` | Order ID, delivered timestamp, recipient address, customer feedback & review callout |
+| **6. Refund Completed** | `RefundCompletedEvent` | `PaymentService.resolveReturnRequest` / `PaymentService.approveAndExecuteRefund` / `PaymentService.processRefund` | `email/refund-completed.html` | Order ID, refund amount, refund reference ID, return reason category, processed date |
+
+### 3. Premium Responsive Thymeleaf HTML Templates
+* **Design Standards**: Crafted with modern typography, subtle gradients, high-contrast badges, pricing highlights, and responsive tables.
+* **Branded Footers**: Includes copyright notices, support contact links, and marketplace disclaimers.
+
+---
+
+## 📁 Directory & File Structure Updates (Day 15)
+
+```text
+ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
+├── backend/
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── java/com/shopstack/backend/
+│   │   │   │   ├── config/
+│   │   │   │   │   └── AsyncConfig.java             # ThreadPoolTaskExecutor bean config (emailTaskExecutor)
+│   │   │   │   ├── event/
+│   │   │   │   │   ├── OrderPlacedEvent.java        # Fired when customer successfully places an order
+│   │   │   │   │   ├── PaymentSuccessEvent.java     # Fired when gateway verifies payment capture
+│   │   │   │   │   ├── PaymentFailedEvent.java      # Fired when payment fails or user dismisses modal
+│   │   │   │   │   ├── OrderShippedEvent.java       # Fired when warehouse/vendor marks status SHIPPED
+│   │   │   │   │   ├── OrderDeliveredEvent.java     # Fired when package is marked DELIVERED
+│   │   │   │   │   └── RefundCompletedEvent.java    # Fired when return/refund is resolved & disbursed
+│   │   │   │   ├── listener/
+│   │   │   │   │   └── NotificationEventListener.java # @Async @EventListener handler for all 6 domain events
+│   │   │   │   └── service/
+│   │   │   │       ├── EmailService.java            # JavaMailSender + Thymeleaf renderer + error isolation
+│   │   │   │       ├── NotificationService.java     # Recipient resolver & template context builder
+│   │   │   │       ├── PaymentService.java          # Event publisher for orders, payments & return refunds
+│   │   │   │       └── WarehouseService.java        # Event publisher for dispatch & delivery transitions
+│   │   │   └── resources/
+│   │   │       ├── application.properties           # SMTP server parameters & Thymeleaf config
+│   │   │       └── templates/email/
+│   │   │           ├── order-placed.html            # Order confirmation template with items breakdown
+│   │   │           ├── payment-success.html         # Payment receipt template with gateway reference
+│   │   │           ├── payment-failed.html          # Payment failure advisory with retry callout
+│   │   │           ├── order-shipped.html           # Dispatch template with tracking & courier details
+│   │   │           ├── order-delivered.html         # Delivery celebration template with review prompt
+│   │   │           └── refund-completed.html        # Refund credit confirmation template
+│   │   └── test/
+│   │       └── java/com/shopstack/backend/service/
+│   │           ├── EmailServiceTest.java            # Unit tests for template rendering & SMTP isolation
+│   │           └── OrderEventPublishingTest.java    # Integration tests for domain event publication
+│   └── pom.xml                                      # Added spring-boot-starter-mail & thymeleaf
+```
+
+---
+
+## ⚙️ Environment Variables & Mail Configuration
+
+ShopStack dynamically injects SMTP credentials from environment variables with safe development placeholders:
+
+```properties
+# ==========================================
+# Email Notification Configuration (JavaMailSender)
+# ==========================================
+spring.mail.host=${MAIL_HOST:smtp.gmail.com}
+spring.mail.port=${MAIL_PORT:587}
+spring.mail.username=${MAIL_USERNAME:your-email@gmail.com}
+spring.mail.password=${MAIL_PASSWORD:your-gmail-app-password}
+spring.mail.protocol=smtp
+spring.mail.default-encoding=UTF-8
+
+# JavaMail SMTP Properties
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
+spring.mail.properties.mail.smtp.starttls.required=true
+spring.mail.properties.mail.smtp.connectiontimeout=5000
+spring.mail.properties.mail.smtp.timeout=5000
+spring.mail.properties.mail.smtp.writetimeout=5000
+
+# Email Sender Meta
+shopstack.mail.from-email=${MAIL_FROM:support@shopstack.com}
+shopstack.mail.from-name=ShopStack Support
+
+# Thymeleaf Template Engine Configuration
+spring.thymeleaf.prefix=classpath:/templates/
+spring.thymeleaf.suffix=.html
+spring.thymeleaf.mode=HTML
+spring.thymeleaf.encoding=UTF-8
+spring.thymeleaf.cache=false
+```
+
+### Setting Up Gmail SMTP App Password Locally
+1. Enable **2-Step Verification** on your Google Account (`myaccount.google.com/security`).
+2. Go to **Security → 2-Step Verification → App Passwords**.
+3. Create an app password named `ShopStack` and copy the 16-character code.
+4. Set the environment variables in your local environment or `.env` file:
+   ```powershell
+   # Windows PowerShell
+   $env:MAIL_HOST="smtp.gmail.com"
+   $env:MAIL_PORT="587"
+   $env:MAIL_USERNAME="your-email@gmail.com"
+   $env:MAIL_PASSWORD="your-16-char-app-password"
+   $env:MAIL_FROM="support@shopstack.com"
+   ```
+
+---
+
+## 🧪 Automated Testing
+
+Run the automated test suite for the Notification module:
+
+```powershell
+# Run Email Service unit tests (verifies HTML compilation & transport error isolation)
+mvn test -Dtest=EmailServiceTest
+
+# Run Event Publishing integration tests (verifies domain event triggers across services)
+mvn test -Dtest=OrderEventPublishingTest
+
+# Run all project test suites (12 tests)
+mvn test
+```
+
+---
+
+## 🚦 Verification Checklist (Day 15)
+
+### 1. Order Confirmation & Payment Success Email
+1. Log in as a Customer and add an item to your cart.
+2. Complete checkout via Razorpay (Test Mode) or Cash on Delivery.
+3. Check the customer's registered email inbox:
+   - Verify **"Order Confirmation - #ORD-XXXXXX | ShopStack"** arrives with itemized product table, pricing breakdown, and delivery address.
+   - For Razorpay payments, verify **"Payment Confirmed for Order #ORD-XXXXXX | ShopStack"** arrives with the transaction reference ID.
+
+### 2. Payment Failure Advisory Email
+1. Initiate checkout via Razorpay and dismiss/close the payment window or simulate a failure.
+2. Verify an email with subject **"Payment Action Required - Order #ORD-XXXXXX | ShopStack"** is delivered, explaining the issue and offering a retry option.
+
+### 3. Order Shipped & Out for Delivery Alerts
+1. In the **Warehouse Dashboard** or **Vendor Console**, advance the order to `SHIPPED`.
+2. Verify **"Your Order #ORD-XXXXXX Has Shipped! 🚚 | ShopStack"** is delivered with courier tracking number and dispatched timestamp.
+
+### 4. Order Delivered Notification
+1. Advance the order status to `DELIVERED`.
+2. Verify **"Order Delivered - #ORD-XXXXXX 🎉 | ShopStack"** is received by the customer with a prompt to review the purchase.
+
+### 5. Return Resolution & Refund Notification
+1. Submit a return request as a Customer.
+2. Perform warehouse receipt & pass Quality Control (QC).
+3. In the Admin Console, resolve the return by selecting **"Disburse Refund"**.
+4. Verify **"Refund Processed for Order #ORD-XXXXXX 💸 | ShopStack"** arrives with the refund reference ID and credited amount.
+
+---
+
+# 🐳 ShopStack — Day 16: Docker Containerization, AWS Cloud Deployment & GitHub Actions CI/CD Pipeline
+
+This milestone delivers production **Multi-Stage Docker Containerization**, live **AWS EC2 Cloud Deployment**, **Automated GitHub Actions CI/CD Push-to-Deploy**, **Nginx Reverse Proxy Image & API Streaming**, and **PostgreSQL Database Cloud Synchronization** for the entire ShopStack platform.
+
+---
+
+## 📌 Cloud Architecture & CI/CD Deployment Topology (Day 16)
+
+```mermaid
+flowchart TD
+    subgraph "1. Developer & Source Control"
+        Dev["Developer commits changes<br/>git push origin main"] --> GHA["GitHub Actions Workflow<br/>.github/workflows/deploy.yml"]
+    end
+
+    subgraph "2. Automated CI/CD Pipeline"
+        GHA -->|"1. Checkout Repository"| GH1["actions/checkout@v4"]
+        GH1 -->|"2. Secure SCP File Sync"| GH2["appleboy/scp-action (Port 22)"]
+        GH2 -->|"3. Remote SSH Build & Launch"| GH3["appleboy/ssh-action<br/>sudo docker compose build & up -d"]
+    end
+
+    subgraph "3. AWS EC2 Cloud Host (Ubuntu 24.04 LTS — 13.48.47.35)"
+        GH3 --> Docker["Docker Compose Orchestration (shopstack-network)"]
+        
+        subgraph "Containerized Application Stack"
+            Frontend["shopstack-frontend (Port 80)<br/>- Nginx Alpine Web Server<br/>- React 19 Vite Production Bundle<br/>- SPA Client-Side Routing<br/>- ^~ /uploads/ & ^~ /api/ Reverse Proxy"]
+            
+            Backend["shopstack-backend (Port 8080)<br/>- Spring Boot 4.x REST API Engine<br/>- Eclipse Temurin OpenJDK 21 Runtime<br/>- Async Mailer & Razorpay Client"]
+            
+            Database["shopstack-db (Port 5432)<br/>- PostgreSQL 16 Alpine Database<br/>- 19 Relational SQL Tables"]
+        end
+
+        subgraph "Persistent Storage Volumes"
+            VolDB[("PostgreSQL Database Volume<br/>shopstack_postgres_data")]
+            VolUploads[("Uploaded Product Images<br/>shopstack_backend_uploads")]
+        end
+    end
+
+    subgraph "4. Public Internet"
+        Client["Browser / Mobile Client<br/>http://13.48.47.35"]
+    end
+
+    Client -->|"HTTP Request :80"| Frontend
+    Frontend -->|"Proxy Pass /api/ -> http://backend:8080"| Backend
+    Frontend -->|"Proxy Pass /uploads/ -> http://backend:8080"| Backend
+    Backend -->|"JDBC postgres:5432"| Database
+    Database -.-> VolDB
+    Backend -.-> VolUploads
+```
+
+---
+
+## 📌 Key Capabilities & Enhancements (Day 16)
+
+### 1. Multi-Stage Dockerfile Builds
+* **Spring Boot Backend (`backend/Dockerfile`)**:
+  - **Stage 1 (Maven Builder)**: Compiles and packages the production executable `.jar` using `maven:3.9.6-eclipse-temurin-21-alpine` with layer-cached dependencies (`mvn dependency:go-offline`).
+  - **Stage 2 (Runtime Image)**: Lightweight `eclipse-temurin:21-jre-alpine` runtime with JVM container memory sizing (`-XX:MaxRAMPercentage=75.0`).
+* **React Frontend (`frontend/Dockerfile`)**:
+  - **Stage 1 (Vite Builder)**: Builds optimized minified static assets via `node:20-alpine`.
+  - **Stage 2 (Production Web Server)**: Ultra-fast `nginx:alpine` image serving static assets with gzip compression.
+
+### 2. Production Nginx Reverse Proxy (`frontend/nginx.conf`)
+* **SPA Routing Fallback**: `try_files $uri $uri/ /index.html;` ensures React Router paths (`/login`, `/customer-dashboard`, `/admin-dashboard`, `/vendor-dashboard`, `/warehouse-dashboard`) resolve without 404 errors on direct browser refresh.
+* **Image & Media Proxy (`location ^~ /uploads/`)**: Uses the `^~` prefix modifier to bypass regex static caching and stream product media directly from the backend volume, eliminating cross-origin (CORS) complexity on the public IP.
+* **Large File Uploads**: `client_max_body_size 50M;` permits high-resolution base64 and multipart product image uploads.
+
+### 3. Automated Push-to-Deploy CI/CD Pipeline (`.github/workflows/deploy.yml`)
+* **Zero-Touch Cloud Updates**: Whenever changes are pushed to `main`, GitHub Actions automatically:
+  1. Checks out the updated repository code.
+  2. Syncs changed files to the AWS EC2 instance via SCP using repository secret `EC2_SSH_KEY`.
+  3. Triggers `docker compose build` and `docker compose up -d` on EC2.
+  4. Deploys the latest code live to `http://13.48.47.35` in seconds without manual SSH intervention.
+
+### 4. Database Migration & Cloud Synchronization
+* **19 Relational SQL Tables**: Migrated all local database records to the cloud PostgreSQL database, including:
+  `users`, `products`, `product_images`, `orders`, `order_items`, `settlements`, `warehouses`, `inventories`, `warehouse_allocations`, `inbound_shipments`, `stock_transfers`, `coupons`, `product_coupons`, `vendor_coupon_approvals`, `coupon_usages`, `refunds`, `reviews`, `user_addresses`, `wishlist_items`.
+* **Product Catalog & Media Sync**: Synchronized all 9 catalog items and 75 high-resolution product images into the persistent Docker volume (`shopstack_backend_uploads`).
+
+---
+
+## 📁 Directory & File Structure Updates (Day 16)
+
+```text
+ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml                       # GitHub Actions automated CI/CD push-to-deploy workflow
+├── backend/
+│   ├── Dockerfile                           # Multi-stage Maven + Eclipse Temurin 21 production image
+│   └── .dockerignore                        # Ignores target/, .git/, local uploads from build context
+├── frontend/
+│   ├── Dockerfile                           # Multi-stage Node 20 + Nginx Alpine static server image
+│   ├── nginx.conf                           # Nginx config with SPA routing & ^~ /uploads/ reverse proxy
+│   └── .dockerignore                        # Ignores node_modules/, dist/, caches
+├── deploy/
+│   ├── setup-aws-ec2.sh                     # Automated Ubuntu host bootstrap, swap config & container launcher
+│   ├── deploy-to-ec2.ps1                    # One-click Windows PowerShell deployment script
+│   ├── ec2_key.pem                          # Protected AWS SSH RSA private key (in .gitignore)
+│   └── AWS_DEPLOYMENT_GUIDE.md              # Step-by-step evaluator review & operational guide
+├── docker-compose.yml                       # Multi-service stack (db, backend, frontend, volumes, networks)
+├── .env.example                             # Production environment variables template
+├── .gitignore                               # Protects credentials, .pem keys, and build outputs
+├── DOCKER_AND_CLOUD_DEPLOYMENT_DOCUMENTATION.txt  # Full deployment specifications & database details
+└── GITHUB_ACTIONS_CICD_DEPLOYMENT_GUIDE.txt       # Step-by-step GitHub repository secrets & CI/CD setup
+```
+
+---
+
+## ⚙️ Production Environment Variables Template (`.env.example`)
+
+> [!IMPORTANT]
+> Confidential keys, secrets, and credentials should **never** be committed to version control. Production values should be configured on the deployment server or managed securely via GitHub Secrets.
+
+```properties
+# ==========================================
+# PostgreSQL Database Configuration
+# ==========================================
+POSTGRES_DB=shopstack_db
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your-secure-postgres-password
+
+# ==========================================
+# Backend & Platform Configuration
+# ==========================================
+APP_BACKEND_BASE_URL=http://<your-ec2-ip-or-domain>:8080
+SHOPSTACK_COMMISSION_PERCENTAGE=10.0
+
+# ==========================================
+# Razorpay Payment Gateway (Test Mode / Sandbox)
+# ==========================================
+RAZORPAY_KEY_ID=your-razorpay-key-id
+RAZORPAY_KEY_SECRET=your-razorpay-key-secret
+
+# ==========================================
+# Transactional Email Notification (SMTP)
+# ==========================================
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-16-char-smtp-app-password
+MAIL_FROM=support@shopstack.com
+```
+
+---
+
+## 🚀 Deployment & CI/CD Commands
+
+### Option A: Push-to-Deploy via GitHub Actions (Automated CI/CD)
+```bash
+git add .
+git commit -m "feat: updates for cloud deployment"
+git push origin main
+# GitHub Actions automatically builds and deploys to the cloud instance
+```
+
+### Option B: One-Click Direct Deployment Script
+```powershell
+# Windows PowerShell
+powershell -ExecutionPolicy Bypass -File deploy\deploy-to-ec2.ps1
+```
+
+```bash
+# Linux / macOS Bash
+bash deploy/setup-aws-ec2.sh
+```
+
+---
+
+## 🚦 Verification Checklist (Day 16)
+
+### 1. Live Public Storefront & Authentication
+1. Open `http://<your-cloud-ip>` in your browser.
+2. Verify role-based login and registration flows for all 4 distinct actor profiles:
+   - **Administrator**: `admin@shopstack.admin` / `<admin-password>`
+   - **Customer**: `customer@example.com` / `<customer-password>`
+   - **Vendor**: `vendor@shopstack.com` / `<vendor-password>`
+   - **Warehouse Staff**: `staff@shopstack.staff` / `<staff-password>`
+3. Verify session authentication, JWT/CORS headers, and dynamic role switching through the Nginx reverse proxy.
+
+### 2. Product Catalog & High-Resolution Image Delivery
+1. Browse catalog items on the live public storefront.
+2. Verify that high-resolution product media files load smoothly via the `/uploads/products/...` reverse proxy with HTTP 200 responses.
+3. Open product details and test the multi-image gallery carousels and zoom previews.
+
+### 3. Shopping Cart, "Buy Now" & Payment Gateway Flow
+1. Add items to cart or click **"⚡ Buy Now"** for direct single-item checkout.
+2. Apply promo coupons (e.g. `SAVE20`).
+3. Complete checkout via Razorpay (Test/Sandbox mode) or Cash on Delivery (COD).
+4. Verify the order is created, confirmation email is dispatched, and order details appear in **Customer Order History**.
+
+### 4. Multi-Role Fulfillment & Warehouse Workflow
+1. Log in as Warehouse Staff (`@staff` account).
+2. Move allocated orders along the fulfillment pipeline:
+   `1. STOCK ALLOCATED` ➡️ `2. PRODUCT PICKED` ➡️ `3. ORDER PACKED` ➡️ `4. READY FOR SHIPMENT` ➡️ `SHIPPED`.
+3. Verify delivery handover (`DELIVERED`) and automated financial settlement generation in the Admin console.
+
+### 5. Automated GitHub Actions CI/CD Verification
+1. Make a code update in `frontend/src/` or `backend/src/`.
+2. Commit and push to `main` branch (`git push origin main`).
+3. Open the **Actions** tab on GitHub and confirm that the deployment workflow executes and passes with a green checkmark.
+4. Refresh the cloud server endpoint to verify changes are live immediately with zero downtime.

@@ -12,6 +12,11 @@ import com.shopstack.backend.repository.WarehouseAllocationRepository;
 import com.shopstack.backend.repository.WarehouseRepository;
 import com.shopstack.backend.repository.OrderItemRepository;
 import com.shopstack.backend.repository.OrderRepository;
+import com.shopstack.backend.repository.UserRepository;
+import com.shopstack.backend.model.User;
+import com.shopstack.backend.event.OrderShippedEvent;
+import com.shopstack.backend.event.OrderDeliveredEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +49,12 @@ public class WarehouseService {
     @Autowired
     @org.springframework.context.annotation.Lazy
     private PaymentService paymentService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     /**
      * Synchronizes a product's global stock field to equal the sum of available stock across all warehouses.
@@ -398,12 +409,27 @@ public class WarehouseService {
         Optional<Order> orderOpt = orderRepository.findByOrderId(alloc.getOrderId());
         if (orderOpt.isPresent()) {
             Order order = orderOpt.get();
+            String oldOrderStatus = order.getStatus() != null ? order.getStatus() : "";
+            User user = (order.getUserId() != null) ? userRepository.findById(order.getUserId()).orElse(null) : null;
+            String timestamp = new java.text.SimpleDateFormat("MMM dd, yyyy HH:mm").format(new java.util.Date());
+
             if ("PICKED".equals(newStatus)) {
                 order.setStatus("PICKED");
             } else if ("PACKED".equals(newStatus)) {
                 order.setStatus("PACKED");
             } else if ("READY_FOR_SHIPMENT".equals(newStatus) || "READY_FOR_SHIPPING".equals(newStatus) || "SHIPPED".equals(newStatus)) {
                 order.setStatus("SHIPPED");
+                if (!"SHIPPED".equalsIgnoreCase(oldOrderStatus)) {
+                    String tracking = alloc.getTrackingNumber() != null && !alloc.getTrackingNumber().isEmpty() 
+                            ? alloc.getTrackingNumber() 
+                            : ("TRK-" + Math.abs(order.getOrderId().hashCode()));
+                    String whName = alloc.getWarehouse() != null ? alloc.getWarehouse().getName() : "ShopStack Fulfillment Center";
+                    try {
+                        eventPublisher.publishEvent(new OrderShippedEvent(order, tracking, whName, timestamp, user));
+                    } catch (Exception e) {
+                        System.err.println("[WarehouseService] Error publishing OrderShippedEvent: " + e.getMessage());
+                    }
+                }
             } else if ("DELIVERED".equals(newStatus)) {
                 order.setStatus("DELIVERED");
                 // For COD, mark as paid and trigger settlements
@@ -411,6 +437,13 @@ public class WarehouseService {
                     order.setPaymentStatus("PAID");
                     List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
                     paymentService.createSettlementsForOrder(order, items);
+                }
+                if (!"DELIVERED".equalsIgnoreCase(oldOrderStatus)) {
+                    try {
+                        eventPublisher.publishEvent(new OrderDeliveredEvent(order, timestamp, user));
+                    } catch (Exception e) {
+                        System.err.println("[WarehouseService] Error publishing OrderDeliveredEvent: " + e.getMessage());
+                    }
                 }
             }
             orderRepository.save(order);

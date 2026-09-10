@@ -34,6 +34,8 @@ import com.shopstack.backend.repository.UserRepository;
 import com.shopstack.backend.repository.WishlistItemRepository;
 import com.shopstack.backend.service.CouponService;
 import com.shopstack.backend.service.WarehouseService;
+import com.shopstack.backend.event.OrderPlacedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 @RestController
 @RequestMapping("/api/customer")
@@ -63,6 +65,9 @@ public class CustomerController {
 
     @Autowired
     private WarehouseService warehouseService;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     // Get Customer Profile Details
     @GetMapping("/{id}")
@@ -371,6 +376,15 @@ public class CustomerController {
 
         if (couponCode != null && !couponCode.trim().isEmpty() && couponDiscount > 0) {
             couponService.recordUsage(couponCode, id, order.getOrderId(), couponDiscount);
+        }
+
+        // Publish OrderPlacedEvent asynchronously
+        try {
+            User user = userRepository.findById(id).orElse(null);
+            List<OrderItem> savedItems = orderItemRepository.findByOrderId(order.getOrderId());
+            eventPublisher.publishEvent(new OrderPlacedEvent(order, savedItems, user));
+        } catch (Exception e) {
+            System.err.println("[CustomerController] Error publishing OrderPlacedEvent: " + e.getMessage());
         }
 
         // Order is CONFIRMED and queued for Administrator warehouse allocation

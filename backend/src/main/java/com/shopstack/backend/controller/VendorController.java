@@ -31,6 +31,13 @@ import com.shopstack.backend.repository.RefundRepository;
 import com.shopstack.backend.repository.SettlementRepository;
 import com.shopstack.backend.service.PaymentService;
 import com.shopstack.backend.service.WarehouseService;
+import com.shopstack.backend.repository.UserRepository;
+import com.shopstack.backend.model.User;
+import com.shopstack.backend.event.OrderShippedEvent;
+import com.shopstack.backend.event.OrderDeliveredEvent;
+import org.springframework.context.ApplicationEventPublisher;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 @RestController
 @RequestMapping("/api/vendor")
@@ -57,6 +64,12 @@ public class VendorController {
 
     @Autowired
     private WarehouseService warehouseService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     // Get Analytics for a Vendor
     @GetMapping("/{vendorId}/analytics")
@@ -204,6 +217,21 @@ public class VendorController {
                 } catch (Exception e) {
                     System.err.println("Failed to release allocations for order: " + order.getOrderId() + ". Error: " + e.getMessage());
                 }
+            }
+
+            // Publish OrderShippedEvent or OrderDeliveredEvent
+            try {
+                User user = (order.getUserId() != null) ? userRepository.findById(order.getUserId()).orElse(null) : null;
+                String timestamp = new SimpleDateFormat("MMM dd, yyyy HH:mm").format(new Date());
+
+                if ("SHIPPED".equalsIgnoreCase(newStatus) && !"SHIPPED".equalsIgnoreCase(oldStatus)) {
+                    String tracking = "TRK-" + Math.abs(order.getOrderId().hashCode());
+                    eventPublisher.publishEvent(new OrderShippedEvent(order, tracking, "Vendor Direct Dispatch", timestamp, user));
+                } else if ("DELIVERED".equalsIgnoreCase(newStatus) && !"DELIVERED".equalsIgnoreCase(oldStatus)) {
+                    eventPublisher.publishEvent(new OrderDeliveredEvent(order, timestamp, user));
+                }
+            } catch (Exception e) {
+                System.err.println("[VendorController] Error publishing status change event: " + e.getMessage());
             }
 
             return ResponseEntity.ok(order);
