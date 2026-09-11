@@ -2356,9 +2356,20 @@ mvn test
 
 ---
 
-# 🐳 ShopStack — Day 16: Docker Containerization, AWS Cloud Deployment & GitHub Actions CI/CD Pipeline
+# 🐳 ShopStack — Day 16: Docker Containerization, AWS Cloud Deployment, HTTPS SSL & GitHub Actions CI/CD Pipeline
 
-This milestone delivers production **Multi-Stage Docker Containerization**, live **AWS EC2 Cloud Deployment**, **Automated GitHub Actions CI/CD Push-to-Deploy**, **Nginx Reverse Proxy Image & API Streaming**, and **PostgreSQL Database Cloud Synchronization** for the entire ShopStack platform.
+This milestone delivers production **Multi-Stage Docker Containerization**, live **AWS EC2 Cloud Deployment with Free Clean Domain & Let's Encrypt SSL/TLS**, **Automated GitHub Actions CI/CD Push-to-Deploy**, **Nginx Reverse Proxy Image & API Streaming**, and **PostgreSQL Database Cloud Synchronization** for the entire ShopStack platform.
+
+---
+
+## 🌐 Live Production Application URLs (HTTPS & SSL Enabled)
+
+| Service | Live URL | Description |
+| :--- | :--- | :--- |
+| 🛍️ **Storefront & Client UI** | **[https://shopstack-enterprise.duckdns.org](https://shopstack-enterprise.duckdns.org)** | Clean Public Domain with Let's Encrypt TLS 1.3 Encryption |
+| 🔒 **Direct Domain Fallback** | **[https://13.48.47.35.sslip.io](https://13.48.47.35.sslip.io)** | Direct Wildcard Domain mapping to AWS EC2 Host |
+| 📡 **Backend API Gateway** | **[https://shopstack-enterprise.duckdns.org/api/products](https://shopstack-enterprise.duckdns.org/api/products)** | Secure REST APIs reverse-proxied through Nginx |
+| 🔄 **HTTP Auto-Redirect** | `http://13.48.47.35` / `http://shopstack-enterprise.duckdns.org` | Automatically issues `301 Moved Permanently` to HTTPS |
 
 ---
 
@@ -2381,26 +2392,29 @@ flowchart TD
         GH4 --> Docker["Docker Compose Orchestration (shopstack-network)"]
         
         subgraph "Containerized Application Stack"
-            Frontend["shopstack-frontend (Port 80)<br/>- Nginx Alpine Web Server<br/>- React 19 Vite Production Bundle<br/>- SPA Client-Side Routing<br/>- ^~ /uploads/ & ^~ /api/ Reverse Proxy"]
+            Frontend["shopstack-frontend (Ports 80 & 443)<br/>- Nginx Alpine Web Server + OpenSSL<br/>- Let's Encrypt TLS 1.3 SSL Termination<br/>- HTTP to HTTPS 301 Redirection<br/>- React 19 Vite Production Bundle<br/>- SPA Client-Side Routing<br/>- ^~ /uploads/ & ^~ /api/ Reverse Proxy"]
             
             Backend["shopstack-backend (Port 8080)<br/>- Spring Boot 4.x REST API Engine<br/>- Eclipse Temurin OpenJDK 21 Runtime<br/>- Async Mailer & Razorpay Client"]
             
             Database["shopstack-db (Port 5432)<br/>- PostgreSQL 16 Alpine Database<br/>- 19 Relational SQL Tables"]
         end
 
-        subgraph "Persistent Storage Volumes"
+        subgraph "Persistent Storage Volumes & SSL"
             VolDB[("PostgreSQL Database Volume<br/>shopstack_postgres_data")]
             VolUploads[("Uploaded Product Images<br/>shopstack_backend_uploads")]
+            VolSSL[("Let's Encrypt SSL Certificates<br/>/etc/letsencrypt")]
         end
     end
 
-    subgraph "4. Public Internet"
-        Client["Browser / Mobile Client<br/>http://13.48.47.35"]
+    subgraph "4. Public Internet (HTTPS)"
+        Client["Browser / Mobile Client<br/>https://shopstack-enterprise.duckdns.org"]
     end
 
-    Client -->|"HTTP Request :80"| Frontend
+    Client -->|"HTTPS Port 443 (TLS 1.3)"| Frontend
+    Client -.->|"HTTP Port 80 (301 Redirect)"| Frontend
     Frontend -->|"Proxy Pass /api/ -> http://backend:8080"| Backend
     Frontend -->|"Proxy Pass /uploads/ -> http://backend:8080"| Backend
+    Frontend -.-> VolSSL
     Backend -->|"JDBC postgres:5432"| Database
     Database -.-> VolDB
     Backend -.-> VolUploads
@@ -2410,31 +2424,40 @@ flowchart TD
 
 ## 📌 Key Capabilities & Enhancements (Day 16)
 
-### 1. Multi-Stage Dockerfile Builds
+### 1. Free Clean Public Domain & Let's Encrypt SSL Termination
+* **Custom Domain (`shopstack-enterprise.duckdns.org`)**: Configured a clean, professional domain name without raw IP addresses.
+* **Genuine Let's Encrypt SSL/TLS 1.3**: Automated SSL certificate generation via Certbot with HTTP-01 challenge verification.
+* **Dynamic SSL Loader (`frontend/docker-entrypoint-nginx.sh`)**: Automatically discovers and mounts the active live SSL certificate on container boot, while providing a self-signed fallback so the container starts reliably across both local and cloud environments.
+* **Automated Weekly Renewal Cron**: Configured an automated cron job on EC2 to test and renew certificates before expiry and seamlessly reload Nginx without downtime.
+
+### 2. Multi-Stage Dockerfile Builds
 * **Spring Boot Backend (`backend/Dockerfile`)**:
   - **Stage 1 (Maven Builder)**: Compiles and packages the production executable `.jar` using `maven:3.9.6-eclipse-temurin-21-alpine` with layer-cached dependencies (`mvn dependency:go-offline`).
   - **Stage 2 (Runtime Image)**: Lightweight `eclipse-temurin:21-jre-alpine` runtime with JVM container memory sizing (`-XX:MaxRAMPercentage=75.0`).
 * **React Frontend (`frontend/Dockerfile`)**:
   - **Stage 1 (Vite Builder)**: Builds optimized minified static assets via `node:20-alpine`.
-  - **Stage 2 (Production Web Server)**: Ultra-fast `nginx:alpine` image serving static assets with gzip compression.
+  - **Stage 2 (Production Web Server)**: Ultra-fast `nginx:alpine` image with OpenSSL, serving static assets with gzip compression, SSL termination, and reverse proxying.
 
-### 2. Production Nginx Reverse Proxy (`frontend/nginx.conf`)
+### 3. Production Nginx Reverse Proxy (`frontend/nginx.conf`)
+* **Dual Port Architecture**:
+  - **Port 80 (HTTP)**: Serves `/.well-known/acme-challenge/` for ACME certificate issuance and automatically 301-redirects all other requests directly to HTTPS.
+  - **Port 443 (HTTPS)**: High-security TLS 1.2/1.3 encryption, secure ciphers, and SPA client routing fallback.
 * **SPA Routing Fallback**: `try_files $uri $uri/ /index.html;` ensures React Router paths (`/login`, `/customer-dashboard`, `/admin-dashboard`, `/vendor-dashboard`, `/warehouse-dashboard`) resolve without 404 errors on direct browser refresh.
-* **Image & Media Proxy (`location ^~ /uploads/`)**: Uses the `^~` prefix modifier to bypass regex static caching and stream product media directly from the backend volume, eliminating cross-origin (CORS) complexity on the public IP.
+* **Image & Media Proxy (`location ^~ /uploads/`)**: Uses the `^~` prefix modifier to stream product media directly from the backend volume over HTTPS, eliminating cross-origin (CORS) and mixed-content issues.
 * **Large File Uploads**: `client_max_body_size 50M;` permits high-resolution base64 and multipart product image uploads.
 
-### 3. Automated Push-to-Deploy CI/CD Pipeline (`.github/workflows/deploy.yml`)
+### 4. Automated Push-to-Deploy CI/CD Pipeline (`.github/workflows/deploy.yml`)
 * **Zero-Touch Cloud Updates**: Whenever changes are pushed to `main`, GitHub Actions automatically:
   1. Validates all required repository secrets (`EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY`).
   2. Sets up OpenSSH with Windows-safe CRLF normalization (`tr -d '\r'`).
   3. Uses native `rsync` over SSH for high-speed delta syncing while protecting `.env`, `.pem` keys, and `.git`.
-  4. Automatically cleans older Docker build cache (`docker builder prune`) and rebuilds/launches containers.
-  5. Deploys the latest code live to `http://13.48.47.35` in under 2 minutes with zero manual SSH needed.
+  4. Automatically cleans older Docker build cache (`docker system prune` / `docker builder prune`) and rebuilds/launches containers.
+  5. Deploys the latest code live to `https://shopstack-enterprise.duckdns.org` in under 2 minutes with zero manual SSH needed.
 
-### 4. Real-Time Dual-Database Synchronization Architecture
+### 5. Real-Time Dual-Database Synchronization Architecture
 * **Bi-Directional Cloud & Local Sync (`CloudSyncService.java`)**:
   - Implemented an automated background sync daemon running `@Scheduled(fixedDelay = 5000)` and `@Async` within the Spring Boot engine.
-  - Automatically polls the AWS Cloud REST API (`http://13.48.47.35:8080/api/auth/users`) to replicate any new cloud registrations or credential updates into the local PostgreSQL database (`shopstack_db`) with zero manual commands.
+  - Automatically polls the AWS Cloud REST API to replicate any new cloud registrations or credential updates into the local PostgreSQL database (`shopstack_db`) with zero manual commands.
   - Automatically pushes local registrations and logins up to the AWS Cloud database in the background.
 * **19-Table Enterprise Database Synchronization Tool (`deploy/sync-db.ps1`)**:
   - Full-schema automated sync covering all 19 PostgreSQL tables:
@@ -2464,16 +2487,18 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 │   ├── Dockerfile                           # Multi-stage Maven + Eclipse Temurin 21 production image
 │   └── .dockerignore                        # Ignores target/, .git/, local uploads from build context
 ├── frontend/
-│   ├── Dockerfile                           # Multi-stage Node 20 + Nginx Alpine static server image
-│   ├── nginx.conf                           # Nginx config with SPA routing & ^~ /uploads/ reverse proxy
+│   ├── Dockerfile                           # Multi-stage Node 20 + Nginx Alpine with OpenSSL & dynamic SSL entrypoint
+│   ├── docker-entrypoint-nginx.sh           # Dynamic SSL certificate finder and fallback generator
+│   ├── nginx.conf                           # Dual HTTP (80) & HTTPS (443) config with TLS 1.3 & proxying
 │   └── .dockerignore                        # Ignores node_modules/, dist/, caches
 ├── deploy/
-│   ├── setup-aws-ec2.sh                     # Automated Ubuntu host bootstrap, swap config & container launcher
-│   ├── deploy-to-ec2.ps1                    # One-click Windows PowerShell deployment script
+│   ├── setup-aws-ec2.sh                     # Automated Ubuntu host bootstrap, swap config, SSL & container launcher
+│   ├── setup-duckdns-ssl.sh                 # 1-click DuckDNS domain SSL certificate generator & Nginx restarter
+│   ├── deploy-to-ec2.ps1                    # One-click Windows PowerShell deployment script with HTTPS URLs
 │   ├── sync-db.ps1                          # Full 19-table database synchronization CLI tool (-Watch mode)
 │   ├── ec2_key.pem                          # Protected AWS SSH RSA private key (in .gitignore)
 │   └── AWS_DEPLOYMENT_GUIDE.md              # Step-by-step evaluator review & operational guide
-├── docker-compose.yml                       # Multi-service stack (db, backend, frontend, volumes, networks)
+├── docker-compose.yml                       # Multi-service stack (db, backend, frontend on 80/443, SSL volumes)
 ├── .env.example                             # Production environment variables template
 ├── .gitignore                               # Protects credentials, .pem keys, and build outputs
 └── DOCKER_AND_CLOUD_DEPLOYMENT_DOCUMENTATION.txt  # Full deployment specifications & database details
@@ -2509,7 +2534,7 @@ POSTGRES_PASSWORD=your-secure-postgres-password
 # ==========================================
 # Backend & Platform Configuration
 # ==========================================
-APP_BACKEND_BASE_URL=http://<your-ec2-ip-or-domain>:8080
+APP_BACKEND_BASE_URL=https://shopstack-enterprise.duckdns.org
 SHOPSTACK_COMMISSION_PERCENTAGE=10.0
 
 # ==========================================
@@ -2551,7 +2576,13 @@ powershell -ExecutionPolicy Bypass -File deploy\deploy-to-ec2.ps1
 bash deploy/setup-aws-ec2.sh
 ```
 
-### 3. Database Synchronization Commands (`deploy/sync-db.ps1`)
+### 3. Setup / Switch Clean DuckDNS Domain with HTTPS
+```powershell
+# Run on EC2 to issue Let's Encrypt certificate for your custom DuckDNS domain:
+ssh -i deploy/ec2_key.pem ubuntu@13.48.47.35 "bash /home/ubuntu/ShopStack/deploy/setup-duckdns-ssl.sh shopstack-enterprise.duckdns.org"
+```
+
+### 4. Database Synchronization Commands (`deploy/sync-db.ps1`)
 ```powershell
 # Pull all cloud users, orders, products & tables into Local PostgreSQL:
 powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction cloud-to-local
@@ -2567,18 +2598,20 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 
 ## 🚦 Verification Checklist (Day 16)
 
-### 1. Live Public Storefront & Authentication
-1. Open `http://13.48.47.35` in your browser.
-2. Verify role-based login and registration flows for all 4 distinct actor profiles:
+### 1. Live Public Storefront with HTTPS & Authentication
+1. Open **`https://shopstack-enterprise.duckdns.org`** in your browser.
+2. Confirm the **Green SSL Lock / Secure Connection** badge in the browser address bar.
+3. Test accessing `http://13.48.47.35` and confirm it automatically 301-redirects to the secure HTTPS URL.
+4. Verify role-based login and registration flows for all 4 distinct actor profiles:
    - **Administrator**: `admin@admin` / `admin123`
    - **Customer**: `customer@gmail.com` / `customer123`
    - **Vendor**: `seller@seller` / `seller123` (Vendor ID: `123456`)
    - **Warehouse Staff**: `staff@staff` / `staff123`
-3. Verify session authentication, JWT/CORS headers, and dynamic role switching through the Nginx reverse proxy.
+5. Verify session authentication, JWT/CORS headers, and dynamic role switching through the secure Nginx reverse proxy.
 
 ### 2. Product Catalog & High-Resolution Image Delivery
-1. Browse catalog items on the live public storefront (`http://13.48.47.35`).
-2. Verify that high-resolution product media files load smoothly via the `/uploads/products/...` reverse proxy with HTTP 200 responses.
+1. Browse catalog items on the live public storefront (`https://shopstack-enterprise.duckdns.org`).
+2. Verify that high-resolution product media files load smoothly via the `/uploads/products/...` reverse proxy with HTTP 200 responses over HTTPS.
 3. Open product details and test the multi-image gallery carousels and zoom previews.
 
 ### 3. Shopping Cart, "Buy Now" & Payment Gateway Flow
@@ -2594,7 +2627,7 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 3. Verify delivery handover (`DELIVERED`) and automated financial settlement generation in the Admin console.
 
 ### 5. Automated Real-Time Database Synchronization
-1. Register a new user or place an order on `http://13.48.47.35/`.
+1. Register a new user or place an order on `https://shopstack-enterprise.duckdns.org`.
 2. Observe real-time automatic synchronization to your local PostgreSQL database (`shopstack_db`) via `CloudSyncService.java` or `deploy\sync-db.ps1 -Watch`.
 3. Inspect local database rows in pgAdmin to verify all relational records match.
 
@@ -2602,4 +2635,5 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 1. Make a code update in `frontend/src/` or `backend/src/`.
 2. Commit and push to `main` branch (`git push origin main`).
 3. Open the **Actions** tab on GitHub and confirm that the deployment workflow executes and passes with a green checkmark.
-4. Refresh the cloud server endpoint to verify changes are live immediately with zero downtime.
+4. Refresh `https://shopstack-enterprise.duckdns.org` to verify changes are live immediately with zero downtime.
+
