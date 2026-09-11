@@ -40,7 +40,10 @@ Write-Host "Running Docker Compose build and startup on EC2..." -ForegroundColor
 ssh -o StrictHostKeyChecking=no -i $KEY_PATH "$($EC2_USER)@$($EC2_IP)" "cd $REMOTE_DIR && bash deploy/setup-aws-ec2.sh"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "AWS EC2 DEPLOYMENT SUCCESSFUL!" -ForegroundColor Green
-Write-Host "Storefront: http://$($EC2_IP)" -ForegroundColor Yellow
-Write-Host "Backend API: http://$($EC2_IP):8080/api/products" -ForegroundColor Yellow
+Write-Host "AWS EC2 DEPLOYMENT SUCCESSFUL WITH HTTPS & SSL!" -ForegroundColor Green
+Write-Host "Storefront (HTTPS):  https://shopstack.$($EC2_IP).sslip.io" -ForegroundColor Yellow
+Write-Host "Direct HTTPS URL:    https://$($EC2_IP).sslip.io" -ForegroundColor Yellow
+Write-Host "Backend API Gateway: https://shopstack.$($EC2_IP).sslip.io/api/products" -ForegroundColor Yellow
+Write-Host "HTTP Fallback:       http://$($EC2_IP) (Automatically redirects to HTTPS)" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
+

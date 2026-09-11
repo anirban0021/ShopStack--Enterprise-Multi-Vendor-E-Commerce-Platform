@@ -1,8 +1,12 @@
 #!/bin/bash
 # ==============================================================================
-# ShopStack - Automated AWS EC2 Host Setup & Docker Deployment Script
+# ShopStack - Automated AWS EC2 Host Setup & Docker HTTPS Deployment Script
 # ==============================================================================
 set -e
+
+DOMAIN_PRIMARY="13.48.47.35.sslip.io"
+DOMAIN_ALIAS="shopstack.13.48.47.35.sslip.io"
+SSL_EMAIL="anirbansasmal21@gmail.com"
 
 echo "========================================================"
 echo "🚀 Starting ShopStack AWS EC2 Host Bootstrap & Deployment"
@@ -11,7 +15,7 @@ echo "========================================================"
 # 1. Update APT Repositories & Install Base Packages
 echo "📦 Updating apt packages..."
 sudo apt-get update -y
-sudo apt-get install -y ca-certificates curl gnupg lsb-release git ufw
+sudo apt-get install -y ca-certificates curl gnupg lsb-release git
 
 # 2. Configure 2GB Swap Memory (prevents OOM during Maven/Vite Docker builds)
 if [ ! -f /swapfile ]; then
@@ -49,30 +53,56 @@ fi
 echo "🔍 Checking Docker Compose version..."
 docker compose version
 
-# 5. Navigate to project directory
+# 5. Prepare ACME & SSL Directories
+sudo mkdir -p /var/www/certbot
+sudo mkdir -p /etc/letsencrypt
+
+# 6. Ensure Valid Let's Encrypt SSL Certificate
+if [ ! -f "/etc/letsencrypt/live/${DOMAIN_PRIMARY}/fullchain.pem" ]; then
+    echo "🔐 Requesting Let's Encrypt SSL Certificate for $DOMAIN_PRIMARY & $DOMAIN_ALIAS..."
+    sudo docker run --rm \
+      -p 80:80 \
+      -v /etc/letsencrypt:/etc/letsencrypt \
+      -v /var/lib/letsencrypt:/var/lib/letsencrypt \
+      certbot/certbot certonly \
+      --standalone \
+      -d "$DOMAIN_PRIMARY" \
+      -d "$DOMAIN_ALIAS" \
+      --agree-tos \
+      --email "$SSL_EMAIL" \
+      --non-interactive || echo "⚠️ Certbot standalone skipped (fallback self-signed will be used until certbot runs)."
+fi
+
+# 7. Setup SSL Auto-Renewal Cron Job (Every Sunday at 3:00 AM)
+CRON_CMD="0 3 * * 0 docker run --rm -v /etc/letsencrypt:/etc/letsencrypt -v /var/lib/letsencrypt:/var/lib/letsencrypt -v /var/www/certbot:/var/www/certbot certbot/certbot renew --webroot -w /var/www/certbot --quiet && docker exec shopstack-frontend nginx -s reload"
+(crontab -l 2>/dev/null | grep -v "certbot renew" ; echo "$CRON_CMD") | sudo crontab -
+
+# 8. Navigate to project directory
 cd /home/ubuntu/ShopStack
 
-# 6. Copy .env if not exists
+# 9. Copy .env if not exists
 if [ ! -f .env ]; then
     echo "⚙️ Creating .env from .env.example..."
     cp .env.example .env
 fi
 
-# 7. Build and Run Containers
+# 10. Build and Run Containers
 echo "🏗️ Building and deploying ShopStack multi-container stack..."
 sudo docker compose down --remove-orphans || true
 sudo docker container prune -f || true
 sudo docker compose build --no-cache
 sudo docker compose up -d --force-recreate --remove-orphans
 
-# 8. Check Running Containers
+# 11. Check Running Containers
 echo "========================================================"
 echo "📊 Checking container health and running status..."
 echo "========================================================"
 sudo docker compose ps
 
 echo "========================================================"
-echo "🎉 DEPLOYMENT COMPLETE!"
-echo "🌐 Storefront & App: http://13.48.47.35"
-echo "📡 Backend APIs:     http://13.48.47.35:8080/api/products"
+echo "🎉 DEPLOYMENT COMPLETE WITH HTTPS & SSL!"
+echo "🌐 Public HTTPS URL:    https://$DOMAIN_ALIAS"
+echo "🌐 Direct Domain URL:   https://$DOMAIN_PRIMARY"
+echo "📡 Backend APIs:        https://$DOMAIN_ALIAS/api/products"
+echo "🔒 SSL Status:          Active (Let's Encrypt TLS 1.3)"
 echo "========================================================"

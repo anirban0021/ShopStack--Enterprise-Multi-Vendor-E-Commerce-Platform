@@ -58,7 +58,7 @@ services:
       - shopstack-net
 
   # ---------------------------------------------------
-  # 3. React Vite Frontend + Nginx Web Server
+  # 3. React Vite Frontend + Nginx Web Server (HTTP & HTTPS)
   # ---------------------------------------------------
   frontend:
     build:
@@ -71,6 +71,10 @@ services:
       - backend
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
     networks:
       - shopstack-net
 
