@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-DOMAIN="${1:-shopstack-enterprise.duckdns.org}"
+DOMAIN="${1:-13.48.47.35.sslip.io}"
 EMAIL="anirbansasmal21@gmail.com"
 
 echo "=========================================================="
@@ -11,7 +11,7 @@ echo "=========================================================="
 echo "🔍 Checking DNS resolution for $DOMAIN..."
 if ! getent hosts "$DOMAIN" > /dev/null 2>&1; then
     echo "❌ DNS resolution failed for $DOMAIN."
-    echo "👉 Please log into https://www.duckdns.org, add domain '$DOMAIN' pointing to 13.48.47.35"
+    echo "👉 Please ensure '$DOMAIN' points to 13.48.47.35"
     exit 1
 fi
 
@@ -36,7 +36,7 @@ cd /home/ubuntu/ShopStack
 sudo docker compose restart frontend
 
 echo "=========================================================="
-echo "🎉 SUCCESS! Your clean domain is live with HTTPS:"
+echo "🎉 SUCCESS! Domain is live with HTTPS:"
 echo "🌐 Storefront: https://$DOMAIN"
 echo "📡 APIs:       https://$DOMAIN/api/products"
 echo "=========================================================="

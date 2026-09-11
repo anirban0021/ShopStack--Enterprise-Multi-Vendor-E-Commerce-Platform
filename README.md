@@ -2358,7 +2358,7 @@ mvn test
 
 # 🐳 ShopStack — Day 16: Docker Containerization, AWS Cloud Deployment, HTTPS SSL & GitHub Actions CI/CD Pipeline
 
-This milestone delivers production **Multi-Stage Docker Containerization**, live **AWS EC2 Cloud Deployment with Free Clean Domain & Let's Encrypt SSL/TLS**, **Automated GitHub Actions CI/CD Push-to-Deploy**, **Nginx Reverse Proxy Image & API Streaming**, and **PostgreSQL Database Cloud Synchronization** for the entire ShopStack platform.
+This milestone delivers production **Multi-Stage Docker Containerization**, live **AWS EC2 Cloud Deployment with Wildcard Domain & Let's Encrypt TLS 1.3 SSL**, **Vercel Edge Deployment Integration**, **Automated GitHub Actions CI/CD Push-to-Deploy**, **Nginx Reverse Proxy Image & API Streaming**, and **PostgreSQL Database Cloud Synchronization** for the entire ShopStack platform.
 
 ---
 
@@ -2366,10 +2366,10 @@ This milestone delivers production **Multi-Stage Docker Containerization**, live
 
 | Service | Live URL | Description |
 | :--- | :--- | :--- |
-| 🛍️ **Storefront & Client UI** | **[https://shopstack-enterprise.duckdns.org](https://shopstack-enterprise.duckdns.org)** | Clean Public Domain with Let's Encrypt TLS 1.3 Encryption |
-| 🔒 **Direct Domain Fallback** | **[https://13.48.47.35.sslip.io](https://13.48.47.35.sslip.io)** | Direct Wildcard Domain mapping to AWS EC2 Host |
-| 📡 **Backend API Gateway** | **[https://shopstack-enterprise.duckdns.org/api/products](https://shopstack-enterprise.duckdns.org/api/products)** | Secure REST APIs reverse-proxied through Nginx |
-| 🔄 **HTTP Auto-Redirect** | `http://13.48.47.35` / `http://shopstack-enterprise.duckdns.org` | Automatically issues `301 Moved Permanently` to HTTPS |
+| 🛍️ **Storefront & Client UI (AWS EC2)** | **[https://13.48.47.35.sslip.io](https://13.48.47.35.sslip.io)** | Production Cloud Storefront with Let's Encrypt TLS 1.3 Encryption |
+| ⚡ **Storefront UI (Vercel CDN)** | **[https://shopstack-enterprise.vercel.app](https://shopstack-enterprise.vercel.app)** | High-Speed Edge Frontend with automated reverse-proxying to EC2 |
+| 📡 **Backend API Gateway** | **[https://13.48.47.35.sslip.io/api/products](https://13.48.47.35.sslip.io/api/products)** | Secure REST APIs reverse-proxied through Nginx |
+| 🔄 **HTTP Auto-Redirect** | `http://13.48.47.35` / `http://13.48.47.35.sslip.io` | Automatically issues `301 Moved Permanently` to HTTPS |
 
 ---
 
@@ -2379,6 +2379,7 @@ This milestone delivers production **Multi-Stage Docker Containerization**, live
 flowchart TD
     subgraph "1. Developer & Source Control"
         Dev["Developer commits changes<br/>git push origin main"] --> GHA["GitHub Actions Workflow<br/>.github/workflows/deploy.yml"]
+        Dev --> Vercel["Vercel Git Integration<br/>frontend/vercel.json"]
     end
 
     subgraph "2. Automated CI/CD Pipeline (Ubuntu Runner)"
@@ -2392,7 +2393,7 @@ flowchart TD
         GH4 --> Docker["Docker Compose Orchestration (shopstack-network)"]
         
         subgraph "Containerized Application Stack"
-            Frontend["shopstack-frontend (Ports 80 & 443)<br/>- Nginx Alpine Web Server + OpenSSL<br/>- Let's Encrypt TLS 1.3 SSL Termination<br/>- HTTP to HTTPS 301 Redirection<br/>- React 19 Vite Production Bundle<br/>- SPA Client-Side Routing<br/>- ^~ /uploads/ & ^~ /api/ Reverse Proxy"]
+            Frontend["shopstack-frontend (Ports 80 & 443)<br/>- Nginx Alpine Web Server + OpenSSL<br/>- Let's Encrypt TLS 1.3 Dynamic SNI<br/>- HTTP to HTTPS 301 Redirection<br/>- React 19 Vite Production Bundle<br/>- SPA Client-Side Routing<br/>- ^~ /uploads/ & ^~ /api/ Reverse Proxy"]
             
             Backend["shopstack-backend (Port 8080)<br/>- Spring Boot 4.x REST API Engine<br/>- Eclipse Temurin OpenJDK 21 Runtime<br/>- Async Mailer & Razorpay Client"]
             
@@ -2407,11 +2408,12 @@ flowchart TD
     end
 
     subgraph "4. Public Internet (HTTPS)"
-        Client["Browser / Mobile Client<br/>https://shopstack-enterprise.duckdns.org"]
+        Client["Browser / Mobile Client<br/>https://13.48.47.35.sslip.io"]
     end
 
     Client -->|"HTTPS Port 443 (TLS 1.3)"| Frontend
     Client -.->|"HTTP Port 80 (301 Redirect)"| Frontend
+    Vercel -.->|"Reverse Proxy /api/ & /uploads/"| Frontend
     Frontend -->|"Proxy Pass /api/ -> http://backend:8080"| Backend
     Frontend -->|"Proxy Pass /uploads/ -> http://backend:8080"| Backend
     Frontend -.-> VolSSL
@@ -2424,11 +2426,11 @@ flowchart TD
 
 ## 📌 Key Capabilities & Enhancements (Day 16)
 
-### 1. Free Clean Public Domain & Let's Encrypt SSL Termination
-* **Custom Domain (`shopstack-enterprise.duckdns.org`)**: Configured a clean, professional domain name without raw IP addresses.
-* **Genuine Let's Encrypt SSL/TLS 1.3**: Automated SSL certificate generation via Certbot with HTTP-01 challenge verification.
-* **Dynamic SSL Loader (`frontend/docker-entrypoint-nginx.sh`)**: Automatically discovers and mounts the active live SSL certificate on container boot, while providing a self-signed fallback so the container starts reliably across both local and cloud environments.
-* **Automated Weekly Renewal Cron**: Configured an automated cron job on EC2 to test and renew certificates before expiry and seamlessly reload Nginx without downtime.
+### 1. Free Wildcard Public Domain & Dynamic SNI SSL Termination
+* **Production Domain (`13.48.47.35.sslip.io`)**: Direct IP-mapped wildcard domain ensuring instant routing without third-party DNS propagation delays.
+* **Genuine Let's Encrypt TLS 1.3 SSL**: Verified SSL certificate issued by Let's Encrypt Authority with zero browser security warnings.
+* **Dynamic SNI SSL Loader (`frontend/docker-entrypoint-nginx.sh`)**: Multi-domain Server Name Indication (SNI) loader automatically detects and provisions certificates inside container memory, supporting multiple domains and self-signed fallbacks.
+* **Vercel Edge Integration (`frontend/vercel.json`)**: Configured reverse-proxy rewrite rules so the frontend can optionally run on Vercel Edge CDN with automatic HTTPS while proxying `/api/` and `/uploads/` to the AWS EC2 backend.
 
 ### 2. Multi-Stage Dockerfile Builds
 * **Spring Boot Backend (`backend/Dockerfile`)**:
@@ -2452,7 +2454,7 @@ flowchart TD
   2. Sets up OpenSSH with Windows-safe CRLF normalization (`tr -d '\r'`).
   3. Uses native `rsync` over SSH for high-speed delta syncing while protecting `.env`, `.pem` keys, and `.git`.
   4. Automatically cleans older Docker build cache (`docker system prune` / `docker builder prune`) and rebuilds/launches containers.
-  5. Deploys the latest code live to `https://shopstack-enterprise.duckdns.org` in under 2 minutes with zero manual SSH needed.
+  5. Deploys the latest code live to `https://13.48.47.35.sslip.io` in under 2 minutes with zero manual SSH needed.
 
 ### 5. Real-Time Dual-Database Synchronization Architecture
 * **Bi-Directional Cloud & Local Sync (`CloudSyncService.java`)**:
@@ -2488,12 +2490,13 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 │   └── .dockerignore                        # Ignores target/, .git/, local uploads from build context
 ├── frontend/
 │   ├── Dockerfile                           # Multi-stage Node 20 + Nginx Alpine with OpenSSL & dynamic SSL entrypoint
-│   ├── docker-entrypoint-nginx.sh           # Dynamic SSL certificate finder and fallback generator
+│   ├── docker-entrypoint-nginx.sh           # Dynamic SNI multi-domain SSL certificate finder and fallback generator
 │   ├── nginx.conf                           # Dual HTTP (80) & HTTPS (443) config with TLS 1.3 & proxying
+│   ├── vercel.json                          # Vercel SPA routing and API reverse-proxy configuration
 │   └── .dockerignore                        # Ignores node_modules/, dist/, caches
 ├── deploy/
 │   ├── setup-aws-ec2.sh                     # Automated Ubuntu host bootstrap, swap config, SSL & container launcher
-│   ├── setup-duckdns-ssl.sh                 # 1-click DuckDNS domain SSL certificate generator & Nginx restarter
+│   ├── setup-ssl.sh                         # Generic Let's Encrypt SSL certificate generator for any domain
 │   ├── deploy-to-ec2.ps1                    # One-click Windows PowerShell deployment script with HTTPS URLs
 │   ├── sync-db.ps1                          # Full 19-table database synchronization CLI tool (-Watch mode)
 │   ├── ec2_key.pem                          # Protected AWS SSH RSA private key (in .gitignore)
@@ -2534,7 +2537,7 @@ POSTGRES_PASSWORD=your-secure-postgres-password
 # ==========================================
 # Backend & Platform Configuration
 # ==========================================
-APP_BACKEND_BASE_URL=https://shopstack-enterprise.duckdns.org
+APP_BACKEND_BASE_URL=https://13.48.47.35.sslip.io
 SHOPSTACK_COMMISSION_PERCENTAGE=10.0
 
 # ==========================================
@@ -2576,10 +2579,10 @@ powershell -ExecutionPolicy Bypass -File deploy\deploy-to-ec2.ps1
 bash deploy/setup-aws-ec2.sh
 ```
 
-### 3. Setup / Switch Clean DuckDNS Domain with HTTPS
+### 3. Setup SSL Certificate for Any Domain
 ```powershell
-# Run on EC2 to issue Let's Encrypt certificate for your custom DuckDNS domain:
-ssh -i deploy/ec2_key.pem ubuntu@13.48.47.35 "bash /home/ubuntu/ShopStack/deploy/setup-duckdns-ssl.sh shopstack-enterprise.duckdns.org"
+# Run on EC2 to issue Let's Encrypt certificate for any domain:
+ssh -i deploy/ec2_key.pem ubuntu@13.48.47.35 "bash /home/ubuntu/ShopStack/deploy/setup-ssl.sh 13.48.47.35.sslip.io"
 ```
 
 ### 4. Database Synchronization Commands (`deploy/sync-db.ps1`)
@@ -2599,7 +2602,7 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 ## 🚦 Verification Checklist (Day 16)
 
 ### 1. Live Public Storefront with HTTPS & Authentication
-1. Open **`https://shopstack-enterprise.duckdns.org`** in your browser.
+1. Open **`https://13.48.47.35.sslip.io`** in your browser.
 2. Confirm the **Green SSL Lock / Secure Connection** badge in the browser address bar.
 3. Test accessing `http://13.48.47.35` and confirm it automatically 301-redirects to the secure HTTPS URL.
 4. Verify role-based login and registration flows for all 4 distinct actor profiles:
@@ -2610,7 +2613,7 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 5. Verify session authentication, JWT/CORS headers, and dynamic role switching through the secure Nginx reverse proxy.
 
 ### 2. Product Catalog & High-Resolution Image Delivery
-1. Browse catalog items on the live public storefront (`https://shopstack-enterprise.duckdns.org`).
+1. Browse catalog items on the live public storefront (`https://13.48.47.35.sslip.io`).
 2. Verify that high-resolution product media files load smoothly via the `/uploads/products/...` reverse proxy with HTTP 200 responses over HTTPS.
 3. Open product details and test the multi-image gallery carousels and zoom previews.
 
@@ -2627,7 +2630,7 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 3. Verify delivery handover (`DELIVERED`) and automated financial settlement generation in the Admin console.
 
 ### 5. Automated Real-Time Database Synchronization
-1. Register a new user or place an order on `https://shopstack-enterprise.duckdns.org`.
+1. Register a new user or place an order on `https://13.48.47.35.sslip.io`.
 2. Observe real-time automatic synchronization to your local PostgreSQL database (`shopstack_db`) via `CloudSyncService.java` or `deploy\sync-db.ps1 -Watch`.
 3. Inspect local database rows in pgAdmin to verify all relational records match.
 
@@ -2635,5 +2638,5 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 1. Make a code update in `frontend/src/` or `backend/src/`.
 2. Commit and push to `main` branch (`git push origin main`).
 3. Open the **Actions** tab on GitHub and confirm that the deployment workflow executes and passes with a green checkmark.
-4. Refresh `https://shopstack-enterprise.duckdns.org` to verify changes are live immediately with zero downtime.
+4. Refresh `https://13.48.47.35.sslip.io` to verify changes are live immediately with zero downtime.
 
