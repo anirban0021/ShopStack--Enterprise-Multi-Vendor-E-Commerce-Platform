@@ -19,13 +19,15 @@ Write-Host "Preparing and transferring project files..." -ForegroundColor Yellow
 $tempTar = "$env:TEMP\shopstack_deploy.tar.gz"
 if (Test-Path $tempTar) { Remove-Item $tempTar -Force }
 
+$envInclude = if (Test-Path .env) { ".env" } else { "" }
+
 tar --exclude="node_modules" `
     --exclude="target" `
     --exclude=".git" `
     --exclude="dist" `
     --exclude="*.log" `
     --exclude="*.pem" `
-    -czf $tempTar backend frontend docker-compose.yml .env.example deploy
+    -czf $tempTar backend frontend docker-compose.yml .env.example deploy $envInclude
 
 Write-Host "Uploading archive to AWS EC2..." -ForegroundColor Yellow
 scp -o StrictHostKeyChecking=no -i $KEY_PATH $tempTar "$($EC2_USER)@$($EC2_IP):/home/ubuntu/shopstack_deploy.tar.gz"
