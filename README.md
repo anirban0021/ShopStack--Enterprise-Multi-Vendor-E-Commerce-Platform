@@ -2,6 +2,9 @@
 
 ShopStack is a full-stack, enterprise-grade multi-vendor e-commerce platform built with Spring Boot for the backend RESTful API services and React.js (Vite) for the frontend client layer.
 
+> 🌐 **Live Demo (Vercel Edge CDN):** [https://shop-stack-enterprise-multi-vendor-xi.vercel.app/](https://shop-stack-enterprise-multi-vendor-xi.vercel.app/)  
+> 🔒 **Live Cloud Host (AWS EC2):** [https://13.48.47.35.sslip.io](https://13.48.47.35.sslip.io)
+
 ---
 
 ## 🛠️ Tech Stack & Prerequisites
@@ -2366,8 +2369,8 @@ This milestone delivers production **Multi-Stage Docker Containerization**, live
 
 | Service | Live URL | Description |
 | :--- | :--- | :--- |
-| 🛍️ **Storefront & Client UI (AWS EC2)** | **[https://13.48.47.35.sslip.io](https://13.48.47.35.sslip.io)** | Production Cloud Storefront with Let's Encrypt TLS 1.3 Encryption |
-| ⚡ **Storefront UI (Vercel CDN)** | **[https://shopstack-enterprise.vercel.app](https://shopstack-enterprise.vercel.app)** | High-Speed Edge Frontend with automated reverse-proxying to EC2 |
+| ⚡ **Live Production Storefront (Vercel)** | **[https://shop-stack-enterprise-multi-vendor-xi.vercel.app/](https://shop-stack-enterprise-multi-vendor-xi.vercel.app/)** | High-Performance Edge Production UI on Vercel Global CDN |
+| 🛍️ **Direct Cloud Storefront (AWS EC2)** | **[https://13.48.47.35.sslip.io](https://13.48.47.35.sslip.io)** | Production Cloud Storefront with Let's Encrypt TLS 1.3 Encryption |
 | 📡 **Backend API Gateway** | **[https://13.48.47.35.sslip.io/api/products](https://13.48.47.35.sslip.io/api/products)** | Secure REST APIs reverse-proxied through Nginx |
 | 🔄 **HTTP Auto-Redirect** | `http://13.48.47.35` / `http://13.48.47.35.sslip.io` | Automatically issues `301 Moved Permanently` to HTTPS |
 
@@ -2602,18 +2605,18 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 ## 🚦 Verification Checklist (Day 16)
 
 ### 1. Live Public Storefront with HTTPS & Authentication
-1. Open **`https://13.48.47.35.sslip.io`** in your browser.
-2. Confirm the **Green SSL Lock / Secure Connection** badge in the browser address bar.
+1. Open **`https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`** (or **`https://13.48.47.35.sslip.io`**) in your browser.
+2. Confirm the **Green SSL Lock / Secure Connection** badge in the browser address bar with 0 warnings.
 3. Test accessing `http://13.48.47.35` and confirm it automatically 301-redirects to the secure HTTPS URL.
 4. Verify role-based login and registration flows for all 4 distinct actor profiles:
    - **Administrator**: `admin@admin` / `admin123`
    - **Customer**: `customer@gmail.com` / `customer123`
    - **Vendor**: `seller@seller` / `seller123` (Vendor ID: `123456`)
    - **Warehouse Staff**: `staff@staff` / `staff123`
-5. Verify session authentication, JWT/CORS headers, and dynamic role switching through the secure Nginx reverse proxy.
+5. Verify session authentication, JWT/CORS headers, and dynamic role switching through the secure reverse proxy.
 
 ### 2. Product Catalog & High-Resolution Image Delivery
-1. Browse catalog items on the live public storefront (`https://13.48.47.35.sslip.io`).
+1. Browse catalog items on the live storefront (`https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`).
 2. Verify that high-resolution product media files load smoothly via the `/uploads/products/...` reverse proxy with HTTP 200 responses over HTTPS.
 3. Open product details and test the multi-image gallery carousels and zoom previews.
 
@@ -2630,7 +2633,7 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 3. Verify delivery handover (`DELIVERED`) and automated financial settlement generation in the Admin console.
 
 ### 5. Automated Real-Time Database Synchronization
-1. Register a new user or place an order on `https://13.48.47.35.sslip.io`.
+1. Register a new user or place an order on `https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`.
 2. Observe real-time automatic synchronization to your local PostgreSQL database (`shopstack_db`) via `CloudSyncService.java` or `deploy\sync-db.ps1 -Watch`.
 3. Inspect local database rows in pgAdmin to verify all relational records match.
 
@@ -2638,5 +2641,5 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 1. Make a code update in `frontend/src/` or `backend/src/`.
 2. Commit and push to `main` branch (`git push origin main`).
 3. Open the **Actions** tab on GitHub and confirm that the deployment workflow executes and passes with a green checkmark.
-4. Refresh `https://13.48.47.35.sslip.io` to verify changes are live immediately with zero downtime.
+4. Refresh `https://shop-stack-enterprise-multi-vendor-xi.vercel.app/` to verify changes are live immediately with zero downtime.
 
