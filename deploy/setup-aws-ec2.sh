@@ -12,10 +12,12 @@ echo "========================================================"
 echo "🚀 Starting ShopStack AWS EC2 Host Bootstrap & Deployment"
 echo "========================================================"
 
-# 1. Update APT Repositories & Install Base Packages
-echo "📦 Updating apt packages..."
-sudo apt-get update -y
-sudo apt-get install -y ca-certificates curl gnupg lsb-release git
+# 1. Install Base Packages if missing
+if ! command -v git &> /dev/null; then
+    echo "📦 Installing base packages..."
+    sudo apt-get update -y
+    sudo apt-get install -y ca-certificates curl gnupg lsb-release git
+fi
 
 # 2. Configure 2GB Swap Memory (prevents OOM during Maven/Vite Docker builds)
 if [ ! -f /swapfile ]; then
@@ -89,8 +91,9 @@ fi
 # 10. Build and Run Containers
 echo "🏗️ Building and deploying ShopStack multi-container stack..."
 sudo docker compose down --remove-orphans || true
-sudo docker container prune -f || true
-sudo docker compose build --no-cache
+sudo docker system prune -af || true
+sudo docker builder prune -af || true
+sudo docker compose build
 sudo docker compose up -d --force-recreate --remove-orphans
 
 # 11. Check Running Containers
