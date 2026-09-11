@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-ACTIVE_DIR="/etc/letsencrypt/active"
+ACTIVE_DIR="/etc/nginx/ssl"
 mkdir -p "$ACTIVE_DIR"
 
 # Find the best available certificate (prioritize duckdns, then sslip.io, then any live cert)
