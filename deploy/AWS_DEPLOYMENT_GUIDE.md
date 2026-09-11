@@ -114,8 +114,11 @@ curl -i http://localhost/
 
 ---
 
-## 🌐 Live Application URLs
+## 🌐 Live Application URLs (Production HTTPS)
 
-- **Storefront & Client UI**: `http://13.48.47.35`
-- **Backend API Gateway**: `http://13.48.47.35:8080/api/products`
-- **Public DNS**: `ec2-13-48-47-35.eu-north-1.compute.amazonaws.com`
+- **Storefront & Client UI (HTTPS)**: `https://shopstack.13.48.47.35.sslip.io`
+- **Direct Domain URL (HTTPS)**: `https://13.48.47.35.sslip.io`
+- **Backend API Gateway (HTTPS)**: `https://shopstack.13.48.47.35.sslip.io/api/products`
+- **HTTP Auto-Redirect**: `http://13.48.47.35` (301 Permanent Redirect to HTTPS)
+- **SSL / TLS Certificate**: Valid Let's Encrypt TLS 1.3 certificate with automated renewal cron
+
