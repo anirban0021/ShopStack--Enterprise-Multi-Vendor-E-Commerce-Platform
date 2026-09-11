@@ -135,13 +135,13 @@ POSTGRES_USER                    | postgres                            | Databas
 POSTGRES_PASSWORD                | ShopStack@Prod2026                  | Database master password
 APP_BACKEND_BASE_URL             | http://13.48.47.35:8080             | Backend public URL for image links
 SHOPSTACK_COMMISSION_PERCENTAGE  | 10.0                                | Platform commission percentage
-RAZORPAY_KEY_ID                  | rzp_test_TOD9vXSNPzLLOn             | Razorpay test mode API Key ID
-RAZORPAY_KEY_SECRET              | w29deAvwjgp46fRzaVGc45NT            | Razorpay test mode Key Secret
+RAZORPAY_KEY_ID                  | your_razorpay_key_id                 | Razorpay test mode API Key ID
+RAZORPAY_KEY_SECRET              | your_razorpay_key_secret             | Razorpay test mode Key Secret
 MAIL_HOST                        | smtp.gmail.com                      | SMTP server host
 MAIL_PORT                        | 587                                 | SMTP port (STARTTLS)
-MAIL_USERNAME                    | anirbansasmal21@gmail.com           | Notification email account
-MAIL_PASSWORD                    | qjqkpuykvvtobsya                    | Gmail 16-character App Password
-MAIL_FROM                        | anirbansasmal21@gmail.com           | Sender email address
+MAIL_USERNAME                    | your_email@gmail.com                | Notification email account
+MAIL_PASSWORD                    | your_gmail_app_password             | Gmail 16-character App Password
+MAIL_FROM                        | your_email@gmail.com                | Sender email address
 
 
 8. SQL DATABASE CONFIGURATION & CONNECTIVITY

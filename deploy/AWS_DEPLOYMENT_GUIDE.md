@@ -76,15 +76,15 @@ APP_BACKEND_BASE_URL=http://13.48.47.35:8080
 SHOPSTACK_COMMISSION_PERCENTAGE=10.0
 
 # Razorpay Payment Gateway (Test Mode)
-RAZORPAY_KEY_ID=rzp_test_TOD9vXSNPzLLOn
-RAZORPAY_KEY_SECRET=w29deAvwjgp46fRzaVGc45NT
+RAZORPAY_KEY_ID=your_razorpay_key_id
+RAZORPAY_KEY_SECRET=your_razorpay_key_secret
 
 # Transactional Email Notification (Gmail SMTP)
 MAIL_HOST=smtp.gmail.com
 MAIL_PORT=587
-MAIL_USERNAME=anirbansasmal21@gmail.com
-MAIL_PASSWORD=qjqkpuykvvtobsya
-MAIL_FROM=anirbansasmal21@gmail.com
+MAIL_USERNAME=your_email@gmail.com
+MAIL_PASSWORD=your_gmail_app_password
+MAIL_FROM=your_email@gmail.com
 ```
 
 ---

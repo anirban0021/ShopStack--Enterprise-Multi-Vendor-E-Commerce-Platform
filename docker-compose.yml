@@ -42,13 +42,13 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-ShopStack@Prod2026}
       APP_UPLOAD_DIR: /app/uploads/products/
       APP_BACKEND_BASE_URL: ${APP_BACKEND_BASE_URL:-http://localhost:8080}
-      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-rzp_test_TOD9vXSNPzLLOn}
-      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-w29deAvwjgp46fRzaVGc45NT}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-your_razorpay_key_id}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-your_razorpay_key_secret}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
-      MAIL_USERNAME: ${MAIL_USERNAME:-anirbansasmal21@gmail.com}
-      MAIL_PASSWORD: ${MAIL_PASSWORD:-qjqkpuykvvtobsya}
-      MAIL_FROM: ${MAIL_FROM:-anirbansasmal21@gmail.com}
+      MAIL_USERNAME: ${MAIL_USERNAME:-your_email@gmail.com}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-your_gmail_app_password}
+      MAIL_FROM: ${MAIL_FROM:-your_email@gmail.com}
       SHOPSTACK_COMMISSION_PERCENTAGE: ${SHOPSTACK_COMMISSION_PERCENTAGE:-10.0}
     volumes:
       - backend_uploads:/app/uploads

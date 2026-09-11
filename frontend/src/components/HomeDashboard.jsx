@@ -595,7 +595,7 @@ export default function HomeDashboard({
       const { razorpayOrderId, amount, currency, keyId } = orderRes.data;
 
       const options = {
-        key: keyId || 'rzp_test_TOD9vXSNPzLLOn',
+        key: keyId || 'rzp_test_placeholder',
         amount: amount,
         currency: currency || 'INR',
         name: 'ShopStack Enterprise',
