@@ -27,8 +27,21 @@ function App() {
   
   // Persistent user state
   const [currentUser, setCurrentUser] = useState(() => {
-    const savedUser = localStorage.getItem('shopstack_user');
-    return savedUser ? JSON.parse(savedUser) : null;
+    try {
+      const savedUser = localStorage.getItem('shopstack_user');
+      if (!savedUser) return null;
+      const u = JSON.parse(savedUser);
+      if (u && u.email) {
+        if (u.email.endsWith('@admin') && u.role !== 'ADMINISTRATOR') {
+          u.role = 'ADMINISTRATOR';
+        } else if (u.email.endsWith('@staff') && u.role !== 'WAREHOUSE_STAFF') {
+          u.role = 'WAREHOUSE_STAFF';
+        }
+      }
+      return u;
+    } catch (e) {
+      return null;
+    }
   });
 
   // Persistent cart state
