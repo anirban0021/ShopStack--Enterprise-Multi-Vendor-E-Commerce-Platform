@@ -1871,9 +1871,9 @@ POST | `/api/payment/record-failed` | Diagnostic checkout failure logging | Logs
 
 ---
 
-# 📱 ShopStack — Day 14: Ergonomic Mobile Navigation, Responsive Layout Alignment, Isolated "Buy Now" Checkout & Cross-Browser Alignment
+# 📱 ShopStack — Day 14: Ergonomic Mobile Navigation, Responsive Layout & 100% Screen Alignment, Settlement Dates Engine, Isolated "Buy Now" Checkout & Cross-Browser Alignment
 
-This milestone delivers **Full Multi-Device UI Responsiveness** (Desktop, Tablet, Mobile), an **Ergonomic Mobile Bottom Navigation Dock**, a **Single-Row Streamlined Mobile Top App Bar with Compact Search & Notifications**, **Centralized Marketplace Notification Center**, **Responsive Grid & Pipeline Distribution Tracker Alignment Fixes**, **Cross-Browser Custom `<select>` & `<option>` Dropdown Styling**, **Centralized Account Controls & Session Reassurance Dialog**, an **Isolated Direct "Buy Now" Checkout Engine**, **Cart Drawer Stability Fixes**, **Mobile Wi-Fi Cross-Device Media Delivery**, **Automated Backend Commission Calculation Unit Testing**, and **Standardized Enterprise Error Handling**.
+This milestone delivers **Full Multi-Device UI Responsiveness** (Desktop, 100% Laptop Ratio, Tablet, Mobile), **100% Laptop Screen Ratio Viewport Boundary Fitting**, **Settlement & Payout Date Auto-Population & Column Restoration**, an **Ergonomic Mobile Bottom Navigation Dock**, a **Single-Row Streamlined Mobile Top App Bar with Compact Search & Notifications**, **Centralized Marketplace Notification Center**, **Responsive Grid & Pipeline Distribution Tracker Alignment Fixes**, **Cross-Browser Custom `<select>` & `<option>` Dropdown Styling**, **Centralized Account Controls & Session Reassurance Dialog**, an **Isolated Direct "Buy Now" Checkout Engine**, **Cart Drawer Stability Fixes**, **Mobile Wi-Fi Cross-Device Media Delivery**, **Automated Backend Commission Calculation Unit Testing**, and **Standardized Enterprise Error Handling**.
 
 ---
 
@@ -1906,6 +1906,12 @@ flowchart TD
         Q -->|"Confirm Logout"| R["Clear Auth State & Redirect to /login"]
         S["Backend Exception"] --> T["GlobalExceptionHandler (@RestControllerAdvice)"]
         T --> U["ApiErrorResponse JSON -> extractErrorMessage() Toast Normalizer"]
+    end
+
+    subgraph "5. Laptop Ratio Screen Bounds & Settlement Ledger Synchronization"
+        V["100% Screen Ratio Laptop (1280px-1536px)"] --> W["main-content: min-width: 0 + flex: 1 1 auto<br/>table-container: overflow-x: auto + custom scrollbar"]
+        W --> X["Zero Right-Edge Clipping & Natural Full Height across Dashboards"]
+        Y["Settlement & Payout Request"] --> Z["Vendor / Admin Controller: Auto-sync createdAt from Order Date<br/>Populate settledAt on Disbursal / Render Settled On Column"]
     end
 ```
 
@@ -2012,6 +2018,25 @@ flowchart TD
   - Enhanced table containers and horizontal scroll wrappers across all admin, vendor, warehouse, and customer dashboard views.
   - Increased column widths and distributed spacing to ensure multi-action button groups (e.g., `Stock`, `Edit`, `Disable`, `QC Check`, `Allocate`) display in a single, well-spaced row without clipping or misaligning on mobile viewports.
 
+### 15. 100% Laptop Screen Ratio & Viewport Boundary Fitting Engine
+* **Flexbox Child Min-Width Overflow Containment**:
+  - Resolved horizontal card blowout on standard 100% DPI laptop screens (1366×768, 1280×800, 1440×900, 1536×864).
+  - In `index.css`, configured `.main-content` with `flex: 1 1 auto; min-width: 0; max-width: 100%; width: 100%; box-sizing: border-box;` preventing flex children from stretching outside parent bounds.
+  - Configured `.table-container` with `max-width: 100%; box-sizing: border-box; overflow-x: auto;` alongside a custom dark-theme scrollbar (`height: 6px;`).
+  - Optimized `.dashboard-layout` padding (`24px 32px` on desktop, `24px 20px` on laptops $1025\text{px}-1439\text{px}$) and sidebar width (`240px-250px`), ensuring table right edges, card borders, and rounded corners fit cleanly inside the screen viewport.
+
+### 16. Auto-Height Natural Visibility for Column Flex Dashboards
+* **Elimination of Vertical Section Clipping**:
+  - Fixed vertical card truncation in `AdminDashboard.jsx` and `WarehouseDashboard.jsx` caused by `flex: 1 1 0` basis collapse in column flex layouts.
+  - Maintained `flex: 1 1 auto` without vertical `overflow: hidden`, guaranteeing natural auto-height expansion and complete visibility for all KPI grids, summary widgets, and sub-tables.
+
+### 17. Settlement & Payout Ledger Date Restoration & Auto-Population
+* **Restored `Settled On` Table Column**:
+  - Added the missing 8th `<td>` in `VendorDashboard.jsx` to render `{isRefunded ? 'Order Refunded' : isSettled ? (s.settledAt || s.createdAt || 'Settled') : 'Pending Disbursal'}` under the **Settled On** header.
+* **Backend Date Synchronization & Safe Frontend Fallbacks**:
+  - Enhanced `VendorController.java` (`getVendorSettlements`) and `AdminController.java` (`getAllSettlements`) to automatically synchronize missing `createdAt` and `settledAt` timestamps from the parent `Order` entity (`order.getDate()`) and persist them to the database.
+  - Added safe fallbacks in `VendorDashboard.jsx` and `AdminDashboard.jsx` (`s.createdAt || 'Recent'`) so settlement rows always display clear, accurate transaction dates.
+
 ---
 
 ## 📂 Project Structure Updates (Day 14)
@@ -2025,7 +2050,9 @@ ShopStack/
 │   │   │   ├── SecurityConfig.java            # Permissive CORS & preflight filter configuration
 │   │   │   └── WebConfig.java                 # Universal origin mapper for local and Wi-Fi clients
 │   │   ├── controller/
-│   │   │   └── CommissionController.java      # Financial commission calculation & simulation APIs
+│   │   │   ├── AdminController.java           # Admin settlements retrieval with auto-date sync & mark-settled
+│   │   │   ├── CommissionController.java      # Financial commission calculation & simulation APIs
+│   │   │   └── VendorController.java          # Vendor settlements ledger with order date synchronization
 │   │   └── service/
 │   │       └── PaymentService.java            # Automated settlement creation & refund reversal logic
 │   └── src/test/java/com/shopstack/backend/
@@ -2035,17 +2062,17 @@ ShopStack/
 │   ├── vite.config.js                         # Reverse proxy for /api and /uploads with header rewriting
 │   └── src/
 │       ├── App.jsx                            # Global session reassurance logout modal & route guards
-│       ├── index.css                          # Universal mobile circular avatar triggers, table widths, responsive grids
+│       ├── index.css                          # 100% laptop ratio fit, table scrollbars, mobile avatar triggers, responsive grids
 │       ├── utils/
 │       │   ├── errorHandler.js                # extractErrorMessage universal error normalizer
 │       │   └── imageHelper.js                 # formatImageUrl cross-device media URL adapter
 │       └── components/
 │           ├── MobileBottomNav.jsx            # Fixed ergonomic bottom dock (Home, Orders/Admin/Vendor/WH, Cart, Profile)
 │           ├── HomeDashboard.jsx              # Single-row mobile app bar, compact search, mobile avatar trigger
-│           ├── CustomerDashboard.jsx          # Post-delivery return window, streamlined refund badges, mobile avatar
-│           ├── VendorDashboard.jsx            # Table action spacing, catalog alignment, mobile avatar trigger
-│           ├── WarehouseDashboard.jsx         # Responsive pipeline tracker (2x2 grid), mobile avatar trigger
-│           ├── AdminDashboard.jsx             # Responsive KPI grids, table layout distribution, mobile avatar trigger
+│           ├── CustomerDashboard.jsx          # Proportional ledger table widths, post-delivery return window, refund badges
+│           ├── VendorDashboard.jsx            # Settled On column restoration, catalog alignment, mobile avatar trigger
+│           ├── WarehouseDashboard.jsx         # Responsive pipeline tracker (2x2 grid), auto-height layout, mobile avatar
+│           ├── AdminDashboard.jsx             # Auto-height full visibility, responsive KPI grids, table layout distribution
 │           ├── Login.jsx                      # Form validation & normalized auth error handling
 │           └── Register.jsx                   # Role domain enforcement (@admin, @staff) & password rules
 │
@@ -2060,6 +2087,8 @@ Related Code Files:
 - [`CustomerDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx)
 - [`AdminDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/AdminDashboard.jsx)
 - [`VendorDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx)
+- [`VendorController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/VendorController.java)
+- [`AdminController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AdminController.java)
 - [`App.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/App.jsx)
 - [`CommissionCalculationTests.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/test/java/com/shopstack/backend/CommissionCalculationTests.java)
 - [`GlobalExceptionHandler.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/config/GlobalExceptionHandler.java)
@@ -2077,6 +2106,8 @@ Method | Endpoint | Description | Payload Format / Response Model
 GET | `/api/commission/calculate` | Calculates splits on-the-fly for gross `amount` and optional `rate` | Returns `{"grossAmount", "rate", "commissionAmount", "netVendorPayout"}`
 GET | `/api/commission/records` | Retrieves commission/settlement records by `vendorId` or `orderId` | Returns List of `Settlement`
 GET | `/api/admin/dashboard-summary` | Marketplace KPI summary with net refunds and commission deducted | Returns `totalSalesVolume`, `totalCommission`, `totalPayouts`
+GET | `/api/vendor/{vendorId}/settlements` | Vendor settlements ledger with auto-populated order timestamps | Returns `summary` + `settlements` list with verified dates
+GET | `/api/admin/settlements` | Admin global settlements ledger with order date synchronization | Returns `settlements` list with verified dates
 
 ---
 
@@ -2137,6 +2168,20 @@ GET | `/api/admin/dashboard-summary` | Marketplace KPI summary with net refunds 
 1. In the Customer Dashboard Orders tab, verify refunded orders display a clean **`✓ Refunded`** badge with no popup audit modal.
 2. In the Transactions tab, verify refunded rows display **`✓ Refunded`** and pending returns display **`Pending QC`**.
 3. In the Return Request dialog, confirm Step 4 is labeled **`4. Refunded`**.
+
+### 9. 100% Laptop Screen Ratio Table Fit & Zero Edge Clipping
+1. Open the application on a laptop screen (e.g. 1366×768 or 1440×900) set to 100% screen ratio / scaling.
+2. Navigate to Customer Dashboard → **Transactions** tab:
+   - Verify the Payment Transactions Ledger card borders, padding, and rounded corners fit completely inside the screen viewport.
+   - Confirm all columns (Date & Time, Order ID, Method, Razorpay ID, Amount, Status, Refunds, Action) are fully visible without right-edge clipping.
+3. Open Admin and Vendor dashboards → Verify that data tables are bounded within `.main-content` and provide smooth internal horizontal scrolling when needed.
+
+### 10. Settlement Ledger "Settled On" & Date Verification
+1. Log in as a Vendor and navigate to **Settlements & Payouts**.
+2. Verify every settlement row displays both:
+   - **Date** (order creation date, e.g., `Sep 10, 2026`).
+   - **Settled On** (`Sep 10, 2026` or timestamp when settled, `Order Refunded` when refunded, or `Pending Disbursal` when pending).
+3. Log in as Admin → Navigate to **Vendor Settlements & Payouts** → Verify all settlement records display complete creation and disbursal dates.
 
 ---
 
