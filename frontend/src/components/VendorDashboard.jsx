@@ -503,7 +503,9 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       {/* Header */}
       <div className="navbar">
         <div className="nav-left">
-          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>ShopStack</h1>
+          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>
+            ShopStack <span className="hide-on-mobile badge badge-vendor" style={{ fontSize: '9px', padding: '1px 5px', verticalAlign: 'middle', marginLeft: '4px' }}>VENDOR</span>
+          </h1>
         </div>
 
         <div className="nav-right">
@@ -752,18 +754,18 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1280px' }}>
                     <thead>
                       <tr>
-                        <th style={{ width: '48px' }}>Icon</th>
-                        <th>Name</th>
-                        <th>Category</th>
-                        <th>Regular Price</th>
-                        <th>Discount</th>
-                        <th>Final Price</th>
-                        <th>Stock</th>
-                        <th>Approval Status</th>
-                        <th style={{ textAlign: 'center', width: '120px' }}>Actions</th>
+                        <th style={{ width: '60px', textAlign: 'center' }}>Icon</th>
+                        <th style={{ minWidth: '220px' }}>Product Name</th>
+                        <th style={{ minWidth: '130px' }}>Category</th>
+                        <th style={{ minWidth: '130px' }}>Regular Price</th>
+                        <th style={{ minWidth: '110px' }}>Discount</th>
+                        <th style={{ minWidth: '140px' }}>Final Price</th>
+                        <th style={{ minWidth: '160px', textAlign: 'center' }}>Stock Level</th>
+                        <th style={{ minWidth: '170px', textAlign: 'center' }}>Approval Status</th>
+                        <th style={{ textAlign: 'center', minWidth: '260px', width: '260px' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -773,16 +775,16 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                         const savings = Math.max(0, Math.round((prod.price - finalP) * 100) / 100);
                         return (
                         <tr key={prod.id}>
-                          <td style={{ fontSize: '20px' }}>
-                            <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', overflow: 'hidden' }}>
+                          <td style={{ fontSize: '20px', textAlign: 'center' }}>
+                            <div style={{ width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', overflow: 'hidden', margin: '0 auto', background: 'var(--bg-input)' }}>
                               {prod.imageUrl && formatImageUrl(prod.imageUrl).length > 4 ? (
                                 <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                               ) : (
-                                <ProductIcon name={prod.name} category={prod.category} size={16} />
+                                <ProductIcon name={prod.name} category={prod.category} size={18} />
                               )}
                             </div>
                           </td>
-                          <td style={{ fontWeight: '600' }}>{prod.name}</td>
+                          <td style={{ fontWeight: '600', fontSize: '13.5px' }}>{prod.name}</td>
                           <td>
                             <span className="badge badge-customer">{prod.category}</span>
                           </td>
@@ -827,22 +829,23 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                               )}
                             </div>
                           </td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <td style={{ textAlign: 'center', minWidth: '160px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                               <button 
                                 type="button"
                                 onClick={() => handleUpdateProductStock(prod.id, prod.stock - 1)}
                                 className="btn-icon-only"
-                                style={{ padding: '2px', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                style={{ padding: '2px', width: '24px', height: '24px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                                 disabled={prod.stock <= 0}
                                 title="Quick decrease stock by 1 (Instant update)"
                               >
                                 -
                               </button>
                               <span style={{ 
-                                minWidth: '36px',
+                                minWidth: '42px',
                                 textAlign: 'center',
-                                fontWeight: prod.stock < 5 ? 'bold' : '600',
+                                fontWeight: prod.stock < 5 ? 'bold' : '700',
+                                fontSize: '14px',
                                 color: prod.stock < 5 ? 'var(--accent-rose)' : 'inherit'
                               }}>
                                 {prod.stock}
@@ -851,29 +854,31 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                                 type="button"
                                 onClick={() => handleUpdateProductStock(prod.id, prod.stock + 1)}
                                 className="btn-icon-only"
-                                style={{ padding: '2px', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                style={{ padding: '2px', width: '24px', height: '24px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                                 title="Quick increase stock by 1 (Instant update)"
                               >
                                 +
                               </button>
                             </div>
-                            <div style={{ marginTop: '4px' }}>
+                            <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'center' }}>
                               {prod.stock <= 0 ? (
-                                <span className="badge badge-rejected" style={{ fontSize: '10px', padding: '1px 6px' }}>Out of Stock</span>
+                                <span className="badge badge-rejected" style={{ fontSize: '10px', padding: '2px 8px' }}>Out of Stock</span>
                               ) : prod.stock < 5 ? (
-                                <span className="badge badge-pending" style={{ fontSize: '10px', padding: '1px 6px' }}>Only {prod.stock} left</span>
+                                <span className="badge badge-pending" style={{ fontSize: '10px', padding: '2px 8px' }}>Only {prod.stock} left</span>
                               ) : (
-                                <span className="badge badge-approved" style={{ fontSize: '10px', padding: '1px 6px' }}>In Stock</span>
+                                <span className="badge badge-approved" style={{ fontSize: '10px', padding: '2px 8px' }}>In Stock</span>
                               )}
                             </div>
                           </td>
-                           <td>
+                          <td style={{ textAlign: 'center', minWidth: '170px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                               <span className={`badge ${
                                 prod.status === 'APPROVED' ? 'badge-approved' : 
                                 prod.status === 'REJECTED' ? 'badge-rejected' : 
                                 prod.status === 'DISABLED' ? 'badge-pending' : 'badge-pending'
                               }`} style={{ 
                                 fontWeight: '700', 
+                                padding: '3px 10px',
                                 ...(prod.status === 'DISABLED' ? { background: 'rgba(148, 163, 184, 0.15)', color: '#64748b', border: '1px solid rgba(148, 163, 184, 0.3)' } : {}) 
                               }}>
                                 {prod.status === 'APPROVED' ? 'APPROVED' : 
@@ -881,55 +886,86 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                                  prod.status === 'DISABLED' ? 'DISABLED' : 'PENDING APPROVAL'}
                               </span>
                               {prod.status === 'PENDING' && (
-                                <div style={{ fontSize: '10px', color: 'var(--accent-amber)', marginTop: '4px', fontWeight: '600' }}>
+                                <div style={{ fontSize: '10px', color: 'var(--accent-amber)', fontWeight: '600' }}>
                                   Awaiting Admin Approval
                                 </div>
                               )}
                               {prod.status === 'DISABLED' && (
-                                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', fontWeight: '600' }}>
+                                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '600' }}>
                                   Hidden from Store
                                 </div>
                               )}
                               {prod.status === 'REJECTED' && prod.rejectionReason && (
-                                <div style={{ fontSize: '11px', color: 'var(--accent-rose)', marginTop: '4px', maxWidth: '180px', lineBreak: 'anywhere' }}>
+                                <div style={{ fontSize: '11px', color: 'var(--accent-rose)', maxWidth: '160px', lineBreak: 'anywhere' }}>
                                   <strong>Reason:</strong> {prod.rejectionReason}
                                 </div>
                               )}
-                            </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'center', minWidth: '260px', width: '260px' }}>
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap' }}>
                               <button 
+                                type="button"
                                 onClick={() => handleOpenStockModal(prod)} 
                                 className="btn btn-secondary" 
                                 title="Manage Stock (Instant - No Admin Approval Required)"
-                                style={{ padding: '4px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-teal)', borderColor: 'rgba(20, 184, 166, 0.3)' }}
+                                style={{ 
+                                  padding: '6px 12px', 
+                                  fontSize: '12px', 
+                                  fontWeight: '600',
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  gap: '5px', 
+                                  color: 'var(--accent-teal)', 
+                                  borderColor: 'rgba(20, 184, 166, 0.3)',
+                                  background: 'rgba(20, 184, 166, 0.08)',
+                                  height: '32px',
+                                  flexShrink: 0
+                                }}
                               >
-                                <Layers size={13} /> Stock
+                                <Layers size={14} /> Stock
                               </button>
                               <button 
+                                type="button"
                                 onClick={() => handleOpenEditModal(prod)} 
-                                className="btn-icon-only" 
+                                className="btn btn-secondary" 
                                 title="Edit Product Details"
-                                style={{ padding: '6px' }}
+                                style={{ 
+                                  padding: '6px 12px', 
+                                  fontSize: '12px', 
+                                  fontWeight: '600',
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  gap: '5px', 
+                                  color: 'var(--accent-blue)', 
+                                  borderColor: 'rgba(59, 130, 246, 0.3)',
+                                  background: 'rgba(59, 130, 246, 0.08)',
+                                  height: '32px',
+                                  flexShrink: 0
+                                }}
                               >
-                                <Edit2 size={14} />
+                                <Edit2 size={14} /> Edit
                               </button>
                               <button 
+                                type="button"
                                 onClick={() => handleToggleProductStatus(prod.id, prod.status)} 
                                 className="btn btn-secondary" 
                                 title={prod.status === 'DISABLED' ? "Enable Product (Make live on store)" : "Disable Product (Hide from customers)"}
                                 style={{ 
-                                  padding: '4px 8px', 
-                                  fontSize: '11px', 
-                                  display: 'flex', 
+                                  padding: '6px 12px', 
+                                  fontSize: '12px', 
+                                  fontWeight: '600',
+                                  display: 'inline-flex', 
                                   alignItems: 'center', 
-                                  gap: '4px',
+                                  gap: '5px',
                                   color: prod.status === 'DISABLED' ? '#10b981' : '#f59e0b',
                                   borderColor: prod.status === 'DISABLED' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)',
-                                  background: prod.status === 'DISABLED' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)'
+                                  background: prod.status === 'DISABLED' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+                                  height: '32px',
+                                  flexShrink: 0
                                 }}
                               >
-                                {prod.status === 'DISABLED' ? <Eye size={13} /> : <EyeOff size={13} />}
+                                {prod.status === 'DISABLED' ? <Eye size={14} /> : <EyeOff size={14} />}
                                 {prod.status === 'DISABLED' ? 'Enable' : 'Disable'}
                               </button>
                             </div>
@@ -965,16 +1001,16 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1150px' }}>
                     <thead>
                       <tr>
-                        <th>Date</th>
-                        <th>Order ID</th>
-                        <th>Product</th>
-                        <th>Quantity</th>
-                        <th>Total Paid</th>
-                        <th>Status</th>
-                        <th style={{ width: '160px' }}>Shipping Action</th>
+                        <th style={{ minWidth: '130px' }}>Date</th>
+                        <th style={{ minWidth: '140px' }}>Order ID</th>
+                        <th style={{ minWidth: '220px' }}>Product</th>
+                        <th style={{ minWidth: '110px' }}>Quantity</th>
+                        <th style={{ minWidth: '130px' }}>Total Paid</th>
+                        <th style={{ minWidth: '130px', textAlign: 'center' }}>Status</th>
+                        <th style={{ textAlign: 'center', minWidth: '160px', width: '160px' }}>Shipping Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1145,17 +1181,17 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1150px' }}>
                     <thead>
                       <tr>
-                        <th>Date</th>
-                        <th>Order ID</th>
-                        <th>Product Item</th>
-                        <th>Gross Sale</th>
-                        <th>Commission (10%)</th>
-                        <th>Net Payout</th>
-                        <th>Status</th>
-                        <th>Settled On</th>
+                        <th style={{ minWidth: '130px' }}>Date</th>
+                        <th style={{ minWidth: '140px' }}>Order ID</th>
+                        <th style={{ minWidth: '220px' }}>Product Item</th>
+                        <th style={{ minWidth: '130px' }}>Gross Sale</th>
+                        <th style={{ minWidth: '140px' }}>Commission</th>
+                        <th style={{ minWidth: '140px' }}>Net Payout</th>
+                        <th style={{ minWidth: '130px', textAlign: 'center' }}>Status</th>
+                        <th style={{ minWidth: '130px' }}>Settled On</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1240,15 +1276,15 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1100px' }}>
                     <thead>
                       <tr>
-                        <th>Promo Code</th>
-                        <th>Discount Info</th>
-                        <th>Min Order Required</th>
-                        <th>Campaign Dates</th>
-                        <th>Your Status</th>
-                        <th>Actions</th>
+                        <th style={{ minWidth: '140px' }}>Promo Code</th>
+                        <th style={{ minWidth: '160px' }}>Discount Info</th>
+                        <th style={{ minWidth: '160px' }}>Min Order Required</th>
+                        <th style={{ minWidth: '180px' }}>Campaign Dates</th>
+                        <th style={{ minWidth: '160px', textAlign: 'center' }}>Your Status</th>
+                        <th style={{ textAlign: 'center', minWidth: '180px' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1352,16 +1388,16 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1200px' }}>
                     <thead>
                       <tr>
-                        <th>Date Requested</th>
-                        <th>Order ID</th>
-                        <th>Reason Category</th>
-                        <th>Customer Notes</th>
-                        <th>Resolution Type</th>
-                        <th>Fulfillment Stage</th>
-                        <th style={{ width: '220px', textAlign: 'center' }}>Review Action</th>
+                        <th style={{ minWidth: '130px' }}>Date Requested</th>
+                        <th style={{ minWidth: '140px' }}>Order ID</th>
+                        <th style={{ minWidth: '180px' }}>Reason Category</th>
+                        <th style={{ minWidth: '220px' }}>Customer Notes</th>
+                        <th style={{ minWidth: '140px' }}>Resolution Type</th>
+                        <th style={{ minWidth: '150px' }}>Fulfillment Stage</th>
+                        <th style={{ textAlign: 'center', minWidth: '220px', width: '220px' }}>Review Action</th>
                       </tr>
                     </thead>
                     <tbody>

@@ -419,6 +419,12 @@ img, picture, video, canvas, svg {
   border: 1px solid var(--border-light);
   color: var(--text-secondary);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 32px;
+  min-height: 32px;
   transition: all var(--transition-fast);
 }
 
@@ -591,6 +597,71 @@ img, picture, video, canvas, svg {
   background-color: rgba(255, 255, 255, 0.06);
   border-color: var(--text-muted);
   color: var(--text-primary);
+}
+
+/* Admin / Management Tab Bar */
+.admin-tabs-bar {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-light);
+  padding: 0 24px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  position: relative;
+  z-index: 10;
+}
+
+.admin-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-tabs-bar .sidebar-item {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Universal Dashboard Filter & Search Bar */
+.dashboard-filter-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dashboard-filter-search {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 200px;
+}
+
+.dashboard-filter-chips {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  max-width: 100%;
+  padding-bottom: 2px;
+}
+
+.dashboard-filter-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.dashboard-filter-chips .btn {
+  font-size: 12px;
+  padding: 6px 14px;
+  height: 38px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
 
 .nav-user-menu {
@@ -1738,46 +1809,74 @@ img, picture, video, canvas, svg {
   color: var(--text-muted);
 }
 
-/* Custom Table Layout */
+/* Custom Table & Data Table Layout System */
 .table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-light);
   background-color: var(--bg-card);
   margin-bottom: 24px;
+  width: 100%;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
-.custom-table {
+.custom-table,
+.data-table {
   width: 100%;
+  min-width: 1080px;
   border-collapse: collapse;
   text-align: left;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 
-.custom-table th {
+.custom-table th,
+.data-table th {
   background-color: var(--bg-input);
   color: var(--text-secondary);
   font-weight: 700;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border-light);
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
   text-transform: uppercase;
   font-size: 11px;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
 }
 
-.custom-table td {
-  padding: 16px 18px;
+.custom-table th:last-child,
+.data-table th:last-child {
+  border-right: none;
+}
+
+.custom-table td,
+.data-table td {
+  padding: 14px 18px;
   border-bottom: 1px solid var(--border-light);
+  border-right: 1px solid rgba(255, 255, 255, 0.025);
   color: var(--text-primary);
   vertical-align: middle;
 }
 
-.custom-table tr:last-child td {
+.custom-table td:last-child,
+.data-table td:last-child {
+  border-right: none;
+}
+
+.custom-table tr:last-child td,
+.data-table tr:last-child td {
   border-bottom: none;
 }
 
-.custom-table tr:hover td {
-  background-color: rgba(255, 255, 255, 0.01);
+.custom-table tr:hover td,
+.data-table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.025);
+}
+
+.custom-table td .btn,
+.data-table td .btn {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Filters & Search Layout */
@@ -2465,8 +2564,9 @@ select option:hover,
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
+    flex-shrink: 0;
   }
 
   .nav-logo-row {
@@ -2483,6 +2583,7 @@ select option:hover,
     line-height: 1;
     font-weight: 800;
     flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .nav-search {
@@ -2518,8 +2619,9 @@ select option:hover,
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     position: relative;
+    flex-shrink: 0;
   }
 
   .nav-right-home {
@@ -2531,24 +2633,70 @@ select option:hover,
     padding: 0 10px;
     font-size: 12px;
     gap: 5px;
+    flex-shrink: 0;
   }
 
   .nav-user-trigger {
+    width: 36px;
     height: 36px;
-    padding: 0 10px;
-    font-size: 12px;
-    gap: 6px;
-    max-width: 155px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+    max-width: 36px;
+    gap: 0;
   }
 
   .nav-user-name {
-    font-size: 12px;
-    max-width: 90px;
+    display: none !important;
+  }
+
+  .nav-user-chevron {
+    display: none !important;
+  }
+
+  .nav-user-avatar {
+    width: 34px;
+    height: 34px;
+    background: transparent;
+    border: none;
+  }
+
+  .nav-user-avatar svg {
+    width: 17px;
+    height: 17px;
   }
 
   .btn-icon-nav {
     width: 36px;
     height: 36px;
+    flex-shrink: 0;
+  }
+
+  .admin-tabs-bar {
+    padding: 0 max(12px, var(--safe-left));
+    gap: 6px;
+  }
+
+  .dashboard-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .dashboard-filter-search {
+    width: 100%;
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+
+  .dashboard-filter-chips {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    padding-bottom: 4px;
   }
 
   .nav-dropdown {
@@ -2785,6 +2933,35 @@ select option:hover,
 
 /* 6. Small Smartphone Screens (<= 480px) */
 @media (max-width: 480px) {
+  .nav-logo {
+    font-size: 16px;
+  }
+
+  .btn-store-nav {
+    padding: 0 8px;
+    font-size: 11.5px;
+    gap: 4px;
+  }
+
+  .nav-user-trigger {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+    max-width: 34px;
+    gap: 0;
+  }
+
+  .nav-user-name {
+    display: none !important;
+  }
+
+  .nav-user-chevron {
+    display: none !important;
+  }
+
   .product-grid {
     grid-template-columns: 1fr;
     gap: 14px;
@@ -2865,5 +3042,86 @@ select option:hover,
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
+  }
+}
+
+/* ==========================================================================
+   Dashboard Universal Filter Bar & Action Chips System
+   ========================================================================== */
+.dashboard-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.dashboard-filter-search {
+  position: relative;
+  flex: 1 1 280px;
+  min-width: 220px;
+  max-width: 500px;
+}
+
+.dashboard-filter-search .form-input {
+  width: 100%;
+  height: 38px;
+  padding-left: 36px;
+  padding-right: 12px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.dashboard-filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.dashboard-filter-chips .btn {
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 14px !important;
+  font-size: 12px !important;
+  font-weight: 600;
+  border-radius: var(--radius-sm, 8px);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+@media (max-width: 868px) {
+  .dashboard-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .dashboard-filter-search {
+    max-width: 100%;
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .dashboard-filter-chips {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+    width: 100%;
+  }
+
+  .dashboard-filter-chips::-webkit-scrollbar {
+    display: none;
   }
 }

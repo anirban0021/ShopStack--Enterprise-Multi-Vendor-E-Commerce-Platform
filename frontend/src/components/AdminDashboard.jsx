@@ -1015,7 +1015,9 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
       {/* Header Navbar */}
       <div className="navbar">
         <div className="nav-left">
-          <h1 className="nav-logo" style={{ cursor: 'default', margin: 0, fontSize: '20px' }}>ShopStack Admin</h1>
+          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>
+            ShopStack <span className="hide-on-mobile badge badge-rejected" style={{ fontSize: '9px', padding: '1px 5px', verticalAlign: 'middle', marginLeft: '4px' }}>ADMIN</span>
+          </h1>
         </div>
 
         <div className="nav-right">
@@ -1138,17 +1140,7 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
       </div>
 
       {/* Admin Module Navigation Tabs Bar */}
-      <div style={{ 
-        background: 'var(--bg-card)', 
-        borderBottom: '1px solid var(--border-light)', 
-        padding: '0 24px', 
-        display: 'flex', 
-        gap: '8px', 
-        overflowX: 'auto',
-        position: 'sticky',
-        top: 0,
-        zIndex: 10
-      }}>
+      <div className="admin-tabs-bar">
         {/* Marketplace Overview tab */}
         <button
           type="button"
@@ -2026,18 +2018,18 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1280px' }}>
                     <thead>
                       <tr>
-                        <th style={{ width: '48px' }}>Icon</th>
-                        <th>Product Name</th>
-                        <th>Category</th>
-                        <th>Regular Price</th>
-                        <th>Discount</th>
-                        <th>Final Price</th>
-                        <th>Stock</th>
-                        <th>Merchant (Vendor Details)</th>
-                        <th style={{ textAlign: 'center', width: '220px' }}>Approval Actions</th>
+                        <th style={{ width: '60px', textAlign: 'center' }}>Icon</th>
+                        <th style={{ minWidth: '200px' }}>Product Name</th>
+                        <th style={{ minWidth: '130px' }}>Category</th>
+                        <th style={{ minWidth: '120px' }}>Regular Price</th>
+                        <th style={{ minWidth: '110px' }}>Discount</th>
+                        <th style={{ minWidth: '130px' }}>Final Price</th>
+                        <th style={{ minWidth: '110px', textAlign: 'center' }}>Stock</th>
+                        <th style={{ minWidth: '180px' }}>Merchant Details</th>
+                        <th style={{ textAlign: 'center', minWidth: '240px', width: '240px' }}>Approval Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2274,8 +2266,8 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
               })()}
 
               {/* Filters & Search Bar */}
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+              <div className="dashboard-filter-bar">
+                <div className="dashboard-filter-search">
                   <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                   <input 
                     type="text" 
@@ -2287,14 +2279,13 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                   />
                 </div>
 
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <div className="dashboard-filter-chips">
                   {['PENDING', 'ALL', 'PROCESSED', 'REJECTED'].map((st) => (
                     <button
                       key={st}
                       type="button"
                       onClick={() => setReturnFilter(st)}
                       className={`btn ${returnFilter === st ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ fontSize: '12px', padding: '6px 14px', height: '38px' }}
                     >
                       {st === 'PENDING' ? `Pending QC (${pendingReturnsCount})` : 
                        st === 'ALL' ? `All Requests (${returnRequests.length})` :
@@ -2313,17 +2304,17 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1300px' }}>
                     <thead>
                       <tr>
-                        <th>Date Requested</th>
-                        <th>Order ID</th>
-                        <th>Customer Details</th>
-                        <th>Reason Category</th>
-                        <th>Resolution</th>
-                        <th>Refund Amount</th>
-                        <th>Status</th>
-                        <th style={{ textAlign: 'center', width: '220px' }}>Inspection & Decision</th>
+                        <th style={{ minWidth: '130px' }}>Date Requested</th>
+                        <th style={{ minWidth: '140px' }}>Order ID</th>
+                        <th style={{ minWidth: '180px' }}>Customer Details</th>
+                        <th style={{ minWidth: '160px' }}>Reason Category</th>
+                        <th style={{ minWidth: '130px' }}>Resolution</th>
+                        <th style={{ minWidth: '130px' }}>Refund Amount</th>
+                        <th style={{ minWidth: '140px', textAlign: 'center' }}>Status</th>
+                        <th style={{ textAlign: 'center', minWidth: '250px', width: '250px' }}>Inspection & Decision</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2695,24 +2686,35 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
 
                     {/* Order Allocation Table Console */}
                     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px', marginBottom: '24px' }}>
-                      <div className="flex-between" style={{ marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-                        <div>
-                          <h3 style={{ fontSize: '16px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Truck size={18} style={{ color: 'var(--accent-teal)' }} />
-                            Customer Order Warehouse Routing Desk
-                          </h3>
-                          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-                            Allocate incoming orders to optimal fulfillment facilities. Assigned staff will instantly receive dispatch alerts.
-                          </p>
+                      <div style={{ marginBottom: '16px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Truck size={18} style={{ color: 'var(--accent-teal)' }} />
+                          Customer Order Warehouse Routing Desk
+                        </h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                          Allocate incoming orders to optimal fulfillment facilities. Assigned staff will instantly receive dispatch alerts.
+                        </p>
+                      </div>
+
+                      {/* Filters and Search Toolbar */}
+                      <div className="dashboard-filter-bar">
+                        <div className="dashboard-filter-search">
+                          <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                          <input
+                            type="text"
+                            placeholder="Search by Order ID, Customer Name, or City..."
+                            value={allocSearchTerm}
+                            onChange={(e) => setAllocSearchTerm(e.target.value)}
+                            className="form-input"
+                            style={{ paddingLeft: '36px', height: '38px', fontSize: '13px' }}
+                          />
                         </div>
 
-                        {/* Filter Pills */}
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div className="dashboard-filter-chips">
                           <button
                             type="button"
                             onClick={() => setAllocFilterStatus('UNALLOCATED')}
                             className={`btn ${allocFilterStatus === 'UNALLOCATED' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{ fontSize: '11px', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                           >
                             ⏳ Awaiting Allocation ({unallocatedOrders.length})
                           </button>
@@ -2720,7 +2722,6 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                             type="button"
                             onClick={() => setAllocFilterStatus('ALLOCATED')}
                             className={`btn ${allocFilterStatus === 'ALLOCATED' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{ fontSize: '11px', padding: '5px 12px' }}
                           >
                             📦 In-Fulfillment ({inProgressOrders.length})
                           </button>
@@ -2728,23 +2729,10 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                             type="button"
                             onClick={() => setAllocFilterStatus('ALL')}
                             className={`btn ${allocFilterStatus === 'ALL' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{ fontSize: '11px', padding: '5px 12px' }}
                           >
                             🌐 All Orders ({adminOrders.length})
                           </button>
                         </div>
-                      </div>
-
-                      {/* Search Bar */}
-                      <div style={{ marginBottom: '16px' }}>
-                        <input
-                          type="text"
-                          placeholder="Search by Order ID, Customer Name, or City..."
-                          value={allocSearchTerm}
-                          onChange={(e) => setAllocSearchTerm(e.target.value)}
-                          className="form-input"
-                          style={{ width: '100%', fontSize: '12px', padding: '8px 12px' }}
-                        />
                       </div>
 
                       {displayedOrders.length === 0 ? (
@@ -2757,15 +2745,15 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                           </p>
                         </div>
                       ) : (
-                        <div style={{ overflowX: 'auto' }}>
-                          <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                        <div className="table-container">
+                          <table className="data-table" style={{ width: '100%', minWidth: '1250px', fontSize: '12.5px' }}>
                             <thead>
                               <tr>
-                                <th>Order Details</th>
-                                <th>Items Ordered</th>
-                                <th>Hub Stock Availability Check</th>
-                                <th>Routing Status</th>
-                                <th style={{ textAlign: 'center', width: '280px' }}>Allocate to Warehouse</th>
+                                <th style={{ minWidth: '180px' }}>Order Details</th>
+                                <th style={{ minWidth: '200px' }}>Items Ordered</th>
+                                <th style={{ minWidth: '220px' }}>Hub Stock Availability Check</th>
+                                <th style={{ minWidth: '160px' }}>Routing Status</th>
+                                <th style={{ textAlign: 'center', minWidth: '280px', width: '280px' }}>Allocate to Warehouse</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -3155,15 +3143,15 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                               No orders currently assigned to {currentWh.name}.
                             </div>
                           ) : (
-                            <div style={{ overflowX: 'auto' }}>
-                              <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                            <div className="table-container">
+                              <table className="data-table" style={{ width: '100%', minWidth: '1100px', fontSize: '12.5px' }}>
                                 <thead>
                                   <tr>
-                                    <th>Order Details</th>
-                                    <th>Items Ordered</th>
-                                    <th>Total Amount</th>
-                                    <th>Fulfillment Stage</th>
-                                    <th>Re-route Facility</th>
+                                    <th style={{ minWidth: '180px' }}>Order Details</th>
+                                    <th style={{ minWidth: '220px' }}>Items Ordered</th>
+                                    <th style={{ minWidth: '130px' }}>Total Amount</th>
+                                    <th style={{ minWidth: '160px' }}>Fulfillment Stage</th>
+                                    <th style={{ minWidth: '220px' }}>Re-route Facility</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -3334,20 +3322,20 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                         </div>
                       </div>
 
-                      <div style={{ overflowX: 'auto' }}>
-                        <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                      <div className="table-container">
+                        <table className="data-table" style={{ width: '100%', minWidth: '1200px', fontSize: '12.5px' }}>
                           <thead>
                             <tr>
-                              <th>Product</th>
-                              <th>Total Physical Stock</th>
-                              <th>Available to Sell</th>
+                              <th style={{ minWidth: '220px' }}>Product</th>
+                              <th style={{ minWidth: '140px' }}>Total Physical Stock</th>
+                              <th style={{ minWidth: '130px' }}>Available to Sell</th>
                               {warehousesList.map(w => (
-                                <th key={w.id} style={{ textAlign: 'center' }}>
+                                <th key={w.id} style={{ textAlign: 'center', minWidth: '110px' }}>
                                   {w.name?.replace('Warehouse', '').replace('Fulfillment Center', '').replace('Logistics Hub', '').trim() || w.city}
                                   <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>({w.code})</div>
                                 </th>
                               ))}
-                              <th style={{ textAlign: 'center' }}>Action</th>
+                              <th style={{ textAlign: 'center', minWidth: '140px' }}>Action</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -3416,17 +3404,17 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                           No inventory records mapped across facilities.
                         </div>
                       ) : (
-                        <div style={{ overflowX: 'auto' }}>
-                          <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                        <div className="table-container">
+                          <table className="data-table" style={{ width: '100%', minWidth: '1150px', fontSize: '12.5px' }}>
                             <thead>
                               <tr>
-                                <th>Product Name</th>
-                                <th>Category</th>
-                                <th>Warehouse Hub</th>
-                                <th>Physical Units</th>
-                                <th>Allocated / Reserved</th>
-                                <th>Available to Sell</th>
-                                <th>Quarantined Damaged</th>
+                                <th style={{ minWidth: '220px' }}>Product Name</th>
+                                <th style={{ minWidth: '130px' }}>Category</th>
+                                <th style={{ minWidth: '180px' }}>Warehouse Hub</th>
+                                <th style={{ minWidth: '130px' }}>Physical Units</th>
+                                <th style={{ minWidth: '140px' }}>Allocated / Reserved</th>
+                                <th style={{ minWidth: '140px' }}>Available to Sell</th>
+                                <th style={{ minWidth: '160px' }}>Quarantined Damaged</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -3535,17 +3523,17 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                         <p style={{ margin: 0, fontSize: '14px' }}>No stock distributions or transfers recorded yet.</p>
                       </div>
                     ) : (
-                      <div style={{ overflowX: 'auto' }}>
-                        <table className="data-table" style={{ width: '100%', fontSize: '12px' }}>
+                      <div className="table-container">
+                        <table className="data-table" style={{ width: '100%', minWidth: '1200px', fontSize: '12.5px' }}>
                           <thead>
                             <tr>
-                              <th>Distribution Ref / Date</th>
-                              <th>Product SKU</th>
-                              <th>Units</th>
-                              <th>Source Origin</th>
-                              <th>Destination Warehouse Hub</th>
-                              <th>Fulfillment Status</th>
-                              <th>Reason / Notes</th>
+                              <th style={{ minWidth: '180px' }}>Distribution Ref / Date</th>
+                              <th style={{ minWidth: '200px' }}>Product SKU</th>
+                              <th style={{ minWidth: '120px' }}>Units</th>
+                              <th style={{ minWidth: '160px' }}>Source Origin</th>
+                              <th style={{ minWidth: '180px' }}>Destination Warehouse Hub</th>
+                              <th style={{ minWidth: '150px' }}>Fulfillment Status</th>
+                              <th style={{ minWidth: '220px' }}>Reason / Notes</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -3689,8 +3677,8 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
               </div>
 
               {/* Filters and Search Bar */}
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
+              <div className="dashboard-filter-bar">
+                <div className="dashboard-filter-search">
                   <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                   <input 
                     type="text" 
@@ -3702,14 +3690,13 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                   />
                 </div>
 
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <div className="dashboard-filter-chips">
                   {['ALL', 'PAID', 'PENDING', 'FAILED', 'REFUNDED'].map((st) => (
                     <button
                       key={st}
                       type="button"
                       onClick={() => setMonitoringFilter(st)}
                       className={`btn ${monitoringFilter === st ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ fontSize: '12px', padding: '6px 14px', height: '38px' }}
                     >
                       {st}
                     </button>
@@ -3725,18 +3712,18 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1200px' }}>
                     <thead>
                       <tr>
-                        <th>Date</th>
-                        <th>Order ID</th>
-                        <th>Customer / Recipient</th>
-                        <th>Payment Method</th>
-                        <th>Payment ID</th>
-                        <th>Total Amount</th>
-                        <th>Payment Status</th>
-                        <th>Fulfillment</th>
-                        <th style={{ textAlign: 'center' }}>Actions</th>
+                        <th style={{ minWidth: '120px' }}>Date</th>
+                        <th style={{ minWidth: '140px' }}>Order ID</th>
+                        <th style={{ minWidth: '180px' }}>Customer / Recipient</th>
+                        <th style={{ minWidth: '130px' }}>Payment Method</th>
+                        <th style={{ minWidth: '160px' }}>Payment ID</th>
+                        <th style={{ minWidth: '130px' }}>Total Amount</th>
+                        <th style={{ minWidth: '130px', textAlign: 'center' }}>Payment Status</th>
+                        <th style={{ minWidth: '140px', textAlign: 'center' }}>Fulfillment</th>
+                        <th style={{ textAlign: 'center', minWidth: '160px' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3883,8 +3870,8 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
               </div>
 
               {/* Filters and Search Bar */}
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+              <div className="dashboard-filter-bar">
+                <div className="dashboard-filter-search">
                   <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                   <input 
                     type="text" 
@@ -3896,14 +3883,13 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                   />
                 </div>
 
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <div className="dashboard-filter-chips">
                   {['ALL', 'PAID', 'PENDING', 'FAILED', 'REFUNDED'].map((st) => (
                     <button
                       key={st}
                       type="button"
                       onClick={() => setTxFilter(st)}
                       className={`btn ${txFilter === st ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ fontSize: '12px', padding: '6px 14px', height: '38px' }}
                     >
                       {st}
                     </button>
@@ -3919,18 +3905,18 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1250px' }}>
                     <thead>
                       <tr>
-                        <th>Date</th>
-                        <th>Order ID</th>
-                        <th>User ID</th>
-                        <th>Method</th>
-                        <th>Razorpay Payment ID</th>
-                        <th>Total Amount</th>
-                        <th>Payment Status</th>
-                        <th>Refunds</th>
-                        <th style={{ textAlign: 'center' }}>Action</th>
+                        <th style={{ minWidth: '120px' }}>Date</th>
+                        <th style={{ minWidth: '140px' }}>Order ID</th>
+                        <th style={{ minWidth: '110px' }}>User ID</th>
+                        <th style={{ minWidth: '120px' }}>Method</th>
+                        <th style={{ minWidth: '180px' }}>Razorpay Payment ID</th>
+                        <th style={{ minWidth: '130px' }}>Total Amount</th>
+                        <th style={{ minWidth: '130px', textAlign: 'center' }}>Payment Status</th>
+                        <th style={{ minWidth: '120px', textAlign: 'center' }}>Refunds</th>
+                        <th style={{ textAlign: 'center', minWidth: '140px' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4106,8 +4092,8 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
               </div>
 
               {/* Filters and Search Bar */}
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+              <div className="dashboard-filter-bar">
+                <div className="dashboard-filter-search">
                   <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                   <input 
                     type="text" 
@@ -4119,14 +4105,13 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                   />
                 </div>
 
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <div className="dashboard-filter-chips">
                   {['ALL', 'PENDING', 'SETTLED', 'REFUNDED'].map((st) => (
                     <button
                       key={st}
                       type="button"
                       onClick={() => setSettlementFilter(st)}
                       className={`btn ${settlementFilter === st ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ fontSize: '12px', padding: '6px 14px', height: '38px' }}
                     >
                       {st === 'ALL' ? `All (${settlements.length})` : 
                        st === 'PENDING' ? `Pending (${settlements.filter(s => s.status === 'PENDING').length})` : 
@@ -4145,19 +4130,19 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1250px' }}>
                     <thead>
                       <tr>
-                        <th>Date</th>
-                        <th>Vendor</th>
-                        <th>Order ID</th>
-                        <th>Product Name</th>
-                        <th>Gross Sale</th>
-                        <th>Commission (10%)</th>
-                        <th>Net Vendor Payout</th>
-                        <th>Status</th>
-                        <th>Settled At</th>
-                        <th style={{ textAlign: 'center' }}>Payout Action</th>
+                        <th style={{ minWidth: '120px' }}>Date</th>
+                        <th style={{ minWidth: '120px' }}>Vendor</th>
+                        <th style={{ minWidth: '140px' }}>Order ID</th>
+                        <th style={{ minWidth: '180px' }}>Product Name</th>
+                        <th style={{ minWidth: '120px' }}>Gross Sale</th>
+                        <th style={{ minWidth: '130px' }}>Commission</th>
+                        <th style={{ minWidth: '140px' }}>Net Vendor Payout</th>
+                        <th style={{ minWidth: '120px', textAlign: 'center' }}>Status</th>
+                        <th style={{ minWidth: '120px' }}>Settled At</th>
+                        <th style={{ textAlign: 'center', minWidth: '140px' }}>Payout Action</th>
                       </tr>
                     </thead>
                     <tbody>

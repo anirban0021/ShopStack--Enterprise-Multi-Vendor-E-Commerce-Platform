@@ -487,49 +487,25 @@ This section documents the comprehensive enterprise features implemented in **Da
 
 ## 📌 Day 5 Deliverables & Architecture Overview
 
-```text
-Vendor Login
-      │
-      ▼
-Add / Update Product (Price & Discount %)
-      │
-      ▼
-System Calculates Final Price & Sets Status to PENDING
-      │
-      ▼
-Admin Reviews Product Specifications & Merchant Identity
-      │
-      ▼
-Admin Approves / Rejects Listing
-      │
-      ▼
-Customer Views Approved Product Catalog with Discount Badges
-      │
-      ▼
-Customer Adds Items to Cart & Selects Specific Items
-      │
-      ▼
-Dynamic Calculation of Items Subtotal, Tiered Delivery & Total Savings
-      │
-      ▼
-Checkout with Saved Default / Custom Shipping Address
-      │
-      ▼
-Payment Method Selection: Razorpay Online Gateway or Cash on Delivery (COD)
-      │
-      ├───────────────────────────────┬───────────────────────────────┐
-      ▼                                                               ▼
-[Razorpay Secure Checkout]                                     [Cash on Delivery]
-• Create Razorpay Server Order (/api/payment/create-order)     • Direct order placement
-• Open Razorpay Popup (UPI, Cards, NetBanking, Wallets)        • Payment Method = COD
-• Customer Completes Transaction in Sandbox                    • Status = CONFIRMED
-• Verify HMAC-SHA256 Signature (/api/payment/verify-and-order)
-      │                                                               │
-      └───────────────────────────────┬───────────────────────────────┘
-                                      ▼
-             Order Record Created, Inventory Stock Deducted,
-             Purchased Items Cleared & Order Receipt Displayed
+```mermaid
+flowchart TD
+    A["Vendor Login"] --> B["Add / Update Product<br/>(Price & Discount %)"]
+    B --> C["System Calculates Final Price<br/>& Sets Status to PENDING"]
+    C --> D["Admin Reviews Product Specifications<br/>& Merchant Identity"]
+    D --> E["Admin Approves / Rejects Listing"]
+    E --> F["Customer Views Approved Catalog<br/>with Discount Badges"]
+    F --> G["Customer Adds Items to Cart<br/>& Selects Specific Items"]
+    G --> H["Dynamic Calculation of Subtotal,<br/>Tiered Delivery & Savings"]
+    H --> I["Checkout with Saved Default<br/>or Custom Shipping Address"]
+    I --> J["Payment Method Selection:<br/>Razorpay Online Gateway vs Cash on Delivery (COD)"]
+    
+    J -->|"Razorpay Selected"| K["<b>Razorpay Secure Checkout</b><br/>• Create Razorpay Server Order (/api/payment/create-order)<br/>• Open Razorpay Popup (UPI, Cards, NetBanking, Wallets)<br/>• Customer Completes Transaction in Sandbox<br/>• Verify HMAC-SHA256 Signature (/api/payment/verify-and-order)"]
+    J -->|"COD Selected"| L["<b>Cash on Delivery (COD)</b><br/>• Direct Order Placement<br/>• Payment Method = COD<br/>• Status = CONFIRMED"]
+    
+    K --> M["Order Record Created, Inventory Stock Deducted,<br/>Purchased Items Cleared & Order Receipt Displayed"]
+    L --> M
 ```
+
 
 ---
 
@@ -1148,45 +1124,24 @@ This milestone introduces a robust **Coupon and Promotion Engine** that empowers
 ## 📌 Workflow & System Architecture
 
 ### 1. Complete Business Workflow
-```text
-Admin Creates Coupon (Active)
-      │
-      ▼
-Vendors Review Campaign
-      │
-      ├───────────────────────────────┐
-      ▼ (Accepts)                     ▼ (Rejects / Ignores)
-Maps Products & Approves          Coupon Not Applicable
-      │                               │
-      └──────────────┬────────────────┘
-                     ▼
-Customer Adds Products to Cart
-                     │
-                     ▼
-Customer Proceeds to Checkout (Views Filtered Coupon Options)
-                     │
-                     ▼
-Customer Selects & Applies Coupon Code
-                     │
-                     ▼
-Backend Validation: Exists? Active? Temporal bounds? Min Order? Usage limit? Product eligibility mapping?
-                     │
-      ┌──────────────┴──────────────┐
-      ▼ (Valid)                     ▼ (Invalid)
-Calculate Discount              Reject with Error Msg
-(Percentage / Fixed)
-      │
-      ▼
-Update Order Checkout Total (Reflected in Razorpay/COD Payment flow)
-      │
-      ▼
-Confirm Checkout Order
-      │
-      ▼
-Record Usage Track (Usage Count Increment & CouponUsage log)
-      │
-      ▼
-Admin Reviews Campaign Analytics (Total uses, total discounts, client-level auditing)
+```mermaid
+flowchart TD
+    A["Admin Creates Coupon (Active)"] --> B["Vendors Review Campaign"]
+    B -->|"Accepts Campaign"| C["Maps Products & Approves Eligibility"]
+    B -->|"Rejects / Ignores"| D["Coupon Not Applicable to Vendor Items"]
+    C --> E["Customer Adds Products to Cart"]
+    D --> E
+    E --> F["Customer Proceeds to Checkout<br/>(Views Filtered Applicable Coupons)"]
+    F --> G["Customer Selects & Applies Coupon Code"]
+    G --> H["<b>Backend Validation Engine</b><br/>Exists? Active? Temporal bounds? Min Order?<br/>Usage limit? Product eligibility mapping?"]
+    
+    H -->|"Valid Coupon"| I["Calculate Discount<br/>(Percentage / Fixed Amount)"]
+    H -->|"Invalid Coupon"| J["Reject with Descriptive Error Msg"]
+    
+    I --> K["Update Order Checkout Total<br/>(Reflected in Razorpay/COD Payment flow)"]
+    K --> L["Confirm Checkout Order"]
+    L --> M["Record Usage Track<br/>(Usage Count Increment & CouponUsage log)"]
+    M --> N["Admin Reviews Campaign Analytics<br/>(Total uses, total discounts, client-level auditing)"]
 ```
 
 ### 2. Full Technical Data Flow
@@ -2033,6 +1988,30 @@ flowchart TD
 * **JUnit 5 Suite** ([`CommissionCalculationTests.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/test/java/com/shopstack/backend/CommissionCalculationTests.java)):
   - Validates 10% platform commission, dynamic promotional rate simulation, automated COD settlement generation, and refund deductions.
 
+### 11. Universal Mobile Profile Avatar Dropdown Trigger
+* **Circular Avatar Trigger Across All 5 Dashboards**:
+  - Standardized across `AdminDashboard.jsx`, `VendorDashboard.jsx`, `WarehouseDashboard.jsx`, `CustomerDashboard.jsx`, and `HomeDashboard.jsx`.
+  - On mobile and tablet screens (`<= 868px` and `<= 480px`), `.nav-user-trigger` smoothly collapses into a sleek `36px` / `34px` circular avatar logo button (`border-radius: 50%`).
+  - Hides `.nav-user-name` and `.nav-user-chevron` on mobile viewports, preventing navbar crowding, text wrapping, and button clipping while keeping horizontal alignment clean.
+  - Tapping the avatar button opens the complete user profile dropdown menu with full details (name, email, role badge, navigation links, and logout action).
+
+### 12. Post-Delivery Return Policy Countdown (7-Day & 15-Day Buyer Protection)
+* **Delivery-Triggered Return Window**:
+  - Corrected return window evaluation logic so that the 7-day and 15-day return policy countdowns **only begin after the order is marked `DELIVERED`** (`order.status === 'DELIVERED'`).
+  - For orders in transit (`CONFIRMED`, `PACKED`, `SHIPPED`), items display an active green badge (`7-Day Return` / `15-Day Return`) and remain eligible for return/cancellation without prematurely displaying `(Expired)`.
+  - `handleOpenRefundModal` calculates elapsed days strictly from the delivery timestamp (`deliveredAt` / `date`) for delivered orders.
+
+### 13. Streamlined Return & Refund Status Interface
+* **Clean Status Badges & Removed Audit Popup**:
+  - Removed the intrusive Return & Refund Lifecycle Tracking popup modal and its associated state (`trackingModalOrder`) and trigger buttons (`View Audit` / `Track Return`).
+  - Replaced interactive popups in both the Orders List and Financial Transactions table with clean, high-clarity status badges: `[ ✓ Refunded ]` and `[ ⏱️ Pending QC ]`.
+  - Standardized stage naming across return flows to strictly display **`"4. Refunded"`**.
+
+### 14. Universal Table Sizing & Action Button Alignment Across All Dashboards
+* **Aligned Action Rows & Responsive Spacing**:
+  - Enhanced table containers and horizontal scroll wrappers across all admin, vendor, warehouse, and customer dashboard views.
+  - Increased column widths and distributed spacing to ensure multi-action button groups (e.g., `Stock`, `Edit`, `Disable`, `QC Check`, `Allocate`) display in a single, well-spaced row without clipping or misaligning on mobile viewports.
+
 ---
 
 ## 📂 Project Structure Updates (Day 14)
@@ -2056,17 +2035,17 @@ ShopStack/
 │   ├── vite.config.js                         # Reverse proxy for /api and /uploads with header rewriting
 │   └── src/
 │       ├── App.jsx                            # Global session reassurance logout modal & route guards
-│       ├── index.css                          # Universal responsive layout, pipeline 2x2 grid & custom select styles
+│       ├── index.css                          # Universal mobile circular avatar triggers, table widths, responsive grids
 │       ├── utils/
 │       │   ├── errorHandler.js                # extractErrorMessage universal error normalizer
 │       │   └── imageHelper.js                 # formatImageUrl cross-device media URL adapter
 │       └── components/
 │           ├── MobileBottomNav.jsx            # Fixed ergonomic bottom dock (Home, Orders/Admin/Vendor/WH, Cart, Profile)
-│           ├── HomeDashboard.jsx              # Single-row mobile app bar, compact search, centralized notifications
-│           ├── CustomerDashboard.jsx          # Mobile touch pills, responsive stepper & buy now checkout
-│           ├── VendorDashboard.jsx            # Streamlined header, clean merchant controls
-│           ├── WarehouseDashboard.jsx         # Responsive pipeline distribution tracker (2x2 grid on mobile)
-│           ├── AdminDashboard.jsx             # Responsive KPI grids, split distribution charts
+│           ├── HomeDashboard.jsx              # Single-row mobile app bar, compact search, mobile avatar trigger
+│           ├── CustomerDashboard.jsx          # Post-delivery return window, streamlined refund badges, mobile avatar
+│           ├── VendorDashboard.jsx            # Table action spacing, catalog alignment, mobile avatar trigger
+│           ├── WarehouseDashboard.jsx         # Responsive pipeline tracker (2x2 grid), mobile avatar trigger
+│           ├── AdminDashboard.jsx             # Responsive KPI grids, table layout distribution, mobile avatar trigger
 │           ├── Login.jsx                      # Form validation & normalized auth error handling
 │           └── Register.jsx                   # Role domain enforcement (@admin, @staff) & password rules
 │
@@ -2080,6 +2059,7 @@ Related Code Files:
 - [`WarehouseDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/WarehouseDashboard.jsx)
 - [`CustomerDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx)
 - [`AdminDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/AdminDashboard.jsx)
+- [`VendorDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx)
 - [`App.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/App.jsx)
 - [`CommissionCalculationTests.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/test/java/com/shopstack/backend/CommissionCalculationTests.java)
 - [`GlobalExceptionHandler.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/config/GlobalExceptionHandler.java)
@@ -2136,6 +2116,27 @@ GET | `/api/admin/dashboard-summary` | Marketplace KPI summary with net refunds 
    mvn test -Dtest=CommissionCalculationTests
    ```
 2. Verify that all commission calculation, settlement generation, and refund reversal tests pass with `BUILD SUCCESS`.
+
+### 6. Mobile Profile Avatar Button Across All Dashboards
+1. Resize browser window to mobile width (`<= 868px` or `<= 480px`).
+2. Verify the profile trigger collapses to a clean circular logo icon button on:
+   - System Admin Console (`/admin`)
+   - Vendor Seller Console (`/vendor`)
+   - Warehouse Staff Panel (`/warehouse`)
+   - Customer Account Dashboard (`/customer`)
+   - Home Storefront (`/`)
+3. Tap the avatar logo button and confirm the dropdown menu opens smoothly with user full name, role badge, navigation links, and logout button.
+
+### 7. Post-Delivery Return Policy Countdown
+1. View an order with status `CONFIRMED`, `PACKED`, or `SHIPPED` placed more than 7 days ago.
+2. Confirm the product return badge displays **`7-Day Return`** (green badge), NOT `(Expired)`.
+3. Verify the **`Request Return / Refund`** button remains clickable and operational.
+4. Advance the order to **`DELIVERED`**. Verify that the 7-day or 15-day countdown begins strictly from the delivery date.
+
+### 8. Streamlined Refund Badges
+1. In the Customer Dashboard Orders tab, verify refunded orders display a clean **`✓ Refunded`** badge with no popup audit modal.
+2. In the Transactions tab, verify refunded rows display **`✓ Refunded`** and pending returns display **`Pending QC`**.
+3. In the Return Request dialog, confirm Step 4 is labeled **`4. Refunded`**.
 
 ---
 
@@ -2670,47 +2671,32 @@ This section documents the architectural hardening, role-based access control (R
 
 Day 17 focused on transforming user authentication, session initiation, operational inspection, and role transitions from manual selections into an intelligent, enterprise-grade, identity-governed architecture.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                             ShopStack Authentication Gateway                                │
-│                         (Intelligent Role & Vendor Detection)                               │
-└──────────────────────────────────────────────┬──────────────────────────────────────────────┘
-                                               │
-               ┌───────────────────────────────┴───────────────────────────────┐
-               ▼                                                               ▼
-   [ Email & Credential Parsing ]                                 [ Optional 6-Digit Vendor ID ]
-               │                                                               │
-   ┌───────────┴───────────┐                                      ┌────────────┴────────────┐
-   ▼                       ▼                                      ▼                         ▼
-Domain Contains        Domain Contains                     Matches Registered       Unassigned / Blank /
-   "@admin"               "@staff"                           Vendor Code                  Mismatch
-   │                       │                                      │                         │
-   ▼                       ▼                                      ▼                         ▼
-[ ROLE_ADMIN ]         [ ROLE_STAFF ]                      [ ROLE_VENDOR ]          [ Vendor ID Check ]
-(System Admin)      (Warehouse Operations)                  (Seller Console)                │
-   │                       │                                      │            ┌────────────┴────────────┐
-   │                       │                                      │            ▼                         ▼
-   │                       │                                      │       [ Blank ID ]          [ Invalid ID Given ]
-   │                       │                                      │            │                         │
-   │                       │                                      │            ▼                         ▼
-   │                       │                                      │     [ ROLE_CUSTOMER ]       ❌ Floating Error:
-   │                       │                                      │     (Standard Buyer)     "Vendor ID not detected"
-   │                       │                                      │            │
-   └───────────────────────┴──────────────────┬───────────────────┴────────────┘
-                                              ▼
-                             ┌──────────────────────────────────┐
-                             │       Default Landing Page       │
-                             │         [ Home Dashboard ]       │
-                             │          (Browse Catalog)        │
-                             └────────────────┬─────────────────┘
-                                              │
-                      ┌───────────────────────┼───────────────────────┐
-                      ▼                       ▼                       ▼
-            [ Admin Profile ]       [ Staff Profile ]      [ Customer / Vendor ]
-            • Back Button (Home)    • Back Button (Home)   • Dual-Mode Switching
-            • No Customer Switch    • No Customer Switch   • Dynamic Customer ↔ Vendor
-            • No Buying Controls    • No Buying Controls   • 6-Digit Seller Code Guard
-            • [ Inspect Details ]   • [ Inspect Inv. ]     • Buy Now / Cart / Reviews
+```mermaid
+flowchart TD
+    subgraph AuthGate ["ShopStack Authentication Gateway (Intelligent Role & Vendor Detection)"]
+        Auth["User Login Credentials<br/>(Email, Password, Optional 6-Digit Vendor ID)"]
+        
+        Auth --> ParseEmail["Domain & Credential Parsing"]
+        Auth --> ParseVendor["Optional 6-Digit Vendor ID Parsing"]
+        
+        ParseEmail -->|"Email contains @admin"| RoleAdmin["<b>ROLE_ADMIN</b><br/>(System Administrator)"]
+        ParseEmail -->|"Email contains @staff"| RoleStaff["<b>ROLE_STAFF</b><br/>(Warehouse Operations)"]
+        
+        ParseVendor -->|"Matches Registered Vendor Code"| RoleVendor["<b>ROLE_VENDOR</b><br/>(Seller Console Access)"]
+        ParseVendor -->|"Blank / Unassigned ID"| RoleCustomer["<b>ROLE_CUSTOMER</b><br/>(Standard Buyer Portal)"]
+        ParseVendor -->|"Invalid / Mismatched ID"| ErrorVendor["❌ <b>Floating Error Notification</b><br/>'Vendor ID not detected'"]
+    end
+    
+    RoleAdmin --> HomeDash["<b>Default Universal Landing Page</b><br/>[ Home Dashboard / Browse Catalog ]"]
+    RoleStaff --> HomeDash
+    RoleVendor --> HomeDash
+    RoleCustomer --> HomeDash
+    
+    subgraph ProfileNav ["Role-Aware Storefront & Dedicated Profile Navigation"]
+        HomeDash --> AdminProf["<b>Admin Profile</b><br/>• [ ← Back ] to Home<br/>• No Customer Switch<br/>• No Buying Controls<br/>• [ Inspect Details ]"]
+        HomeDash --> StaffProf["<b>Staff Profile</b><br/>• [ ← Back ] to Home<br/>• No Customer Switch<br/>• No Buying Controls<br/>• [ Inspect Inventory ]"]
+        HomeDash --> CustVendProf["<b>Customer / Vendor Profile</b><br/>• Dual-Mode Switching (Customer ↔ Vendor)<br/>• 6-Digit Seller Code Guard<br/>• Buy Now / Cart / Reviews"]
+    end
 ```
 
 ---
@@ -2863,5 +2849,4 @@ ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/
 - [x] **Admin Product Inspection**: As Admin, browse storefront cards and click **`[ 🔍 Inspect Details ]`**. Confirm synchronized modal shows SKU, vendor details, platform commission (10%), and financial splits.
 - [x] **Staff Inventory Inspection**: As Staff, browse storefront cards and click **`[ 📦 Inspect Inventory ]`**. Confirm synchronized modal displays physical stock, allocated count, reorder threshold, and restock status.
 - [x] Verify that *"Add to Cart"*, *"Buy Now"*, and review submission controls are disabled for Admin and Staff.
-
 

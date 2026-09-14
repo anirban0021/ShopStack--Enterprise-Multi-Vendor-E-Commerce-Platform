@@ -109,8 +109,7 @@ export default function CustomerDashboard({
   const [orderRefundHistory, setOrderRefundHistory] = useState([]);
   const [customerProofImage, setCustomerProofImage] = useState('');
   
-  // Return Timeline Tracking Modal
-  const [trackingModalOrder, setTrackingModalOrder] = useState(null);
+
 
   // Experience feedback survey states
   const [feedbackRatingInput, setFeedbackRatingInput] = useState({});
@@ -150,12 +149,15 @@ export default function CustomerDashboard({
   };
 
   const handleOpenRefundModal = async (order) => {
-    const daysElapsed = getDaysElapsed(order.date);
+    const isDelivered = (order.status || '').toUpperCase() === 'DELIVERED';
+    const daysElapsed = isDelivered ? getDaysElapsed(order.deliveredAt || order.date) : 0;
     const hasEligibleItem = order.items && order.items.some(item => {
       const policy = getProductReturnPolicy(item.productId);
       if (policy === 'NON_RETURNABLE') return false;
-      if (policy === '7_DAYS' && daysElapsed > 7) return false;
-      if (policy === '15_DAYS' && daysElapsed > 15) return false;
+      if (isDelivered) {
+        if (policy === '7_DAYS' && daysElapsed > 7) return false;
+        if (policy === '15_DAYS' && daysElapsed > 15) return false;
+      }
       return true;
     });
 
@@ -1555,7 +1557,8 @@ export default function CustomerDashboard({
                         <div className="order-items-list" style={{ background: 'var(--bg-primary)', margin: '14px 0', borderRadius: '8px', padding: '12px' }}>
                           {ord.items && ord.items.map((item, idx) => {
                             const policy = getProductReturnPolicy(item.productId);
-                            const daysElapsed = getDaysElapsed(ord.date);
+                            const isDelivered = (ord.status || '').toUpperCase() === 'DELIVERED';
+                            const daysElapsed = isDelivered ? getDaysElapsed(ord.deliveredAt || ord.date) : 0;
                             let isEligible = true;
                             let policyText = '7-Day Return Policy';
                             if (policy === 'NON_RETURNABLE') {
@@ -1563,10 +1566,10 @@ export default function CustomerDashboard({
                               policyText = 'Non-Returnable';
                             } else if (policy === '7_DAYS') {
                               policyText = '7-Day Return';
-                              if (daysElapsed > 7) isEligible = false;
+                              if (isDelivered && daysElapsed > 7) isEligible = false;
                             } else if (policy === '15_DAYS') {
                               policyText = '15-Day Return';
-                              if (daysElapsed > 15) isEligible = false;
+                              if (isDelivered && daysElapsed > 15) isEligible = false;
                             }
 
                             return (
@@ -1610,14 +1613,12 @@ export default function CustomerDashboard({
 
                           {/* Refund / Return Action Buttons */}
                           {(payStatus === 'REFUND_PENDING' || ord.status === 'RETURN_REQUESTED' || ord.hasPendingRefund) ? (
-                            <button 
-                              type="button" 
-                              onClick={() => setTrackingModalOrder(ord)} 
-                              className="btn btn-secondary"
-                              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '8px 14px', borderColor: 'rgba(245, 158, 11, 0.4)', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.08)' }}
+                            <span 
+                              className="badge badge-pending"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 12px' }}
                             >
-                              <Clock size={14} /> Track Return (QC Pending)
-                            </button>
+                              <Clock size={14} /> Return Pending QC
+                            </span>
                           ) : (isPaid || isPartiallyRefunded) ? (
                             <button 
                               type="button" 
@@ -1628,14 +1629,12 @@ export default function CustomerDashboard({
                               <RotateCcw size={14} /> Request Return / Refund
                             </button>
                           ) : isRefunded ? (
-                            <button 
-                              type="button"
-                              onClick={() => setTrackingModalOrder(ord)}
+                            <span 
                               className="badge" 
-                              style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa', fontSize: '12px', padding: '6px 12px', border: '1px solid rgba(139, 92, 246, 0.3)', cursor: 'pointer' }}
+                              style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa', fontSize: '12px', padding: '6px 12px', border: '1px solid rgba(139, 92, 246, 0.3)' }}
                             >
-                              ✓ Refunded (View Audit)
-                            </button>
+                              ✓ Refunded
+                            </span>
                           ) : null}
                         </div>
 
@@ -1791,8 +1790,8 @@ export default function CustomerDashboard({
               </div>
 
               {/* Search and Filters Bar */}
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
+              <div className="dashboard-filter-bar">
+                <div className="dashboard-filter-search">
                   <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                   <input 
                     type="text" 
@@ -1804,14 +1803,13 @@ export default function CustomerDashboard({
                   />
                 </div>
 
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <div className="dashboard-filter-chips">
                   {['ALL', 'PAID', 'PENDING', 'FAILED', 'REFUNDED'].map((st) => (
                     <button
                       key={st}
                       type="button"
                       onClick={() => setTransactionFilter(st)}
                       className={`btn ${transactionFilter === st ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ fontSize: '12px', padding: '6px 12px', height: '38px' }}
                     >
                       {st}
                     </button>
@@ -1826,18 +1824,18 @@ export default function CustomerDashboard({
                   <p>No transaction history recorded yet.</p>
                 </div>
               ) : (
-                <div className="table-container" style={{ background: 'var(--bg-input)', borderRadius: '10px', overflowX: 'auto' }}>
-                  <table className="custom-table">
+                <div className="table-container">
+                  <table className="custom-table" style={{ minWidth: '1150px' }}>
                     <thead>
                       <tr>
-                        <th>Date & Time</th>
-                        <th>Order ID</th>
-                        <th>Method</th>
-                        <th>Razorpay Payment ID</th>
-                        <th>Total Amount</th>
-                        <th>Payment Status</th>
-                        <th>Refunds</th>
-                        <th style={{ textAlign: 'center' }}>Action</th>
+                        <th style={{ minWidth: '130px' }}>Date & Time</th>
+                        <th style={{ minWidth: '140px' }}>Order ID</th>
+                        <th style={{ minWidth: '120px' }}>Method</th>
+                        <th style={{ minWidth: '180px' }}>Razorpay Payment ID</th>
+                        <th style={{ minWidth: '130px' }}>Total Amount</th>
+                        <th style={{ minWidth: '130px', textAlign: 'center' }}>Payment Status</th>
+                        <th style={{ minWidth: '120px', textAlign: 'center' }}>Refunds</th>
+                        <th style={{ textAlign: 'center', minWidth: '140px' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1927,15 +1925,12 @@ export default function CustomerDashboard({
                               </td>
                               <td style={{ textAlign: 'center' }}>
                                 {(tx.paymentStatus === 'REFUND_PENDING' || tx.hasPendingRefund) ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setTrackingModalOrder(tx)}
-                                    className="btn btn-secondary"
-                                    style={{ fontSize: '11px', padding: '4px 8px', color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.4)' }}
-                                    title="View Return & Inspection Status"
+                                  <span
+                                    className="badge badge-pending"
+                                    style={{ fontSize: '11px', padding: '4px 8px' }}
                                   >
                                     <Clock size={12} /> Pending QC
-                                  </button>
+                                  </span>
                                 ) : (isPaid || isPartiallyRefunded) ? (
                                   <button
                                     type="button"
@@ -1946,15 +1941,12 @@ export default function CustomerDashboard({
                                     <RotateCcw size={12} /> Return
                                   </button>
                                 ) : isRefunded ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setTrackingModalOrder(tx)}
-                                    className="btn btn-secondary"
-                                    style={{ fontSize: '11px', padding: '4px 8px', color: '#a78bfa', borderColor: 'rgba(139, 92, 246, 0.3)' }}
-                                    title="View Refund Audit"
+                                  <span
+                                    className="badge"
+                                    style={{ fontSize: '11px', padding: '4px 8px', color: '#a78bfa', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)' }}
                                   >
                                     <Check size={12} /> Refunded
-                                  </button>
+                                  </span>
                                 ) : (
                                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>—</span>
                                 )}
@@ -3240,7 +3232,7 @@ export default function CustomerDashboard({
             }}>
               <CheckCircle size={18} style={{ color: 'var(--accent-teal)', flexShrink: 0 }} />
               <div>
-                <strong style={{ color: 'var(--text-primary)', display: 'block' }}>7-Day Buyer Protection Return Policy Active</strong>
+                <strong style={{ color: 'var(--text-primary)', display: 'block' }}>Buyer Protection Return Policy Active</strong>
                 <span style={{ color: 'var(--text-secondary)' }}>Free pickup will be arranged. Refund will be approved once product passes quality inspection at warehouse.</span>
               </div>
             </div>
@@ -3267,7 +3259,7 @@ export default function CustomerDashboard({
                   3. Quality Check
                 </div>
                 <div style={{ padding: '6px', background: 'var(--bg-card)', borderRadius: '6px', color: 'var(--text-muted)' }}>
-                  4. Refund Disbursed
+                  4. Refunded
                 </div>
               </div>
             </div>
@@ -3422,132 +3414,6 @@ export default function CustomerDashboard({
         </div>
       )}
 
-      {/* Return Lifecycle Progress Tracking Modal */}
-      {trackingModalOrder && (
-        <div className="modal-overlay" onClick={() => setTrackingModalOrder(null)}>
-          <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <RotateCcw size={20} style={{ color: 'var(--accent-teal)' }} />
-                <h2 className="modal-title">Return & Refund Lifecycle Status</h2>
-              </div>
-              <button onClick={() => setTrackingModalOrder(null)} className="btn-icon-only">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ background: 'var(--bg-input)', padding: '14px', borderRadius: '8px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Order ID:</span>
-                  <strong style={{ color: 'var(--accent-blue)', fontFamily: 'monospace' }}>{trackingModalOrder.orderId}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Payment Status:</span>
-                  <span className={`badge ${trackingModalOrder.paymentStatus === 'REFUNDED' ? 'badge-approved' : trackingModalOrder.paymentStatus === 'REFUND_PENDING' ? 'badge-pending' : 'badge-customer'}`}>
-                    {trackingModalOrder.paymentStatus}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Total Amount:</span>
-                  <strong style={{ color: 'var(--accent-emerald)' }}>₹{trackingModalOrder.totalAmount}</strong>
-                </div>
-              </div>
-
-              {/* Visual 4-Step Stepper */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '8px 0' }}>
-                {/* Step 1: Return Requested */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#10b981', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
-                    ✓
-                  </div>
-                  <div>
-                    <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>1. Return Request Submitted</strong>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Request registered in system. Reverse pickup initiated with logistics partner.
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 2: Item Shipped Back */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: trackingModalOrder.paymentStatus === 'REFUNDED' ? '#10b981' : '#f59e0b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
-                    {trackingModalOrder.paymentStatus === 'REFUNDED' ? '✓' : '2'}
-                  </div>
-                  <div>
-                    <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>2. Courier Pickup & Warehouse Inward</strong>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      {trackingModalOrder.paymentStatus === 'REFUNDED' ? 'Package received at fulfillment center.' : 'Package in transit to ShopStack warehouse for inspection.'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 3: Quality Check Inspection */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: trackingModalOrder.paymentStatus === 'REFUNDED' ? '#10b981' : 'var(--bg-input)', color: trackingModalOrder.paymentStatus === 'REFUNDED' ? '#fff' : 'var(--text-muted)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
-                    {trackingModalOrder.paymentStatus === 'REFUNDED' ? '✓' : '3'}
-                  </div>
-                  <div>
-                    <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>3. Warehouse Quality Check (QC)</strong>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      {trackingModalOrder.paymentStatus === 'REFUNDED' ? 'Passed quality check. Verified condition matched return reason.' : 'Inspection team verifies item condition against buyer reason.'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 4: Refund Disbursed */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: trackingModalOrder.paymentStatus === 'REFUNDED' ? '#10b981' : 'var(--bg-input)', color: trackingModalOrder.paymentStatus === 'REFUNDED' ? '#fff' : 'var(--text-muted)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
-                    {trackingModalOrder.paymentStatus === 'REFUNDED' ? '✓' : '4'}
-                  </div>
-                  <div>
-                    <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>4. Refund Disbursed via Razorpay</strong>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      {trackingModalOrder.paymentStatus === 'REFUNDED' ? 'Refund transferred back to original payment method.' : 'Awaiting quality check clearance before payment reversal.'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Past Refund Records if any */}
-              {trackingModalOrder.refunds && trackingModalOrder.refunds.length > 0 && (
-                <div style={{ background: 'rgba(139, 92, 246, 0.08)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-                  <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: '#a78bfa', display: 'block', marginBottom: '6px' }}>
-                    Refund Log Details
-                  </span>
-                  {trackingModalOrder.refunds.map((rf, idx) => (
-                    <div key={idx} style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Status: <strong style={{ color: rf.status === 'PROCESSED' ? '#10b981' : '#f59e0b' }}>{rf.status}</strong></span>
-                        <strong style={{ color: '#c084fc' }}>₹{rf.amount}</strong>
-                      </div>
-                      {rf.adminNotes && <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>Admin/QC Note: {rf.adminNotes}</div>}
-                      {rf.customerProofImage && (
-                        <div style={{ marginTop: '6px' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Customer Proof Photo:</span>
-                          <img src={formatImageUrl(rf.customerProofImage)} alt="Customer Return Proof" style={{ width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '6px', marginTop: '4px', border: '1px solid var(--border-light)' }} />
-                        </div>
-                      )}
-                      {rf.warehouseInspectionImage && (
-                        <div style={{ marginTop: '6px' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Warehouse QC Photo:</span>
-                          <img src={formatImageUrl(rf.warehouseInspectionImage)} alt="Warehouse QC Proof" style={{ width: '100%', maxHeight: '150px', objectFit: 'contain', borderRadius: '6px', marginTop: '4px', border: '1px solid var(--border-light)' }} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
-                <button type="button" onClick={() => setTrackingModalOrder(null)} className="btn btn-secondary">
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

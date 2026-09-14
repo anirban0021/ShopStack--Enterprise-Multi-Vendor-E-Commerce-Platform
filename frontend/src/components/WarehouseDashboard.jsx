@@ -417,7 +417,9 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
       {/* Header */}
       <div className="navbar">
         <div className="nav-left">
-          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>ShopStack</h1>
+          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>
+            ShopStack <span className="hide-on-mobile badge badge-vendor" style={{ fontSize: '9px', padding: '1px 5px', verticalAlign: 'middle', marginLeft: '4px' }}>STAFF</span>
+          </h1>
         </div>
 
         <div className="nav-right">
@@ -549,17 +551,7 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
       </div>
 
       {/* Tab Navigation */}
-      <div style={{ 
-        background: 'var(--bg-card)', 
-        borderBottom: '1px solid var(--border-light)', 
-        padding: '0 24px', 
-        display: 'flex', 
-        gap: '8px', 
-        overflowX: 'auto',
-        position: 'sticky',
-        top: 0,
-        zIndex: 10
-      }}>
+      <div className="admin-tabs-bar">
         <button
           type="button"
           onClick={() => setActiveTab('analytics')}
@@ -934,14 +926,14 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
                     </div>
                   ) : (
                     <div className="table-container">
-                      <table className="custom-table">
+                      <table className="custom-table" style={{ minWidth: '1200px' }}>
                         <thead>
                           <tr>
-                            <th>Order Details</th>
-                            <th>Recipients</th>
-                            <th>Items Placed</th>
-                            <th>Allocation Status</th>
-                            <th style={{ textAlign: 'center', width: '280px' }}>Allocation Control</th>
+                            <th style={{ minWidth: '140px' }}>Order Details</th>
+                            <th style={{ minWidth: '180px' }}>Recipients</th>
+                            <th style={{ minWidth: '220px' }}>Items Placed</th>
+                            <th style={{ minWidth: '160px' }}>Allocation Status</th>
+                            <th style={{ textAlign: 'center', minWidth: '280px', width: '280px' }}>Allocation Control</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1012,14 +1004,14 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
                     </div>
                   ) : (
                     <div className="table-container">
-                      <table className="custom-table">
+                      <table className="custom-table" style={{ minWidth: '1050px' }}>
                         <thead>
                           <tr>
-                            <th>Order ID</th>
-                            <th>Product to Pick</th>
-                            <th>Target Warehouse</th>
-                            <th>Quantity</th>
-                            <th style={{ textAlign: 'center' }}>Action</th>
+                            <th style={{ minWidth: '140px' }}>Order ID</th>
+                            <th style={{ minWidth: '220px' }}>Product to Pick</th>
+                            <th style={{ minWidth: '200px' }}>Target Warehouse</th>
+                            <th style={{ minWidth: '140px' }}>Quantity</th>
+                            <th style={{ textAlign: 'center', minWidth: '180px' }}>Action</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1060,15 +1052,15 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
                     </div>
                   ) : (
                     <div className="table-container">
-                      <table className="custom-table">
+                      <table className="custom-table" style={{ minWidth: '1150px' }}>
                         <thead>
                           <tr>
-                            <th>Order ID</th>
-                            <th>Product Name</th>
-                            <th>Warehouse Source</th>
-                            <th>Quantity</th>
-                            <th>Carton Style Selection</th>
-                            <th style={{ textAlign: 'center' }}>Action</th>
+                            <th style={{ minWidth: '140px' }}>Order ID</th>
+                            <th style={{ minWidth: '220px' }}>Product Name</th>
+                            <th style={{ minWidth: '180px' }}>Warehouse Source</th>
+                            <th style={{ minWidth: '120px' }}>Quantity</th>
+                            <th style={{ minWidth: '200px' }}>Carton Style Selection</th>
+                            <th style={{ textAlign: 'center', minWidth: '180px' }}>Action</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1122,15 +1114,15 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
                     </div>
                   ) : (
                     <div className="table-container">
-                      <table className="custom-table">
+                      <table className="custom-table" style={{ minWidth: '1200px' }}>
                         <thead>
                           <tr>
-                            <th>Order ID</th>
-                            <th>Product & Quantity</th>
-                            <th>Packaging</th>
-                            <th>Carrier Partner</th>
-                            <th>Awb/Tracking Reference</th>
-                            <th style={{ textAlign: 'center' }}>Dispatch Control</th>
+                            <th style={{ minWidth: '140px' }}>Order ID</th>
+                            <th style={{ minWidth: '220px' }}>Product & Quantity</th>
+                            <th style={{ minWidth: '140px' }}>Packaging</th>
+                            <th style={{ minWidth: '180px' }}>Carrier Partner</th>
+                            <th style={{ minWidth: '220px' }}>Awb/Tracking Reference</th>
+                            <th style={{ textAlign: 'center', minWidth: '180px' }}>Dispatch Control</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1204,14 +1196,14 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
                     </div>
                   ) : (
                     <div className="table-container">
-                      <table className="custom-table">
+                      <table className="custom-table" style={{ minWidth: '1150px' }}>
                         <thead>
                           <tr>
-                            <th>Order ID</th>
-                            <th>Product & Quantity</th>
-                            <th>Packaging</th>
-                            <th>Carrier & AWB</th>
-                            <th style={{ textAlign: 'center' }}>Delivery Control</th>
+                            <th style={{ minWidth: '140px' }}>Order ID</th>
+                            <th style={{ minWidth: '220px' }}>Product & Quantity</th>
+                            <th style={{ minWidth: '140px' }}>Packaging</th>
+                            <th style={{ minWidth: '200px' }}>Carrier & AWB</th>
+                            <th style={{ textAlign: 'center', minWidth: '180px' }}>Delivery Control</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1286,16 +1278,16 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1200px' }}>
                     <thead>
                       <tr>
-                        <th>Product Details</th>
-                        <th>Category</th>
-                        <th>Facility / Hub</th>
-                        <th style={{ textAlign: 'center' }}>Physical Count</th>
-                        <th style={{ textAlign: 'center' }}>Allocated Hold</th>
-                        <th style={{ textAlign: 'center' }}>Available to Pick</th>
-                        <th style={{ textAlign: 'center' }}>Quick Stock Adjustment</th>
+                        <th style={{ minWidth: '220px' }}>Product Details</th>
+                        <th style={{ minWidth: '130px' }}>Category</th>
+                        <th style={{ minWidth: '180px' }}>Facility / Hub</th>
+                        <th style={{ textAlign: 'center', minWidth: '130px' }}>Physical Count</th>
+                        <th style={{ textAlign: 'center', minWidth: '130px' }}>Allocated Hold</th>
+                        <th style={{ textAlign: 'center', minWidth: '140px' }}>Available to Pick</th>
+                        <th style={{ textAlign: 'center', minWidth: '180px' }}>Quick Stock Adjustment</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1380,16 +1372,16 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1250px' }}>
                     <thead>
                       <tr>
-                        <th>Date Requested</th>
-                        <th>Order ID</th>
-                        <th>Customer Reason</th>
-                        <th>Resolution Choice</th>
-                        <th>Refund Value</th>
-                        <th>Inspection Stage</th>
-                        <th style={{ textAlign: 'center' }}>Details</th>
+                        <th style={{ minWidth: '130px' }}>Date Requested</th>
+                        <th style={{ minWidth: '140px' }}>Order ID</th>
+                        <th style={{ minWidth: '220px' }}>Customer Reason</th>
+                        <th style={{ minWidth: '140px' }}>Resolution Choice</th>
+                        <th style={{ minWidth: '130px' }}>Refund Value</th>
+                        <th style={{ minWidth: '150px' }}>Inspection Stage</th>
+                        <th style={{ textAlign: 'center', minWidth: '140px' }}>Details</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1586,15 +1578,15 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table">
+                  <table className="custom-table" style={{ minWidth: '1200px' }}>
                     <thead>
                       <tr>
-                        <th>Product Details</th>
-                        <th>Quarantine Warehouse</th>
-                        <th>Unit Price</th>
-                        <th>Damaged Units</th>
-                        <th>Total Quarantine Valuation</th>
-                        <th style={{ textAlign: 'center', width: '220px' }}>Disposition Action</th>
+                        <th style={{ minWidth: '220px' }}>Product Details</th>
+                        <th style={{ minWidth: '180px' }}>Quarantine Warehouse</th>
+                        <th style={{ minWidth: '120px' }}>Unit Price</th>
+                        <th style={{ minWidth: '130px', textAlign: 'center' }}>Damaged Units</th>
+                        <th style={{ minWidth: '180px' }}>Total Quarantine Valuation</th>
+                        <th style={{ textAlign: 'center', minWidth: '220px', width: '220px' }}>Disposition Action</th>
                       </tr>
                     </thead>
                     <tbody>
