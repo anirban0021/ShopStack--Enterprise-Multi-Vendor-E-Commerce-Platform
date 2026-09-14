@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Mail, Lock, Eye, EyeOff, Check, X, Sun, Moon, Briefcase } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Check, X, Sun, Moon, Store, KeyRound } from 'lucide-react';
 import { extractErrorMessage } from '../utils/errorHandler';
 
 const passwordRules = [
@@ -12,7 +12,7 @@ const passwordRules = [
 ];
 
 export default function Login({ switchToRegister, onLoginSuccess, theme, onToggleTheme }) {
-  const [formData, setFormData] = useState({ email: '', password: '', role: 'CUSTOMER', vendorCode: '' });
+  const [formData, setFormData] = useState({ email: '', password: '', vendorCode: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [flashMessage, setFlashMessage] = useState({ type: '', title: '', text: '' });
 
@@ -122,17 +122,34 @@ export default function Login({ switchToRegister, onLoginSuccess, theme, onToggl
     e.preventDefault();
     setFlashMessage({ type: '', title: '', text: '' });
 
-    if (formData.role === 'VENDOR' && (!formData.vendorCode || formData.vendorCode.length !== 6)) {
+    if (formData.vendorCode && formData.vendorCode.trim().length > 0 && formData.vendorCode.trim().length !== 6) {
       setFlashMessage({
         type: 'error',
         title: 'Validation failed.',
-        text: 'A 6-digit unique Vendor ID is required to log in as a Vendor.'
+        text: '6-digit Vendor ID must be exactly 6 digits.'
       });
       return;
     }
 
+    const cleanEmail = (formData.email || '').trim().toLowerCase();
+    const cleanVendorCode = formData.vendorCode ? formData.vendorCode.trim() : null;
+
+    // Automatically infer role based on email suffix and vendor code
+    const inferredRole = cleanEmail.endsWith('@admin')
+      ? 'ADMINISTRATOR'
+      : cleanEmail.endsWith('@staff')
+      ? 'WAREHOUSE_STAFF'
+      : cleanVendorCode && cleanVendorCode.length === 6
+      ? 'VENDOR'
+      : 'CUSTOMER';
+
     try {
-      const response = await axios.post('http://localhost:8080/api/auth/login', formData);
+      const response = await axios.post('http://localhost:8080/api/auth/login', {
+        email: cleanEmail,
+        password: formData.password,
+        role: inferredRole,
+        vendorCode: cleanVendorCode
+      });
       setFlashMessage({ 
         type: 'success', 
         title: 'Login successful.', 
@@ -140,10 +157,12 @@ export default function Login({ switchToRegister, onLoginSuccess, theme, onToggl
       });
       setTimeout(() => onLoginSuccess(response.data), 1500);
     } catch (error) {
+      const errMsg = extractErrorMessage(error, 'Invalid email, password, or vendor ID.');
+      const isVendorErr = errMsg.toLowerCase().includes('vendor id not detected');
       setFlashMessage({ 
         type: 'error', 
-        title: 'Authentication failed.', 
-        text: extractErrorMessage(error, 'Invalid email, password, or role details.') 
+        title: isVendorErr ? 'Vendor ID not detected.' : 'Authentication failed.', 
+        text: isVendorErr ? 'Vendor ID not detected.' : errMsg 
       });
     }
   };
@@ -230,43 +249,32 @@ export default function Login({ switchToRegister, onLoginSuccess, theme, onToggl
           </div>
 
           <div className="form-group">
-            <label className="form-label">Signing in as</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Store size={14} style={{ color: 'var(--accent-indigo)' }} />
+                <span>6-Digit Vendor ID</span>
+              </label>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>
+                (Optional / If Any)
+              </span>
+            </div>
             <div className="input-icon-wrapper">
-              <Briefcase className="input-icon" />
-              <select 
-                name="role"
-                value={formData.role}
-                onChange={handleChange}
+              <KeyRound className="input-icon" />
+              <input
+                type="text"
+                name="vendorCode"
+                maxLength="6"
+                placeholder="e.g. 123456 (Leave blank if Customer)"
+                value={formData.vendorCode}
+                onChange={(e) => setFormData({ ...formData, vendorCode: e.target.value.replace(/\D/g, '') })}
                 className="form-input"
-                style={{ paddingLeft: '44px' }}
-              >
-                <option value="CUSTOMER">Customer / Buyer</option>
-                <option value="VENDOR">Merchant Vendor</option>
-                <option value="ADMINISTRATOR">Administrator</option>
-                <option value="WAREHOUSE_STAFF">Warehouse Staff</option>
-              </select>
+                style={{ letterSpacing: formData.vendorCode ? '2px' : 'normal' }}
+              />
             </div>
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: '1.4' }}>
+              Leave blank to log in as Customer. Enter your 6-digit ID to log in to Vendor mode.
+            </p>
           </div>
-
-          {formData.role === 'VENDOR' && (
-            <div className="form-group" style={{ animation: 'slideUp 0.15s ease' }}>
-              <label className="form-label">6-digit Vendor ID</label>
-              <div className="input-icon-wrapper">
-                <Lock className="input-icon" />
-                <input
-                  type="text"
-                  name="vendorCode"
-                  maxLength="6"
-                  placeholder="e.g. 123456"
-                  value={formData.vendorCode}
-                  onChange={(e) => setFormData({...formData, vendorCode: e.target.value.replace(/\D/g, '')})}
-                  required
-                  className="form-input"
-                  style={{ letterSpacing: formData.vendorCode ? '3px' : 'normal', fontWeight: 'bold' }}
-                />
-              </div>
-            </div>
-          )}
 
           <button type="submit" className="btn btn-primary btn-block" style={{ marginTop: '12px' }}>
             Login

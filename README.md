@@ -2643,3 +2643,205 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 3. Open the **Actions** tab on GitHub and confirm that the deployment workflow executes and passes with a green checkmark.
 4. Refresh `https://shop-stack-enterprise-multi-vendor-xi.vercel.app/` to verify changes are live immediately with zero downtime.
 
+---
+
+# 🛡️ ShopStack — Day 17: Enterprise RBAC Enforcement, Intelligent Automatic Role Detection, Strict Vendor ID Governance & Synchronized Product Inspection Matrix
+
+This section documents the architectural hardening, role-based access control (RBAC) governance, automatic role-detection login system, vendor identity validation, and synchronized operational inspection matrices implemented in **Day 17** of the ShopStack Enterprise Multi-Vendor Platform.
+
+---
+
+## 📌 Deliverables & Architecture Overview (Day 17)
+
+Day 17 focused on transforming user authentication, session initiation, operational inspection, and role transitions from manual selections into an intelligent, enterprise-grade, identity-governed architecture.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                             ShopStack Authentication Gateway                                │
+│                         (Intelligent Role & Vendor Detection)                               │
+└──────────────────────────────────────────────┬──────────────────────────────────────────────┘
+                                               │
+               ┌───────────────────────────────┴───────────────────────────────┐
+               ▼                                                               ▼
+   [ Email & Credential Parsing ]                                 [ Optional 6-Digit Vendor ID ]
+               │                                                               │
+   ┌───────────┴───────────┐                                      ┌────────────┴────────────┐
+   ▼                       ▼                                      ▼                         ▼
+Domain Contains        Domain Contains                     Matches Registered       Unassigned / Blank /
+   "@admin"               "@staff"                           Vendor Code                  Mismatch
+   │                       │                                      │                         │
+   ▼                       ▼                                      ▼                         ▼
+[ ROLE_ADMIN ]         [ ROLE_STAFF ]                      [ ROLE_VENDOR ]          [ Vendor ID Check ]
+(System Admin)      (Warehouse Operations)                  (Seller Console)                │
+   │                       │                                      │            ┌────────────┴────────────┐
+   │                       │                                      │            ▼                         ▼
+   │                       │                                      │       [ Blank ID ]          [ Invalid ID Given ]
+   │                       │                                      │            │                         │
+   │                       │                                      │            ▼                         ▼
+   │                       │                                      │     [ ROLE_CUSTOMER ]       ❌ Floating Error:
+   │                       │                                      │     (Standard Buyer)     "Vendor ID not detected"
+   │                       │                                      │            │
+   └───────────────────────┴──────────────────┬───────────────────┴────────────┘
+                                              ▼
+                             ┌──────────────────────────────────┐
+                             │       Default Landing Page       │
+                             │         [ Home Dashboard ]       │
+                             │          (Browse Catalog)        │
+                             └────────────────┬─────────────────┘
+                                              │
+                      ┌───────────────────────┼───────────────────────┐
+                      ▼                       ▼                       ▼
+            [ Admin Profile ]       [ Staff Profile ]      [ Customer / Vendor ]
+            • Back Button (Home)    • Back Button (Home)   • Dual-Mode Switching
+            • No Customer Switch    • No Customer Switch   • Dynamic Customer ↔ Vendor
+            • No Buying Controls    • No Buying Controls   • 6-Digit Seller Code Guard
+            • [ Inspect Details ]   • [ Inspect Inv. ]     • Buy Now / Cart / Reviews
+```
+
+---
+
+## 🚀 Key Features Implemented (Day 17 Milestone)
+
+### 1. Enterprise RBAC & Strict Role Transition Matrix
+* **Dedicated Administrative & Operational Accounts**:
+  * System Administrators (`ROLE_ADMIN`) and Warehouse Staff (`ROLE_STAFF`) are strictly bound to their operational privileges.
+  * The *"Switch to Customer Mode"* option has been permanently removed from both Admin and Warehouse Staff profile interfaces.
+  * System Administrators cannot be demoted or switched into customer/vendor accounts, and Warehouse Staff cannot switch into customer/vendor profiles.
+* **Controlled Bidirectional Switching (`CUSTOMER` $\leftrightarrow$ `VENDOR`)**:
+  * Only regular customer accounts with active merchant credentials can switch seamlessly between **Customer Mode** (shopping & purchasing) and **Vendor Mode** (product management & fulfillment).
+  * Switching from Customer to Vendor requires entering the approved 6-digit Vendor ID.
+  * Switching from Vendor back to Customer is instantaneous via the top-navbar profile toggle.
+* **Backend Security Enforcement (`AuthController.java`)**:
+  * Server-side validation rejects any unauthorized role modification attempts originating from or targeting `ADMIN` and `STAFF` roles, preventing privilege escalation vulnerabilities.
+
+```java
+// AuthController.java - Strict RBAC Enforcement
+if (targetRole.equalsIgnoreCase("VENDOR")) {
+    if (user.getVendorId() == null || !user.getVendorId().equals(vendorCode)) {
+        return ResponseEntity.badRequest().body("Invalid Vendor ID code.");
+    }
+} else if (targetRole.equalsIgnoreCase("CUSTOMER")) {
+    // Permitted only for non-staff, non-admin accounts
+    if ("ADMIN".equalsIgnoreCase(user.getRole()) || "STAFF".equalsIgnoreCase(user.getRole())) {
+        return ResponseEntity.badRequest().body("Administrative accounts cannot switch to Customer role.");
+    }
+}
+```
+
+---
+
+### 2. Intelligent Automatic Role-Detection Login System
+* **Elimination of Manual Role Dropdown**:
+  * Removed the *"Signing in as [Admin / Staff / Customer / Vendor]"* dropdown selector from the login form to eliminate authentication ambiguity and spoofing attempts.
+* **Automated Domain & Credential Analysis**:
+  * **System Administrator**: Accounts registered with `@admin` domains are automatically detected and authenticated as `ROLE_ADMIN`.
+  * **Warehouse Staff**: Operational personnel registered with `@staff` domains are automatically detected and authenticated as `ROLE_STAFF`.
+* **Vendor ID Field & Dynamic Seller Login**:
+  * Introduced an optional **"6-Digit Vendor ID (If Any)"** input field in the login dialog.
+  * If a registered vendor enters their email, password, and their assigned 6-digit Vendor ID, the system automatically authenticates and activates their **Vendor Profile**.
+  * If a registered vendor leaves the Vendor ID field blank, the platform logs them in as a **Customer**, enabling them to browse and shop without merchant privileges.
+* **Floating Error Banner on Unassigned Vendor IDs**:
+  * If a customer, admin, or warehouse staff enters an unassigned or invalid Vendor ID during login, authentication halts gracefully and displays a dynamic floating error notification:
+    > ⚠️ *"Vendor ID not detected. Please verify your 6-digit vendor identification number or leave blank to sign in as a customer."*
+
+---
+
+### 3. Unified Default Home Dashboard Landing & Streamlined Navigation
+* **Universal Home Landing**:
+  * Upon successful authentication, all user roles (**Customer**, **Vendor**, **Admin**, and **Warehouse Staff**) land directly on the **Home Dashboard** (`Browse Catalog`), providing immediate visibility into products, stock availability, and global platform state.
+* **Direct Navigation Action Buttons**:
+  * The top navigation bar dynamically provides role-specific launchpads:
+    * **Administrator**: Displays `[ 🛡️ Admin Console ]` button to navigate directly to system metrics, commissions, user management, and settlement audits.
+    * **Warehouse Staff**: Displays `[ 📦 Warehouse Panel ]` button to jump into the 5-stage fulfillment pipeline and stock allocation boards.
+    * **Vendor**: Displays `[ 🏪 Seller Console ]` button for inventory, promotions, and batch upload workflows.
+* **Streamlined Profile Navigation ("Back" Button)**:
+  * In the Admin and Staff profile views (`CustomerDashboard.jsx`), extraneous customer tabs (*"My Orders"*, *"My Addresses"*, *"My Wishlist"*) and the former *"Admin Dashboard"* button are replaced with a clean, prominent **`← Back`** button that returns directly to the catalog view.
+
+---
+
+### 4. Synchronized Product & Warehouse Inventory Inspection Matrix
+* **Role-Aware Storefront Interaction**:
+  * Purchase actions (*"Add to Cart"*, *"⚡ Buy Now"*) and review submissions are automatically suppressed for logged-in Administrator and Warehouse Staff accounts to maintain audit purity.
+* **Admin System Inspection Matrix (`[ 🔍 Inspect Details ]`)**:
+  * Admins browsing the storefront have a dedicated `[ 🔍 Inspect Details ]` button on each product card.
+  * Clicking opens a real-time modal showing complete catalog telemetry:
+    * Global SKU, Category, and Tag mapping.
+    * Master stock levels across all distribution centers.
+    * Assigned Merchant ID, Vendor Business Name, and contact credentials.
+    * Base Price, Discount %, Calculated Selling Price, Platform Commission (10%), and Net Vendor Settlement payout.
+* **Warehouse Inventory Inspection Matrix (`[ 📦 Inspect Inventory ]`)**:
+  * Warehouse personnel browsing the catalog have a dedicated `[ 📦 Inspect Inventory ]` button on each product card.
+  * Displays physical inventory status:
+    * Physical stock in bin location vs. Allocated unpicked stock vs. Available reserve.
+    * Reorder threshold limits and automated Restock Alert triggers.
+    * Return restock history and shelf life metrics.
+
+---
+
+### 5. Marketplace Analytics & Activity Stream Realignment
+* Corrected live marketplace activity event feeds in the Admin Console to accurately synchronize:
+  * Multi-vendor order placement timestamps and fulfillment status transitions.
+  * Automated 10% platform commission deductions.
+  * Escrow holds and vendor disbursement records.
+
+---
+
+## 📂 Project Structure Updates (Day 17)
+
+```
+ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/
+├── frontend/
+│   └── src/
+│       ├── components/
+│       │   ├── Login.jsx                 # Automatic role detection, vendor ID validation & floating alert
+│       │   ├── CustomerDashboard.jsx     # Strict RBAC profile, removed customer mode switch for Admin/Staff, added Back button
+│       │   ├── HomeDashboard.jsx         # Synchronized Admin Inspect Details & Staff Inspect Inventory modals
+│       │   ├── Navbar.jsx                # Dynamic top navbar role action badges ([Admin Console], [Warehouse Panel])
+│       │   └── CustomerProfile.jsx       # Streamlined profile view for administrative actors
+│       └── App.jsx                       # Session route guards, role synchronization & default home landing
+└── backend/
+    └── src/
+        └── main/
+            └── java/
+                └── com/
+                    └── shopstack/
+                        └── controller/
+                            ├── AuthController.java       # Server-side RBAC transition matrix & vendor ID validation
+                            └── ProductController.java    # Synchronized product inspection telemetry endpoints
+```
+
+---
+
+## 📡 API Endpoints & RBAC Matrix (Day 17)
+
+| Endpoint | Method | Role Access | Description |
+| :--- | :---: | :---: | :--- |
+| `/api/auth/login` | `POST` | `PUBLIC` | Authenticates user with email & password. Automatically determines role (`ADMIN`, `STAFF`, `CUSTOMER`, `VENDOR`) based on email domain and optional `vendorId`. Returns JWT & active role. |
+| `/api/auth/switch-role` | `POST` | `CUSTOMER`, `VENDOR` | Safely toggles role between `CUSTOMER` and `VENDOR`. Validates 6-digit vendor code for vendor elevation. Strictly blocked for `ADMIN` and `STAFF`. |
+| `/api/products/{id}/inspect-details` | `GET` | `ADMIN` | Returns comprehensive product telemetry including pricing breakdown, commission share (10%), seller details, and audit history. |
+| `/api/products/{id}/inspect-inventory` | `GET` | `ADMIN`, `STAFF` | Returns live warehouse inventory telemetry, stock allocations, threshold levels, and bin location assignments. |
+
+---
+
+## 🧪 Testing Checklist & Verification Guide (Day 17)
+
+### 1. Intelligent Automatic Role-Detection Login
+- [x] **Admin Login**: Enter `admin@admin` / `admin123` with no vendor ID. Confirm automatic sign-in as **Administrator** landing on Home Dashboard with `[ 🛡️ Admin Console ]` badge.
+- [x] **Staff Login**: Enter `staff@staff` / `staff123` with no vendor ID. Confirm automatic sign-in as **Warehouse Staff** landing on Home Dashboard with `[ 📦 Warehouse Panel ]` badge.
+- [x] **Customer Login**: Enter standard customer email and password. Confirm sign-in as **Customer** with active cart, wishlist, and buy buttons.
+- [x] **Vendor Login with Valid ID**: Enter registered vendor email, password, and valid 6-digit ID (`123456`). Confirm sign-in as **Vendor** with `[ 🏪 Seller Console ]` access.
+- [x] **Vendor Login without ID**: Enter registered vendor email and password leaving Vendor ID blank. Confirm sign-in as **Customer** for browsing/buying.
+- [x] **Invalid Vendor ID Floating Error**: Enter `customer@gmail.com` (or `@admin`/`@staff`) with an unassigned Vendor ID `999999`. Confirm sign-in is halted and the floating notification *"Vendor ID not detected"* is displayed.
+
+### 2. Strict Role Transition & Profile Navigation
+- [x] Open Admin profile (`/profile`). Verify that *"Switch to Customer Mode"* is absent and customer tabs (*Orders, Wishlist, Addresses*) are hidden.
+- [x] Verify the **`← Back`** button on Admin profile smoothly navigates back to the Home Dashboard (`/`).
+- [x] Repeat for Warehouse Staff profile (`/profile`). Confirm no customer-switch toggle and functional **`← Back`** button.
+- [x] For Customer/Vendor accounts, verify that switching from Customer $\rightarrow$ Vendor requires the 6-digit vendor code, and switching from Vendor $\rightarrow$ Customer occurs seamlessly.
+
+### 3. Synchronized Storefront Product Inspection
+- [x] **Admin Product Inspection**: As Admin, browse storefront cards and click **`[ 🔍 Inspect Details ]`**. Confirm synchronized modal shows SKU, vendor details, platform commission (10%), and financial splits.
+- [x] **Staff Inventory Inspection**: As Staff, browse storefront cards and click **`[ 📦 Inspect Inventory ]`**. Confirm synchronized modal displays physical stock, allocated count, reorder threshold, and restock status.
+- [x] Verify that *"Add to Cart"*, *"Buy Now"*, and review submission controls are disabled for Admin and Staff.
+
+

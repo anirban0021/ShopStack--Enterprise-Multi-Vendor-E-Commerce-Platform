@@ -11,7 +11,7 @@ import ProductIcon from './ProductIcon';
 import { extractErrorMessage } from '../utils/errorHandler';
 import { formatImageUrl } from '../utils/imageHelper';
 
-export default function WarehouseDashboard({ user, onGoToHome, theme, onToggleTheme, onLogout }) {
+export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout }) {
   const [warehouses, setWarehouses] = useState([]);
   const [inventories, setInventories] = useState([]);
   const [allocations, setAllocations] = useState([]);
@@ -470,6 +470,16 @@ export default function WarehouseDashboard({ user, onGoToHome, theme, onToggleTh
                       STAFF
                     </span>
                   </div>
+                </div>
+
+                <div 
+                  onClick={() => { 
+                    setShowUserDropdown(false); 
+                    if (onGoToProfile) onGoToProfile('profile'); 
+                  }} 
+                  className="dropdown-item"
+                >
+                  <User size={16} style={{ flexShrink: 0 }} /> <span>My Profile</span>
                 </div>
 
                 <div onClick={() => { setShowUserDropdown(false); onGoToHome(); }} className="dropdown-item">

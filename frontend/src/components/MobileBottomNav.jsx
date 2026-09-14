@@ -116,23 +116,25 @@ function MobileBottomNav({
         </button>
 
         {/* Cart Tab */}
-        <button
-          type="button"
-          onClick={onOpenCart}
-          className={`mobile-nav-btn ${isCartOpen ? 'active' : ''}`}
-          aria-label={`Cart with ${cartCount} items`}
-        >
-          <div className="mobile-nav-icon-wrapper">
-            <ShoppingCart size={20} strokeWidth={isCartOpen ? 2.5 : 1.8} />
-            {cartCount > 0 && (
-              <span className="mobile-nav-badge mobile-nav-badge-cart">
-                {cartCount > 99 ? '99+' : cartCount}
-              </span>
-            )}
-          </div>
-          <span className="mobile-nav-label">Cart</span>
-          {isCartOpen && <span className="mobile-nav-active-pill" />}
-        </button>
+        {!isAdmin && !isWarehouse && (
+          <button
+            type="button"
+            onClick={onOpenCart}
+            className={`mobile-nav-btn ${isCartOpen ? 'active' : ''}`}
+            aria-label={`Cart with ${cartCount} items`}
+          >
+            <div className="mobile-nav-icon-wrapper">
+              <ShoppingCart size={20} strokeWidth={isCartOpen ? 2.5 : 1.8} />
+              {cartCount > 0 && (
+                <span className="mobile-nav-badge mobile-nav-badge-cart">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
+            </div>
+            <span className="mobile-nav-label">Cart</span>
+            {isCartOpen && <span className="mobile-nav-active-pill" />}
+          </button>
+        )}
 
         {/* Profile Tab */}
         <button

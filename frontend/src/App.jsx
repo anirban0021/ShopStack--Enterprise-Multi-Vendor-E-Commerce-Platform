@@ -11,7 +11,19 @@ import MobileBottomNav from './components/MobileBottomNav';
 import axios from 'axios';
 
 function App() {
-  const [view, setView] = useState('login'); // 'login', 'register', 'home', or 'profile'
+  const [view, setView] = useState(() => {
+    const savedUser = localStorage.getItem('shopstack_user');
+    if (savedUser) {
+      try {
+        const u = JSON.parse(savedUser);
+        if (u?.id || u?.email) return 'home';
+        return 'home';
+      } catch (e) {
+        return 'login';
+      }
+    }
+    return 'login';
+  });
   
   // Persistent user state
   const [currentUser, setCurrentUser] = useState(() => {
@@ -309,6 +321,8 @@ function App() {
           onUpdateUser={handleUpdateUser}
           onLogout={handleLogout} 
           onGoToHome={() => navigateTo('home')} 
+          onGoToAdmin={() => navigateTo('admin-dashboard')}
+          onGoToWarehouse={() => navigateTo('warehouse-dashboard')}
           theme={theme}
           onToggleTheme={handleToggleTheme}
           initialTab={profileTab}
@@ -325,6 +339,11 @@ function App() {
         <AdminDashboard 
           user={currentUser} 
           onGoToHome={() => navigateTo('home')} 
+          onGoToProfile={(tab) => {
+            setIsCartOpen(false);
+            setProfileTab(tab || 'profile');
+            navigateTo('profile');
+          }}
           theme={theme}
           onToggleTheme={handleToggleTheme}
           onLogout={handleLogout}
@@ -333,6 +352,11 @@ function App() {
         <WarehouseDashboard 
           user={currentUser} 
           onGoToHome={() => navigateTo('home')} 
+          onGoToProfile={(tab) => {
+            setIsCartOpen(false);
+            setProfileTab(tab || 'profile');
+            navigateTo('profile');
+          }}
           theme={theme}
           onToggleTheme={handleToggleTheme}
           onLogout={handleLogout}

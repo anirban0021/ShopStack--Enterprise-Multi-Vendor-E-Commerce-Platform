@@ -110,47 +110,40 @@ public class AuthController {
     public ResponseEntity<?> loginUser(@RequestBody Map<String, String> request) {
         String email = request.get("email");
         String password = request.get("password");
-        String requestedRole = request.get("role");
         String vendorCode = request.get("vendorCode");
 
-        if (email == null || password == null || requestedRole == null) {
-            return ResponseEntity.badRequest().body("Error: Email, password, and role selection are required.");
+        if (email == null || password == null) {
+            return ResponseEntity.badRequest().body("Error: Email and password are required.");
         }
 
         email = email.trim().toLowerCase();
-        requestedRole = requestedRole.toUpperCase();
 
         Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
         
         // If user does not exist yet, auto-provision and save to PostgreSQL database
         if (userOpt.isEmpty()) {
-            if (requestedRole.equals("ADMINISTRATOR") && !email.endsWith("@admin")) {
-                return ResponseEntity.badRequest().body("Error: Access Denied. Administrator logins must use @admin emails.");
+            if (vendorCode != null && !vendorCode.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body("Vendor ID not detected.");
             }
-            if (requestedRole.equals("WAREHOUSE_STAFF") && !email.endsWith("@staff")) {
-                return ResponseEntity.badRequest().body("Error: Access Denied. Warehouse Staff logins must use @staff emails.");
-            }
-
-            String prefix = email.split("@")[0].replaceAll("[._-]", " ");
-            String defaultName = Character.toUpperCase(prefix.charAt(0)) + (prefix.length() > 1 ? prefix.substring(1) : "");
 
             User newUser = new User();
             newUser.setEmail(email);
             newUser.setPassword(password);
-            newUser.setFullName(defaultName);
-            newUser.setRole(requestedRole);
 
-            if (requestedRole.equals("VENDOR")) {
-                String code = (vendorCode != null && vendorCode.trim().length() == 6)
-                        ? vendorCode.trim()
-                        : String.valueOf((int)(100000 + Math.random() * 900000));
-                newUser.setVendorCode(code);
-                newUser.setCommissionRate(10.0);
-            } else if (requestedRole.equals("WAREHOUSE_STAFF")) {
+            String prefix = email.split("@")[0].replaceAll("[._-]", " ");
+            String defaultName = Character.toUpperCase(prefix.charAt(0)) + (prefix.length() > 1 ? prefix.substring(1) : "");
+            newUser.setFullName(defaultName);
+
+            if (email.endsWith("@admin")) {
+                newUser.setRole("ADMINISTRATOR");
+            } else if (email.endsWith("@staff")) {
+                newUser.setRole("WAREHOUSE_STAFF");
                 warehouseRepository.findAll().stream().findFirst().ifPresent(wh -> {
                     newUser.setWarehouseId(wh.getId());
                     newUser.setWarehouseName(wh.getName() + " (" + wh.getCode() + ")");
                 });
+            } else {
+                newUser.setRole("CUSTOMER");
             }
 
             User persistedUser = userRepository.saveAndFlush(newUser);
@@ -162,35 +155,33 @@ public class AuthController {
         // If user already exists in PostgreSQL database
         User user = userOpt.get();
         if (!user.getPassword().equals(password)) {
-            return ResponseEntity.status(401).body("Error: Invalid email or password!");
+            return ResponseEntity.status(401).body("Invalid email or password!");
         }
 
         user.setEmail(email);
 
-        // Enforce role-specific login rules
-        if (requestedRole.equals("VENDOR")) {
+        // If user fills in a vendor ID, strictly verify if user is an assigned vendor with that ID
+        if (vendorCode != null && !vendorCode.trim().isEmpty()) {
+            // Staff and Admins cannot log in as vendors with a vendor ID
+            if (email.endsWith("@admin") || "ADMINISTRATOR".equalsIgnoreCase(user.getRole()) || "ADMIN".equalsIgnoreCase(user.getRole())) {
+                return ResponseEntity.badRequest().body("Vendor ID not detected.");
+            }
+            if (email.endsWith("@staff") || "WAREHOUSE_STAFF".equalsIgnoreCase(user.getRole())) {
+                return ResponseEntity.badRequest().body("Vendor ID not detected.");
+            }
+
             String storedCode = user.getVendorCode();
-            if (storedCode == null || storedCode.trim().isEmpty()) {
-                String newCode = (vendorCode != null && vendorCode.trim().length() == 6)
-                        ? vendorCode.trim()
-                        : String.valueOf((int)(100000 + Math.random() * 900000));
-                user.setVendorCode(newCode);
-                user.setCommissionRate(10.0);
-            } else if (vendorCode != null && !vendorCode.trim().equals(storedCode)) {
-                return ResponseEntity.badRequest().body("Error: Invalid 6-digit Vendor ID.");
+            if (storedCode == null || storedCode.trim().isEmpty() || !vendorCode.trim().equals(storedCode)) {
+                return ResponseEntity.badRequest().body("Vendor ID not detected.");
             }
             user.setRole("VENDOR");
         } 
-        else if (requestedRole.equals("ADMINISTRATOR")) {
-            if (!email.endsWith("@admin")) {
-                return ResponseEntity.badRequest().body("Error: Access Denied. Administrator logins must use @admin emails.");
-            }
+        else if (email.endsWith("@admin") || "ADMINISTRATOR".equalsIgnoreCase(user.getRole()) || "ADMIN".equalsIgnoreCase(user.getRole())) {
+            // Admins log in as Administrator
             user.setRole("ADMINISTRATOR");
         } 
-        else if (requestedRole.equals("WAREHOUSE_STAFF")) {
-            if (!email.endsWith("@staff")) {
-                return ResponseEntity.badRequest().body("Error: Access Denied. Warehouse Staff logins must use @staff emails.");
-            }
+        else if (email.endsWith("@staff") || "WAREHOUSE_STAFF".equalsIgnoreCase(user.getRole())) {
+            // Warehouse staff log in as Warehouse Staff
             user.setRole("WAREHOUSE_STAFF");
             if (user.getWarehouseId() == null) {
                 warehouseRepository.findAll().stream().findFirst().ifPresent(wh -> {
@@ -199,10 +190,9 @@ public class AuthController {
                 });
             }
         } 
-        else if (requestedRole.equals("CUSTOMER")) {
+        else {
+            // Customers and Vendors without vendor ID log in as standard Customer
             user.setRole("CUSTOMER");
-        } else {
-            return ResponseEntity.badRequest().body("Error: Invalid role requested.");
         }
 
         User updatedUser = userRepository.saveAndFlush(user);
@@ -245,40 +235,22 @@ public class AuthController {
                     }
                     user.setRole("VENDOR");
                 }
-            } else if (newRole.equals("ADMINISTRATOR")) {
-                if (!email.endsWith("@admin")) {
-                    return ResponseEntity.badRequest().body("Error: Unauthorized. Email must end with @admin to switch to Administrator.");
-                }
-                user.setRole("ADMINISTRATOR");
-            } else if (newRole.equals("WAREHOUSE_STAFF")) {
-                if (!email.endsWith("@staff")) {
-                    return ResponseEntity.badRequest().body("Error: Unauthorized. Email must end with @staff to switch to Warehouse Staff.");
-                }
-                user.setRole("WAREHOUSE_STAFF");
             } else {
-                return ResponseEntity.badRequest().body("Error: Invalid role transition from Customer.");
+                return ResponseEntity.badRequest().body("Error: Customer accounts can only switch to Vendor mode.");
             }
         } 
         else if (currentRole.equals("VENDOR")) {
             if (newRole.equals("CUSTOMER")) {
                 user.setRole("CUSTOMER");
             } else {
-                return ResponseEntity.badRequest().body("Error: Vendors can only switch to Customer mode.");
+                return ResponseEntity.badRequest().body("Error: Vendor accounts can only switch to Customer mode.");
             }
         } 
-        else if (currentRole.equals("ADMINISTRATOR")) {
-            if (newRole.equals("CUSTOMER")) {
-                user.setRole("CUSTOMER");
-            } else {
-                return ResponseEntity.badRequest().body("Error: Administrators can only switch to Customer mode.");
-            }
+        else if (currentRole.equals("ADMINISTRATOR") || currentRole.equals("ADMIN")) {
+            return ResponseEntity.badRequest().body("Error: Administrator accounts cannot switch user profiles.");
         } 
         else if (currentRole.equals("WAREHOUSE_STAFF")) {
-            if (newRole.equals("CUSTOMER")) {
-                user.setRole("CUSTOMER");
-            } else {
-                return ResponseEntity.badRequest().body("Error: Warehouse staff can only switch to Customer mode.");
-            }
+            return ResponseEntity.badRequest().body("Error: Warehouse staff accounts cannot switch user profiles.");
         } else {
             return ResponseEntity.badRequest().body("Error: Unknown user role.");
         }

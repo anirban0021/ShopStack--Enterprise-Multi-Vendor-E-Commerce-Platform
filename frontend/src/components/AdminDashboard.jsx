@@ -12,7 +12,7 @@ import ProductIcon from './ProductIcon';
 import { extractErrorMessage } from '../utils/errorHandler';
 import { formatImageUrl } from '../utils/imageHelper';
 
-export default function AdminDashboard({ user, onGoToHome, theme, onToggleTheme, onLogout }) {
+export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'vendors' | 'products' | 'returns' | 'monitoring' | 'transactions' | 'settlements' | 'system' | 'reports'
   const [pendingProducts, setPendingProducts] = useState([]);
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
@@ -1015,7 +1015,7 @@ export default function AdminDashboard({ user, onGoToHome, theme, onToggleTheme,
       {/* Header Navbar */}
       <div className="navbar">
         <div className="nav-left">
-          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>ShopStack</h1>
+          <h1 className="nav-logo" style={{ cursor: 'default', margin: 0, fontSize: '20px' }}>ShopStack Admin</h1>
         </div>
 
         <div className="nav-right">
@@ -1023,11 +1023,11 @@ export default function AdminDashboard({ user, onGoToHome, theme, onToggleTheme,
             type="button"
             onClick={onGoToHome} 
             className="btn-store-nav"
-            title="Browse ShopStack Storefront"
+            title="Browse Catalog & Inspect Products"
           >
-            <ArrowLeft size={15} style={{ flexShrink: 0 }} />
-            <span className="hide-on-mobile">Browse Store</span>
-            <span className="show-on-mobile">Store</span>
+            <Eye size={15} style={{ flexShrink: 0 }} />
+            <span className="hide-on-mobile">Browse Catalog</span>
+            <span className="show-on-mobile">Catalog</span>
           </button>
 
           <div 
@@ -1070,8 +1070,14 @@ export default function AdminDashboard({ user, onGoToHome, theme, onToggleTheme,
                   </div>
                 </div>
 
-                <div onClick={() => { setShowUserDropdown(false); onGoToHome(); }} className="dropdown-item">
-                  <ArrowLeft size={16} style={{ flexShrink: 0 }} /> <span>Browse Store</span>
+                <div 
+                  onClick={() => { 
+                    setShowUserDropdown(false); 
+                    if (onGoToProfile) onGoToProfile('profile'); 
+                  }} 
+                  className="dropdown-item"
+                >
+                  <User size={16} style={{ flexShrink: 0 }} /> <span>My Profile</span>
                 </div>
 
                 <div className="dropdown-divider" />
@@ -1101,7 +1107,7 @@ export default function AdminDashboard({ user, onGoToHome, theme, onToggleTheme,
                         padding: '2px 6px', 
                         borderRadius: '4px', 
                         background: 'var(--bg-input)', 
-                        color: 'var(--text-secondary)',
+                        color: 'var(--text-secondary)', 
                         border: '1px solid var(--border-light)' 
                       }}
                     >
@@ -1483,7 +1489,20 @@ export default function AdminDashboard({ user, onGoToHome, theme, onToggleTheme,
                           <tr key={ord.orderId}>
                             <td>{ord.date}</td>
                             <td style={{ fontFamily: 'monospace', fontWeight: '700', color: 'var(--accent-blue)' }}>{ord.orderId}</td>
-                            <td>{ord.recipientName}</td>
+                            <td>{ord.recipientName || 'Customer'}</td>
+                            <td>
+                              <span style={{ 
+                                fontSize: '11px', 
+                                fontWeight: '700', 
+                                padding: '3px 8px', 
+                                borderRadius: '4px',
+                                background: 'var(--bg-input)', 
+                                color: 'var(--text-secondary)',
+                                border: '1px solid var(--border-light)' 
+                              }}>
+                                {ord.paymentMethod || 'RAZORPAY'}
+                              </span>
+                            </td>
                             <td>
                               <span className={`badge ${
                                 ord.status === 'REFUNDED' ? 'badge-rejected' : 
@@ -1496,7 +1515,7 @@ export default function AdminDashboard({ user, onGoToHome, theme, onToggleTheme,
                                 {ord.status}
                               </span>
                             </td>
-                            <td style={{ fontWeight: '800' }}>₹{Number(ord.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td style={{ fontWeight: '800', color: 'var(--text-primary)' }}>₹{Number(ord.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           </tr>
                         ))
                       )}
