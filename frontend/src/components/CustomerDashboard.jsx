@@ -13,7 +13,7 @@ import { formatImageUrl } from '../utils/imageHelper';
 
 export default function CustomerDashboard({ 
   user, orders = [], setOrders, cart = [], setCart, wishlist = [], setWishlist, 
-  toggleWishlist, addToCart, fetchOrders, fetchWishlist, onUpdateUser, onLogout, onGoToHome, theme, onToggleTheme,
+  toggleWishlist, addToCart, fetchOrders, fetchWishlist, onUpdateUser, onLogout, onGoToHome, onGoToAdmin, onGoToWarehouse, theme, onToggleTheme,
   initialTab = 'profile'
 }) {
   const [profile, setProfile] = useState({
@@ -26,9 +26,20 @@ export default function CustomerDashboard({
     vendorCode: user?.vendorCode || null
   });
 
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const isAdmin = profile.role === 'ADMINISTRATOR' || profile.role === 'ADMIN' || user?.role === 'ADMINISTRATOR' || user?.role === 'ADMIN';
+  const isStaff = profile.role === 'WAREHOUSE_STAFF' || user?.role === 'WAREHOUSE_STAFF';
+  const isPrivileged = isAdmin || isStaff;
+
+  const [activeTab, setActiveTab] = useState(isPrivileged ? 'profile' : initialTab);
   const [showDropdown, setShowDropdown] = useState(false);
   const userMenuRef = useRef(null);
+
+  // If Admin or Warehouse Staff, ensure activeTab stays on profile
+  useEffect(() => {
+    if (isPrivileged && activeTab !== 'profile') {
+      setActiveTab('profile');
+    }
+  }, [isPrivileged, activeTab]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -701,7 +712,7 @@ export default function CustomerDashboard({
       const { razorpayOrderId, amount, currency, keyId } = orderRes.data;
 
       const options = {
-        key: keyId || 'rzp_test_placeholder',
+        key: keyId || 'rzp_test_TOD9vXSNPzLLOn',
         amount: amount,
         currency: currency || 'INR',
         name: 'ShopStack Enterprise',
@@ -815,6 +826,11 @@ export default function CustomerDashboard({
       return;
     }
 
+    if (profile.role === 'ADMINISTRATOR' || profile.role === 'ADMIN' || profile.role === 'WAREHOUSE_STAFF') {
+      showToast('error', 'Action Restricted', 'Administrators and Warehouse staff accounts cannot switch user profiles.');
+      return;
+    }
+
     // If target is VENDOR and user already has a code, but we didn't get it yet, show the prompt modal!
     if (targetRole === 'VENDOR' && profile.role === 'CUSTOMER' && profile.vendorCode && !enteredCode) {
       setSwitchVendorCode('');
@@ -842,10 +858,6 @@ export default function CustomerDashboard({
         } else {
           showToast('success', 'Switched to Vendor View!', 'You now have selling privileges on ShopStack.');
         }
-      } else if (targetRole === 'ADMINISTRATOR') {
-        showToast('success', 'Switched to Admin View!', 'You now have administrative access.');
-      } else if (targetRole === 'WAREHOUSE_STAFF') {
-        showToast('success', 'Switched to Warehouse View!', 'You now have warehouse staff access.');
       } else {
         showToast('success', 'Switched to Customer View!', 'You are now browsing as a standard Customer.');
       }
@@ -871,20 +883,42 @@ export default function CustomerDashboard({
       {/* Navbar */}
       <div className="navbar">
         <div className="nav-left">
-          <h1 className="nav-logo" onClick={onGoToHome} style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}>ShopStack</h1>
+          <h1 
+            className="nav-logo" 
+            onClick={onGoToHome} 
+            style={{ cursor: 'pointer', margin: 0, fontSize: '20px' }}
+          >
+            ShopStack
+          </h1>
         </div>
 
         <div className="nav-right">
-          <button 
-            type="button"
-            onClick={onGoToHome} 
-            className="btn-store-nav"
-            title="Return to Store"
-          >
-            <ArrowLeft size={15} style={{ flexShrink: 0 }} />
-            <span className="hide-on-mobile">Back to Store</span>
-            <span className="show-on-mobile">Store</span>
-          </button>
+          {isPrivileged ? (
+            <button 
+              type="button"
+              onClick={onGoToHome} 
+              className="btn-store-nav"
+              title="Return to Home Dashboard"
+              style={{ 
+                borderColor: isAdmin ? 'rgba(244, 63, 94, 0.3)' : 'rgba(99, 102, 241, 0.3)', 
+                color: isAdmin ? 'var(--accent-rose)' : 'var(--accent-indigo)' 
+              }}
+            >
+              <ArrowLeft size={15} style={{ flexShrink: 0 }} />
+              <span>Back</span>
+            </button>
+          ) : (
+            <button 
+              type="button"
+              onClick={onGoToHome} 
+              className="btn-store-nav"
+              title="Return to Store"
+            >
+              <ArrowLeft size={15} style={{ flexShrink: 0 }} />
+              <span className="hide-on-mobile">Back to Store</span>
+              <span className="show-on-mobile">Store</span>
+            </button>
+          )}
 
           <div 
             className="nav-user-menu"
@@ -899,7 +933,7 @@ export default function CustomerDashboard({
               style={{ cursor: 'pointer' }}
             >
               <div className="nav-user-avatar">
-                <User size={14} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
+                <User size={14} style={{ color: isAdmin ? 'var(--accent-rose)' : isStaff ? 'var(--accent-indigo)' : 'var(--accent-blue)', flexShrink: 0 }} />
               </div>
               <strong className="nav-user-name">{profile.fullName || user?.fullName || 'User'}</strong>
               <ChevronDown 
@@ -920,8 +954,8 @@ export default function CustomerDashboard({
                     <strong style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {profile.fullName || user?.fullName || 'User'}
                     </strong>
-                    <span className={`badge ${profile.role === 'VENDOR' ? 'badge-vendor' : 'badge-customer'}`} style={{ fontSize: '9px', padding: '1px 6px' }}>
-                      {profile.role || 'CUSTOMER'}
+                    <span className={`badge ${isAdmin ? 'badge-rejected' : isStaff ? 'badge-warehouse' : profile.role === 'VENDOR' ? 'badge-vendor' : 'badge-customer'}`} style={{ fontSize: '9px', padding: '1px 6px' }}>
+                      {isAdmin ? 'ADMIN' : isStaff ? 'STAFF' : (profile.role || 'CUSTOMER')}
                     </span>
                   </div>
                 </div>
@@ -929,19 +963,23 @@ export default function CustomerDashboard({
                 <div onClick={() => { setShowDropdown(false); setActiveTab('profile'); }} className="dropdown-item">
                   <User size={16} style={{ flexShrink: 0 }} /> <span>My Profile</span>
                 </div>
-                <div onClick={() => { setShowDropdown(false); setActiveTab('addresses'); }} className="dropdown-item">
-                  <MapPin size={16} style={{ flexShrink: 0 }} /> <span>Your Addresses</span>
-                </div>
-                <div onClick={() => { setShowDropdown(false); setActiveTab('orders'); }} className="dropdown-item">
-                  <Package size={16} style={{ flexShrink: 0 }} /> <span>Order History</span>
-                </div>
-                <div onClick={() => { setShowDropdown(false); setActiveTab('wishlist'); }} className="dropdown-item">
-                  <Heart size={16} style={{ flexShrink: 0 }} /> <span>Wishlist</span>
-                </div>
 
-                <div onClick={() => { setShowDropdown(false); onGoToHome(); }} className="dropdown-item">
-                  <ArrowLeft size={16} style={{ flexShrink: 0 }} /> <span>Back to Store</span>
-                </div>
+                {!isPrivileged && (
+                  <>
+                    <div onClick={() => { setShowDropdown(false); setActiveTab('addresses'); }} className="dropdown-item">
+                      <MapPin size={16} style={{ flexShrink: 0 }} /> <span>Your Addresses</span>
+                    </div>
+                    <div onClick={() => { setShowDropdown(false); setActiveTab('orders'); }} className="dropdown-item">
+                      <Package size={16} style={{ flexShrink: 0 }} /> <span>Order History</span>
+                    </div>
+                    <div onClick={() => { setShowDropdown(false); setActiveTab('wishlist'); }} className="dropdown-item">
+                      <Heart size={16} style={{ flexShrink: 0 }} /> <span>Wishlist</span>
+                    </div>
+                    <div onClick={() => { setShowDropdown(false); onGoToHome(); }} className="dropdown-item">
+                      <ArrowLeft size={16} style={{ flexShrink: 0 }} /> <span>Back to Store</span>
+                    </div>
+                  </>
+                )}
 
                 <div className="dropdown-divider" />
 
@@ -970,7 +1008,7 @@ export default function CustomerDashboard({
                         padding: '2px 6px', 
                         borderRadius: '4px', 
                         background: 'var(--bg-input)', 
-                        color: 'var(--text-secondary)',
+                        color: 'var(--text-secondary)', 
                         border: '1px solid var(--border-light)' 
                       }}
                     >
@@ -1008,36 +1046,41 @@ export default function CustomerDashboard({
           >
             <User size={18} /> My Profile
           </div>
-          <div 
-            onClick={() => setActiveTab('addresses')} 
-            className={`sidebar-item ${activeTab === 'addresses' ? 'sidebar-item-active' : ''}`}
-          >
-            <MapPin size={18} /> Your Addresses ({addresses.length})
-          </div>
-          <div 
-            onClick={() => setActiveTab('orders')} 
-            className={`sidebar-item ${activeTab === 'orders' ? 'sidebar-item-active' : ''}`}
-          >
-            <Package size={18} /> My Orders ({orders.length})
-          </div>
-          <div 
-            onClick={() => setActiveTab('transactions')} 
-            className={`sidebar-item ${activeTab === 'transactions' ? 'sidebar-item-active' : ''}`}
-          >
-            <Receipt size={18} /> Transactions ({transactions.length})
-          </div>
-          <div 
-            onClick={() => setActiveTab('wishlist')} 
-            className={`sidebar-item ${activeTab === 'wishlist' ? 'sidebar-item-active' : ''}`}
-          >
-            <Heart size={18} /> My Wishlist ({wishlist.length})
-          </div>
-          <div 
-            onClick={() => setActiveTab('cart')} 
-            className={`sidebar-item ${activeTab === 'cart' ? 'sidebar-item-active' : ''}`}
-          >
-            <ShoppingCart size={18} /> My Cart ({Array.isArray(cart) ? cart.reduce((sum, item) => sum + (Number(item?.quantity) || 1), 0) : 0})
-          </div>
+
+          {!isPrivileged && (
+            <>
+              <div 
+                onClick={() => setActiveTab('addresses')} 
+                className={`sidebar-item ${activeTab === 'addresses' ? 'sidebar-item-active' : ''}`}
+              >
+                <MapPin size={18} /> Your Addresses ({addresses.length})
+              </div>
+              <div 
+                onClick={() => setActiveTab('orders')} 
+                className={`sidebar-item ${activeTab === 'orders' ? 'sidebar-item-active' : ''}`}
+              >
+                <Package size={18} /> My Orders ({orders.length})
+              </div>
+              <div 
+                onClick={() => setActiveTab('transactions')} 
+                className={`sidebar-item ${activeTab === 'transactions' ? 'sidebar-item-active' : ''}`}
+              >
+                <Receipt size={18} /> Transactions ({transactions.length})
+              </div>
+              <div 
+                onClick={() => setActiveTab('wishlist')} 
+                className={`sidebar-item ${activeTab === 'wishlist' ? 'sidebar-item-active' : ''}`}
+              >
+                <Heart size={18} /> My Wishlist ({wishlist.length})
+              </div>
+              <div 
+                onClick={() => setActiveTab('cart')} 
+                className={`sidebar-item ${activeTab === 'cart' ? 'sidebar-item-active' : ''}`}
+              >
+                <ShoppingCart size={18} /> My Cart ({Array.isArray(cart) ? cart.reduce((sum, item) => sum + (Number(item?.quantity) || 1), 0) : 0})
+              </div>
+            </>
+          )}
         </div>
 
         {/* Tab Content Panel */}
@@ -1045,43 +1088,17 @@ export default function CustomerDashboard({
           {activeTab === 'profile' && (
             <>
               {profile.role === 'CUSTOMER' ? (
-                profile.email.endsWith('@admin') ? (
-                  <div className="banner-gradient banner-customer" style={{ borderLeft: '4px solid var(--accent-rose)' }}>
-                    <div>
-                      <h3 className="banner-title">Administrator Account</h3>
-                      <p className="banner-subtitle">
-                        Switch your profile mode back to Administrator to review and approve product listings.
-                      </p>
-                    </div>
-                    <button onClick={() => handleToggleRole('ADMINISTRATOR')} className="btn btn-primary" style={{ background: '#fff', color: '#070a13', boxShadow: 'none' }}>
-                      <RefreshCw size={16} /> Switch to Admin Mode
-                    </button>
+                <div className="banner-gradient banner-customer">
+                  <div>
+                    <h3 className="banner-title">Want to sell on ShopStack?</h3>
+                    <p className="banner-subtitle">
+                      Switch your profile mode to Vendor to list products, track customer sales, and more.
+                    </p>
                   </div>
-                ) : profile.email.endsWith('@staff') ? (
-                  <div className="banner-gradient banner-customer" style={{ borderLeft: '4px solid #f59e0b' }}>
-                    <div>
-                      <h3 className="banner-title">Warehouse Staff Account</h3>
-                      <p className="banner-subtitle">
-                        Switch your profile mode back to Warehouse Staff mode.
-                      </p>
-                    </div>
-                    <button onClick={() => handleToggleRole('WAREHOUSE_STAFF')} className="btn btn-primary" style={{ background: '#fff', color: '#070a13', boxShadow: 'none' }}>
-                      <RefreshCw size={16} /> Switch to Warehouse Mode
-                    </button>
-                  </div>
-                ) : (
-                  <div className="banner-gradient banner-customer">
-                    <div>
-                      <h3 className="banner-title">Want to sell on ShopStack?</h3>
-                      <p className="banner-subtitle">
-                        Switch your profile mode to Vendor to list products, track customer sales, and more.
-                      </p>
-                    </div>
-                    <button onClick={() => handleToggleRole('VENDOR')} className="btn btn-primary" style={{ background: '#fff', color: '#070a13', boxShadow: 'none' }}>
-                      <RefreshCw size={16} /> Switch to Vendor Mode
-                    </button>
-                  </div>
-                )
+                  <button onClick={() => handleToggleRole('VENDOR')} className="btn btn-primary" style={{ background: '#fff', color: '#070a13', boxShadow: 'none' }}>
+                    <RefreshCw size={16} /> Switch to Vendor Mode
+                  </button>
+                </div>
               ) : profile.role === 'VENDOR' ? (
                 <div className="banner-gradient banner-vendor">
                   <div>
@@ -1094,29 +1111,23 @@ export default function CustomerDashboard({
                     <RefreshCw size={16} /> Switch to Customer Mode
                   </button>
                 </div>
-              ) : profile.role === 'ADMINISTRATOR' ? (
+              ) : profile.role === 'ADMINISTRATOR' || profile.role === 'ADMIN' ? (
                 <div className="banner-gradient banner-vendor" style={{ background: 'var(--gradient-danger)' }}>
                   <div>
-                    <h3 className="banner-title">Currently in Administrator Mode</h3>
+                    <h3 className="banner-title">Administrator Profile</h3>
                     <p className="banner-subtitle">
-                      You have security access. You can switch back to browse as a customer anytime.
+                      You are logged in with elevated administrative privileges. Dedicated admin account.
                     </p>
                   </div>
-                  <button onClick={() => handleToggleRole('CUSTOMER')} className="btn btn-primary" style={{ background: '#fff', color: '#070a13', boxShadow: 'none' }}>
-                    <RefreshCw size={16} /> Switch to Customer Mode
-                  </button>
                 </div>
               ) : (
                 <div className="banner-gradient banner-vendor" style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' }}>
                   <div>
-                    <h3 className="banner-title">Currently in Warehouse Staff Mode</h3>
+                    <h3 className="banner-title">Warehouse Staff Profile</h3>
                     <p className="banner-subtitle">
-                      You have warehouse access. You can switch back to browse as a customer anytime.
+                      You are logged in with dedicated warehouse operations and fulfillment privileges.
                     </p>
                   </div>
-                  <button onClick={() => handleToggleRole('CUSTOMER')} className="btn btn-primary" style={{ background: '#fff', color: '#070a13', boxShadow: 'none' }}>
-                    <RefreshCw size={16} /> Switch to Customer Mode
-                  </button>
                 </div>
               )}
 

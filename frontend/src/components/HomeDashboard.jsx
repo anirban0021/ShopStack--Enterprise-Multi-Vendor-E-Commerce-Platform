@@ -5,7 +5,7 @@ import {
   Package, LogOut, X, Trash2, Plus, Minus, Sun, Moon, Star, 
   MessageSquare, ShieldAlert, Store, ShoppingBag, Send, Truck, Check, Bell,
   CreditCard, QrCode, Smartphone, CheckCircle2, ArrowRight, ShieldCheck, Lock,
-  ExternalLink, Maximize2, Zap
+  ExternalLink, Maximize2, Zap, Eye
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 import { extractErrorMessage } from '../utils/errorHandler';
@@ -17,6 +17,9 @@ export default function HomeDashboard({
   wishlist, setWishlist, toggleWishlist, addToCart, fetchOrders,
   isCartOpen, setIsCartOpen
 }) {
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'ADMINISTRATOR' || user?.email?.endsWith('@admin');
+  const isStaff = user?.role === 'WAREHOUSE_STAFF' || user?.role === 'STAFF' || user?.email?.endsWith('@staff');
+  const isStaffOrAdmin = isAdmin || isStaff;
   const [showDropdown, setShowDropdown] = useState(false);
   const userMenuRef = useRef(null);
 
@@ -595,7 +598,7 @@ export default function HomeDashboard({
       const { razorpayOrderId, amount, currency, keyId } = orderRes.data;
 
       const options = {
-        key: keyId || 'rzp_test_placeholder',
+        key: keyId || 'rzp_test_TOD9vXSNPzLLOn',
         amount: amount,
         currency: currency || 'INR',
         name: 'ShopStack Enterprise',
@@ -967,18 +970,18 @@ export default function HomeDashboard({
           </div>
 
           {/* Admin link */}
-          {user.role === 'ADMINISTRATOR' && (
+          {isAdmin && (
             <button 
               onClick={onGoToAdmin} 
               className="btn btn-secondary" 
               style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-rose)' }}
             >
-              <ShieldAlert size={16} /> Admin Panel
+              <ShieldAlert size={16} /> Admin Console
             </button>
           )}
 
           {/* Vendor link */}
-          {user.role === 'VENDOR' && (
+          {(user?.role === 'VENDOR') && (
             <button 
               onClick={onGoToVendor} 
               className="btn btn-secondary" 
@@ -989,7 +992,7 @@ export default function HomeDashboard({
           )}
 
           {/* Warehouse link */}
-          {user.role === 'WAREHOUSE_STAFF' && (
+          {isStaff && (
             <button 
               onClick={onGoToWarehouse} 
               className="btn btn-secondary" 
@@ -1033,8 +1036,8 @@ export default function HomeDashboard({
                     <strong style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {user?.fullName || 'User'}
                     </strong>
-                    <span className={`badge ${user?.role === 'ADMIN' ? 'badge-rejected' : user?.role === 'VENDOR' ? 'badge-vendor' : user?.role === 'WAREHOUSE_STAFF' ? 'badge-warehouse' : 'badge-customer'}`} style={{ fontSize: '9px', padding: '1px 6px' }}>
-                      {user?.role || 'CUSTOMER'}
+                    <span className={`badge ${(user?.role === 'ADMIN' || user?.role === 'ADMINISTRATOR') ? 'badge-rejected' : user?.role === 'VENDOR' ? 'badge-vendor' : user?.role === 'WAREHOUSE_STAFF' ? 'badge-warehouse' : 'badge-customer'}`} style={{ fontSize: '9px', padding: '1px 6px' }}>
+                      {(user?.role === 'ADMIN' || user?.role === 'ADMINISTRATOR') ? 'ADMIN' : (user?.role || 'CUSTOMER')}
                     </span>
                   </div>
                 </div>
@@ -1042,29 +1045,71 @@ export default function HomeDashboard({
                 <div onClick={() => { setShowDropdown(false); onGoToProfile('profile'); }} className="dropdown-item">
                   <User size={16} style={{ flexShrink: 0 }} /> <span>My Profile</span>
                 </div>
-                <div onClick={() => { setShowDropdown(false); onGoToProfile('addresses'); }} className="dropdown-item">
-                  <MapPin size={16} style={{ flexShrink: 0 }} /> <span>Your Addresses</span>
-                </div>
-                <div onClick={() => { setShowDropdown(false); setShowOrdersModal(true); }} className="dropdown-item">
-                  <Package size={16} style={{ flexShrink: 0 }} /> <span>Order History</span>
-                </div>
-                <div onClick={() => { setShowDropdown(false); onGoToProfile('wishlist'); }} className="dropdown-item">
-                  <Heart size={16} style={{ flexShrink: 0 }} /> <span>Wishlist</span>
-                </div>
 
-                {user?.role === 'ADMIN' && (
-                  <div onClick={() => { setShowDropdown(false); onGoToAdmin(); }} className="dropdown-item" style={{ color: 'var(--accent-rose)' }}>
-                    <ShieldAlert size={16} style={{ flexShrink: 0 }} /> <span>Admin Console</span>
-                  </div>
+                {isAdmin ? (
+                  onGoToAdmin && (
+                    <div onClick={() => { setShowDropdown(false); onGoToAdmin(); }} className="dropdown-item" style={{ color: 'var(--accent-rose)' }}>
+                      <ShieldAlert size={16} style={{ flexShrink: 0 }} /> <span>Admin Console</span>
+                    </div>
+                  )
+                ) : isStaff ? (
+                  onGoToWarehouse && (
+                    <div onClick={() => { setShowDropdown(false); onGoToWarehouse(); }} className="dropdown-item" style={{ color: 'var(--accent-indigo)' }}>
+                      <Truck size={16} style={{ flexShrink: 0 }} /> <span>Warehouse Panel</span>
+                    </div>
+                  )
+                ) : (
+                  <>
+                    <div onClick={() => { setShowDropdown(false); onGoToProfile('addresses'); }} className="dropdown-item">
+                      <MapPin size={16} style={{ flexShrink: 0 }} /> <span>Your Addresses</span>
+                    </div>
+                    <div onClick={() => { setShowDropdown(false); setShowOrdersModal(true); }} className="dropdown-item">
+                      <Package size={16} style={{ flexShrink: 0 }} /> <span>Order History</span>
+                    </div>
+                    <div onClick={() => { setShowDropdown(false); onGoToProfile('wishlist'); }} className="dropdown-item">
+                      <Heart size={16} style={{ flexShrink: 0 }} /> <span>Wishlist</span>
+                    </div>
+                    {user?.role === 'VENDOR' && (
+                      <div onClick={() => { setShowDropdown(false); onGoToVendor(); }} className="dropdown-item" style={{ color: 'var(--accent-emerald)' }}>
+                        <Store size={16} style={{ flexShrink: 0 }} /> <span>Seller Console</span>
+                      </div>
+                    )}
+                  </>
                 )}
-                {user?.role === 'VENDOR' && (
-                  <div onClick={() => { setShowDropdown(false); onGoToVendor(); }} className="dropdown-item" style={{ color: 'var(--accent-emerald)' }}>
-                    <Store size={16} style={{ flexShrink: 0 }} /> <span>Seller Console</span>
-                  </div>
-                )}
-                {user?.role === 'WAREHOUSE_STAFF' && (
-                  <div onClick={() => { setShowDropdown(false); onGoToWarehouse(); }} className="dropdown-item" style={{ color: 'var(--accent-indigo)' }}>
-                    <Truck size={16} style={{ flexShrink: 0 }} /> <span>Warehouse Panel</span>
+
+                <div className="dropdown-divider" />
+
+                {/* Light / Dark Mode Toggle Button */}
+                {onToggleTheme && (
+                  <div 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      onToggleTheme(); 
+                    }} 
+                    className="dropdown-item" 
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {theme === 'dark' ? (
+                        <Sun size={16} style={{ color: '#fbbf24', flexShrink: 0 }} />
+                      ) : (
+                        <Moon size={16} style={{ color: '#6366f1', flexShrink: 0 }} />
+                      )}
+                      <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+                    </div>
+                    <span 
+                      style={{ 
+                        fontSize: '10px', 
+                        fontWeight: '700', 
+                        padding: '2px 6px', 
+                        borderRadius: '4px', 
+                        background: 'var(--bg-input)', 
+                        color: 'var(--text-secondary)', 
+                        border: '1px solid var(--border-light)' 
+                      }}
+                    >
+                      {theme === 'dark' ? 'DARK' : 'LIGHT'}
+                    </span>
                   </div>
                 )}
 
@@ -1085,9 +1130,11 @@ export default function HomeDashboard({
             )}
           </div>
 
-          <div onClick={handleOpenCartModal} className="nav-cart-btn">
-            <ShoppingCart size={18} /> Cart ({Array.isArray(cart) ? cart.reduce((sum, item) => sum + (Number(item?.quantity) || 1), 0) : 0})
-          </div>
+          {!isStaffOrAdmin && (
+            <div onClick={handleOpenCartModal} className="nav-cart-btn">
+              <ShoppingCart size={18} /> Cart ({Array.isArray(cart) ? cart.reduce((sum, item) => sum + (Number(item?.quantity) || 1), 0) : 0})
+            </div>
+          )}
         </div>
       </div>
 
@@ -1167,20 +1214,21 @@ export default function HomeDashboard({
                       {disc}% OFF
                     </div>
                   )}
-
-                  {/* Heart button */}
-                  <button 
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      toggleWishlist(prod, showFlash);
-                    }} 
-                    className={`product-wishlist-btn ${isWishlisted ? 'product-wishlist-active' : ''}`}
-                    title="Add to Wishlist"
-                  >
-                    <Heart size={15} fill={isWishlisted ? "currentColor" : "none"} />
-                  </button>
+                  {/* Heart button - only for customers */}
+                  {!isStaffOrAdmin && (
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleWishlist(prod, showFlash);
+                      }} 
+                      className={`product-wishlist-btn ${isWishlisted ? 'product-wishlist-active' : ''}`}
+                      title="Add to Wishlist"
+                    >
+                      <Heart size={15} fill={isWishlisted ? "currentColor" : "none"} />
+                    </button>
+                  )}
 
                   {/* Body click opens detail modal */}
                   <div 
@@ -1239,7 +1287,7 @@ export default function HomeDashboard({
                               fontSize: '11px', 
                               fontWeight: '700', 
                               padding: '2px 7px', 
-                              borderRadius: '4px',
+                              borderRadius: '4px', 
                               width: 'fit-content'
                             }}>
                               <span>✓</span> Save ₹{Number(savings).toLocaleString('en-IN')}
@@ -1258,48 +1306,104 @@ export default function HomeDashboard({
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: prod.stock <= 0 ? '1fr' : '1fr 1fr', gap: '8px', marginTop: '16px' }}>
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        addToCart(prod, showFlash);
-                      }} 
-                      className="btn btn-secondary" 
-                      style={{ padding: '8px 10px', fontSize: '12.5px', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}
-                      disabled={prod.stock <= 0}
-                    >
-                      {prod.stock <= 0 ? "Out of Stock" : <><ShoppingCart size={14} /> Add to Cart</>}
-                    </button>
-                    
-                    {prod.stock > 0 && (
+                  {isAdmin ? (
+                    <div style={{ marginTop: '16px' }}>
                       <button 
                         type="button"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          handleBuyNow(prod);
+                          handleOpenProductDetails(prod);
                         }} 
-                        className="btn btn-primary" 
+                        className="btn btn-secondary" 
                         style={{ 
-                          padding: '8px 10px', 
-                          fontSize: '12.5px', 
+                          width: '100%',
+                          padding: '9px 12px', 
+                          fontSize: '13px', 
                           justifyContent: 'center', 
                           display: 'flex', 
                           alignItems: 'center', 
                           gap: '6px', 
-                          fontWeight: '700', 
-                          background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 
-                          borderColor: '#d97706', 
-                          color: '#ffffff',
-                          boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)' 
+                          fontWeight: '700',
+                          color: 'var(--accent-rose)',
+                          borderColor: 'rgba(244, 63, 94, 0.4)',
+                          background: 'rgba(244, 63, 94, 0.08)'
                         }}
                       >
-                        <Zap size={14} /> Buy Now
+                        <Eye size={15} /> Inspect Details
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  ) : isStaff ? (
+                    <div style={{ marginTop: '16px' }}>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleOpenProductDetails(prod);
+                        }} 
+                        className="btn btn-secondary" 
+                        style={{ 
+                          width: '100%',
+                          padding: '9px 12px', 
+                          fontSize: '13px', 
+                          justifyContent: 'center', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '6px', 
+                          fontWeight: '700',
+                          color: 'var(--accent-indigo)',
+                          borderColor: 'rgba(99, 102, 241, 0.4)',
+                          background: 'rgba(99, 102, 241, 0.08)'
+                        }}
+                      >
+                        <Truck size={15} /> Inspect Inventory
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: prod.stock <= 0 ? '1fr' : '1fr 1fr', gap: '8px', marginTop: '16px' }}>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          addToCart(prod, showFlash);
+                        }} 
+                        className="btn btn-secondary" 
+                        style={{ padding: '8px 10px', fontSize: '12.5px', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}
+                        disabled={prod.stock <= 0}
+                      >
+                        {prod.stock <= 0 ? "Out of Stock" : <><ShoppingCart size={14} /> Add to Cart</>}
+                      </button>
+                      
+                      {prod.stock > 0 && (
+                        <button 
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleBuyNow(prod);
+                          }} 
+                          className="btn btn-primary" 
+                          style={{ 
+                            padding: '8px 10px', 
+                            fontSize: '12.5px', 
+                            justifyContent: 'center', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px', 
+                            fontWeight: '700', 
+                            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 
+                            borderColor: '#d97706', 
+                            color: '#ffffff',
+                            boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)' 
+                          }}
+                        >
+                          <Zap size={14} /> Buy Now
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1703,11 +1807,27 @@ export default function HomeDashboard({
 
         return (
           <div className="modal-overlay" onClick={() => setSelectedProduct(null)}>
-            <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '650px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', width: '100%', overflowX: 'hidden' }}>
+            <div className="dialog-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: isStaffOrAdmin ? '780px' : '650px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', width: '100%', overflowX: 'hidden' }}>
               <div className="modal-header">
                 <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ProductIcon name={selectedProduct.name} category={selectedProduct.category} size={20} />
-                  Product Details
+                  {isAdmin ? (
+                    <>
+                      <ShieldAlert size={20} style={{ color: 'var(--accent-rose)' }} />
+                      <span>Product Inspection Console</span>
+                      <span className="badge badge-rejected" style={{ fontSize: '10px', marginLeft: '6px' }}>ADMIN MODE</span>
+                    </>
+                  ) : isStaff ? (
+                    <>
+                      <Truck size={20} style={{ color: 'var(--accent-indigo)' }} />
+                      <span>Warehouse Inventory Inspection</span>
+                      <span className="badge badge-warehouse" style={{ fontSize: '10px', marginLeft: '6px' }}>WAREHOUSE STAFF</span>
+                    </>
+                  ) : (
+                    <>
+                      <ProductIcon name={selectedProduct.name} category={selectedProduct.category} size={20} />
+                      <span>Product Details</span>
+                    </>
+                  )}
                 </h2>
                 <button onClick={() => setSelectedProduct(null)} className="btn-icon-only">
                   <X size={18} />
@@ -1923,7 +2043,7 @@ export default function HomeDashboard({
                               {selectedProduct.stock > 0 ? `In Stock (${selectedProduct.stock} units)` : 'Out of Stock'}
                             </span>
                           </div>
-                          {disc > 0 && (
+                          {!isStaffOrAdmin && disc > 0 && (
                             <div style={{ 
                               background: 'rgba(16, 185, 129, 0.14)', 
                               border: '1px solid rgba(16, 185, 129, 0.4)', 
@@ -1941,41 +2061,183 @@ export default function HomeDashboard({
                             </div>
                           )}
 
-                          {/* Action Buttons: Add to Cart & Buy Now */}
-                          <div style={{ display: 'grid', gridTemplateColumns: selectedProduct.stock > 0 ? '1fr 1fr' : '1fr', gap: '12px', marginTop: '12px' }}>
-                            <button 
-                              type="button"
-                              onClick={() => addToCart(selectedProduct, showFlash)} 
-                              className="btn btn-secondary" 
-                              style={{ padding: '12px 18px', fontSize: '14px', fontWeight: '700', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px' }}
-                              disabled={selectedProduct.stock <= 0}
-                            >
-                              {selectedProduct.stock <= 0 ? "Out of Stock" : <><ShoppingCart size={17} /> Add to Cart</>}
-                            </button>
-                            
-                            {selectedProduct.stock > 0 && (
+                          {/* Action Buttons / Synchronized Admin or Warehouse Inspection Panel */}
+                          {isAdmin ? (
+                            <div style={{ 
+                              marginTop: '12px', 
+                              padding: '16px', 
+                              borderRadius: 'var(--radius-md)', 
+                              background: 'rgba(244, 63, 94, 0.06)', 
+                              border: '1px solid rgba(244, 63, 94, 0.22)',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '12px'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(244, 63, 94, 0.15)', paddingBottom: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent-rose)', fontWeight: '800', fontSize: '12.5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                  <ShieldAlert size={15} /> System Inspection Matrix
+                                </div>
+                                <span className={`badge ${selectedProduct.status === 'APPROVED' ? 'badge-approved' : selectedProduct.status === 'REJECTED' ? 'badge-rejected' : 'badge-pending'}`} style={{ fontSize: '10px', fontWeight: '700' }}>
+                                  {selectedProduct.status || 'ACTIVE'}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px', fontSize: '12.5px' }}>
+                                <div style={{ background: 'var(--bg-card)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
+                                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px', fontWeight: '600', textTransform: 'uppercase' }}>Product ID</span>
+                                  <strong style={{ color: 'var(--text-primary)', fontSize: '13px' }}>#{selectedProduct.id}</strong>
+                                </div>
+                                <div style={{ background: 'var(--bg-card)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
+                                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px', fontWeight: '600', textTransform: 'uppercase' }}>Inventory Stock</span>
+                                  <strong style={{ color: selectedProduct.stock > 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontSize: '13px' }}>
+                                    {selectedProduct.stock} units {selectedProduct.stock <= 0 ? '(Out of Stock)' : selectedProduct.stock < 5 ? '(Low)' : ''}
+                                  </strong>
+                                </div>
+                                <div style={{ background: 'var(--bg-card)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
+                                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px', fontWeight: '600', textTransform: 'uppercase' }}>Category</span>
+                                  <strong style={{ color: 'var(--text-primary)', fontSize: '13px' }}>{selectedProduct.category}</strong>
+                                </div>
+                                <div style={{ background: 'var(--bg-card)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
+                                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px', fontWeight: '600', textTransform: 'uppercase' }}>Merchant / Vendor</span>
+                                  <strong style={{ color: 'var(--text-primary)', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                                    {selectedProduct.vendorName || selectedProduct.vendor?.fullName || vendorDetails?.fullName || 'Vendor #' + (selectedProduct.vendorId || selectedProduct.vendorCode || 'N/A')}
+                                  </strong>
+                                </div>
+                              </div>
+
+                              {onGoToAdmin && (
+                                <button 
+                                  type="button" 
+                                  onClick={() => {
+                                    handleCloseProductDetails();
+                                    onGoToAdmin();
+                                  }}
+                                  className="btn btn-primary"
+                                  style={{ 
+                                    marginTop: '4px', 
+                                    justifyContent: 'center', 
+                                    background: 'var(--gradient-danger)', 
+                                    borderColor: 'transparent',
+                                    color: '#ffffff', 
+                                    fontWeight: '700', 
+                                    fontSize: '13px', 
+                                    padding: '10px 16px',
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px',
+                                    boxShadow: '0 4px 14px rgba(244, 63, 94, 0.35)',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <ShieldAlert size={16} /> Open in Admin Console
+                                </button>
+                              )}
+                            </div>
+                          ) : isStaff ? (
+                            <div style={{ 
+                              marginTop: '12px', 
+                              padding: '16px', 
+                              borderRadius: 'var(--radius-md)', 
+                              background: 'rgba(99, 102, 241, 0.06)', 
+                              border: '1px solid rgba(99, 102, 241, 0.22)',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '12px'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(99, 102, 241, 0.15)', paddingBottom: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--accent-indigo)', fontWeight: '800', fontSize: '12.5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                  <Truck size={15} /> Warehouse Inventory Matrix
+                                </div>
+                                <span className={`badge ${selectedProduct.stock > 0 ? 'badge-approved' : 'badge-rejected'}`} style={{ fontSize: '10px', fontWeight: '700' }}>
+                                  {selectedProduct.stock > 0 ? `${selectedProduct.stock} IN STOCK` : 'DEPLETED'}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px', fontSize: '12.5px' }}>
+                                <div style={{ background: 'var(--bg-card)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
+                                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px', fontWeight: '600', textTransform: 'uppercase' }}>Product ID</span>
+                                  <strong style={{ color: 'var(--text-primary)', fontSize: '13px' }}>#{selectedProduct.id}</strong>
+                                </div>
+                                <div style={{ background: 'var(--bg-card)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
+                                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px', fontWeight: '600', textTransform: 'uppercase' }}>Stock Quantity</span>
+                                  <strong style={{ color: selectedProduct.stock > 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontSize: '13px' }}>
+                                    {selectedProduct.stock} units {selectedProduct.stock < 5 && selectedProduct.stock > 0 ? '(Low Stock Alert)' : ''}
+                                  </strong>
+                                </div>
+                                <div style={{ background: 'var(--bg-card)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
+                                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px', fontWeight: '600', textTransform: 'uppercase' }}>Category</span>
+                                  <strong style={{ color: 'var(--text-primary)', fontSize: '13px' }}>{selectedProduct.category}</strong>
+                                </div>
+                                <div style={{ background: 'var(--bg-card)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
+                                  <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px', fontWeight: '600', textTransform: 'uppercase' }}>Assigned Warehouse</span>
+                                  <strong style={{ color: 'var(--text-primary)', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                                    {user?.warehouseName || 'Central Distribution Hub'}
+                                  </strong>
+                                </div>
+                              </div>
+
+                              {onGoToWarehouse && (
+                                <button 
+                                  type="button" 
+                                  onClick={() => {
+                                    handleCloseProductDetails();
+                                    onGoToWarehouse();
+                                  }}
+                                  className="btn btn-primary"
+                                  style={{ 
+                                    marginTop: '4px', 
+                                    justifyContent: 'center', 
+                                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', 
+                                    borderColor: 'transparent', 
+                                    color: '#ffffff', 
+                                    fontWeight: '700', 
+                                    fontSize: '13px', 
+                                    padding: '10px 16px',
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px',
+                                    boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <Truck size={16} /> Open in Warehouse Panel
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: selectedProduct.stock > 0 ? '1fr 1fr' : '1fr', gap: '12px', marginTop: '12px' }}>
                               <button 
                                 type="button"
-                                onClick={() => handleBuyNow(selectedProduct)} 
-                                className="btn btn-primary" 
-                                style={{ 
-                                  padding: '12px 18px', 
-                                  fontSize: '14px', 
-                                  fontWeight: '700', 
-                                  justifyContent: 'center', 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  gap: '8px', 
-                                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 
-                                  borderColor: '#d97706', 
-                                  color: '#ffffff',
-                                  boxShadow: '0 4px 14px rgba(245, 158, 11, 0.35)'
-                                }}
+                                onClick={() => addToCart(selectedProduct, showFlash)} 
+                                className="btn btn-secondary" 
+                                style={{ padding: '12px 18px', fontSize: '14px', fontWeight: '700', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                disabled={selectedProduct.stock <= 0}
                               >
-                                <Zap size={17} /> Buy Now
+                                {selectedProduct.stock <= 0 ? "Out of Stock" : <><ShoppingCart size={17} /> Add to Cart</>}
                               </button>
-                            )}
-                          </div>
+                              
+                              {selectedProduct.stock > 0 && (
+                                <button 
+                                  type="button"
+                                  onClick={() => handleBuyNow(selectedProduct)} 
+                                  className="btn btn-primary" 
+                                  style={{ 
+                                    padding: '12px 18px', 
+                                    fontSize: '14px', 
+                                    fontWeight: '700', 
+                                    justifyContent: 'center', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px',
+                                    background: 'var(--gradient-primary)',
+                                    borderColor: 'transparent'
+                                  }}
+                                >
+                                  <CreditCard size={17} /> Buy Now
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })()}
@@ -2031,41 +2293,43 @@ export default function HomeDashboard({
                   </div>
                 ) : null}
 
-                {/* Write Review Form */}
-                <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '20px', marginBottom: '24px' }}>
-                  <h4 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px' }}>Write a Customer Review</h4>
-                  <form onSubmit={handleAddReview} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Your Rating:</span>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Star 
-                            key={star} 
-                            size={18} 
-                            onClick={() => setReviewForm({ ...reviewForm, rating: star })}
-                            fill={star <= reviewForm.rating ? '#fbbf24' : 'none'}
-                            style={{ color: '#fbbf24', cursor: 'pointer' }}
-                            className="star-interactive"
-                          />
-                        ))}
+                {/* Write Review Form - only for regular customers */}
+                {!isStaffOrAdmin && (
+                  <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '20px', marginBottom: '24px' }}>
+                    <h4 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px' }}>Write a Customer Review</h4>
+                    <form onSubmit={handleAddReview} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Your Rating:</span>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star 
+                              key={star} 
+                              size={18} 
+                              onClick={() => setReviewForm({ ...reviewForm, rating: star })}
+                              fill={star <= reviewForm.rating ? '#fbbf24' : 'none'}
+                              style={{ color: '#fbbf24', cursor: 'pointer' }}
+                              className="star-interactive"
+                            />
+                          ))}
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="input-icon-wrapper">
-                      <input 
-                        type="text" 
-                        placeholder="Share your thoughts about this product..."
-                        value={reviewForm.comment}
-                        onChange={(e) => setReviewForm({ ...reviewForm, comment: e.target.value })}
-                        className="form-input"
-                        required
-                      />
-                      <button type="submit" className="input-action-btn" style={{ right: '12px' }}>
-                        <Send size={16} style={{ color: 'var(--accent-blue)' }} />
-                      </button>
-                    </div>
-                  </form>
-                </div>
+                      <div className="input-icon-wrapper">
+                        <input 
+                          type="text" 
+                          placeholder="Share your thoughts about this product..."
+                          value={reviewForm.comment}
+                          onChange={(e) => setReviewForm({ ...reviewForm, comment: e.target.value })}
+                          className="form-input"
+                          required
+                        />
+                        <button type="submit" className="input-action-btn" style={{ right: '12px' }}>
+                          <Send size={16} style={{ color: 'var(--accent-blue)' }} />
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
 
                 {/* Reviews List */}
                 <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '20px' }}>
