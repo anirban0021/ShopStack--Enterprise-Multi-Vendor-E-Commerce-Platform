@@ -13,7 +13,7 @@ param (
     [string]$Direction = "cloud-to-local",
 
     [Parameter(Mandatory=$false)]
-    [string]$LocalPass = "Anirban@069",
+    [string]$LocalPass = ($env:SPRING_DATASOURCE_PASSWORD, $env:PGPASSWORD, "postgres" | Where-Object { $_ } | Select-Object -First 1),
 
     [Parameter(Mandatory=$false)]
     [switch]$Watch,
