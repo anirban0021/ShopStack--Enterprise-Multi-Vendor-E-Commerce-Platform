@@ -2472,6 +2472,24 @@ flowchart TD
   - Automated initial database seeding in `DataLoader.java` for default baseline actors (`admin@admin`, `seller@seller`, `staff@staff`, `customer@gmail.com`).
   - Synchronized all 9 catalog items and 75 high-resolution product images into the persistent Docker volume (`shopstack_backend_uploads`).
 
+### 6. Production Secrets Sanitization & Multi-Tier `.gitignore` Governance
+* **Sanitized Plaintext Credentials**:
+  - Cleaned all hardcoded database credentials, Razorpay secret keys, and SMTP email passwords across `backend/src/main/resources/application.properties`, `docker-compose.yml`, and frontend fallback constants.
+  - Configured dynamic environment fallback patterns (`${VAR:placeholder}`) across all configuration files.
+* **Untracked Sensitive Artifacts & Backups**:
+  - Purged all SQL database dumps (`deploy/*.sql`), binary archives (`deploy/uploads.tar.gz`), and SSH private keys (`*.pem`, `*.key`) from the Git index.
+* **Reinforced Multi-Tier `.gitignore`**:
+  - Root, backend, and frontend `.gitignore` rules updated to automatically block `.env*`, database dumps (`*.sql`, `*.dump`), media archives (`*.tar.gz`, `*.zip`), keystores (`*.p12`, `*.jks`), and build outputs.
+
+### 7. Hybrid Vercel Edge Storefront & AWS EC2 Reverse-Proxy Integration (`vercel.json`)
+* **Unified Vercel Edge Frontend**:
+  - Vercel serves the production React storefront at **`https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`**.
+  - Dynamic reverse proxy in `vercel.json` forwards `/api/*` and `/uploads/*` requests seamlessly to the secure AWS EC2 backend with full SSL encryption (`https://13.48.47.35.sslip.io`).
+* **Automated Dual-Target CI/CD Pipeline**:
+  - Pushing to GitHub `main` branch (`git push origin main`) automatically triggers:
+    1. **Vercel Build**: Rebuilds the frontend bundle and deploys to the global edge network in ~30 seconds.
+    2. **GitHub Actions (`.github/workflows/deploy.yml`)**: SSHs into AWS EC2, prunes build caches, pulls latest commits, rebuilds Docker containers, and performs a zero-downtime hot reload in ~2 minutes.
+
 ---
 
 ## 📁 Directory & File Structure Updates (Day 16)
@@ -2480,23 +2498,28 @@ flowchart TD
 ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml                       # GitHub Actions CI/CD push-to-deploy workflow with concurrency locks
-├── backend/
-│   ├── src/main/java/com/shopstack/backend/
-│   │   ├── config/                          # Security, CORS, and startup DataLoader configurations
-│   │   ├── controller/                      # REST API endpoints (/api/auth, /api/products, etc.)
-│   │   ├── model/                           # JPA Entities for all 19 relational tables
-│   │   ├── repository/                      # Spring Data JPA Repository interfaces
-│   │   └── service/
-│   │       └── CloudSyncService.java        # Real-time automated cloud & local DB synchronization service
-│   ├── Dockerfile                           # Multi-stage Maven + Eclipse Temurin 21 production image
-│   └── .dockerignore                        # Ignores target/, .git/, local uploads from build context
+│       └── deploy.yml                       # GitHub Actions CI/CD push-to-deploy workflow with Docker builder prune
 ├── frontend/
 │   ├── Dockerfile                           # Multi-stage Node 20 + Nginx Alpine with OpenSSL & dynamic SSL entrypoint
 │   ├── docker-entrypoint-nginx.sh           # Dynamic SNI multi-domain SSL certificate finder and fallback generator
 │   ├── nginx.conf                           # Dual HTTP (80) & HTTPS (443) config with TLS 1.3 & proxying
 │   ├── vercel.json                          # Vercel SPA routing and API reverse-proxy configuration
+│   ├── .gitignore                           # Frontend build and environment ignore rules
 │   └── .dockerignore                        # Ignores node_modules/, dist/, caches
+├── backend/
+│   ├── src/main/
+│   │   ├── java/com/shopstack/backend/
+│   │   │   ├── config/                      # Security, CORS, and startup DataLoader configurations
+│   │   │   ├── controller/                  # REST API endpoints (/api/auth, /api/products, etc.)
+│   │   │   ├── model/                       # JPA Entities for all 19 relational tables
+│   │   │   ├── repository/                  # Spring Data JPA Repository interfaces
+│   │   │   └── service/
+│   │   │       └── CloudSyncService.java    # Real-time automated cloud & local DB synchronization service
+│   │   └── resources/
+│   │       └── application.properties        # Environment-variable parameterized configuration
+│   ├── Dockerfile                           # Multi-stage Maven + Eclipse Temurin 21 production image
+│   ├── .gitignore                           # Backend target, upload and environment ignore rules
+│   └── .dockerignore                        # Ignores target/, .git/, local uploads from build context
 ├── deploy/
 │   ├── setup-aws-ec2.sh                     # Automated Ubuntu host bootstrap, swap config, SSL & container launcher
 │   ├── setup-ssl.sh                         # Generic Let's Encrypt SSL certificate generator for any domain
@@ -2504,9 +2527,10 @@ ShopStack-Enterprise-Multi-Vendor-E-Commerce-Platform/
 │   ├── sync-db.ps1                          # Full 19-table database synchronization CLI tool (-Watch mode)
 │   ├── ec2_key.pem                          # Protected AWS SSH RSA private key (in .gitignore)
 │   └── AWS_DEPLOYMENT_GUIDE.md              # Step-by-step evaluator review & operational guide
-├── docker-compose.yml                       # Multi-service stack (db, backend, frontend on 80/443, SSL volumes)
+├── vercel.json                              # Root Vercel SPA build config and EC2 reverse-proxy rewrite rules
+├── docker-compose.yml                       # Parameterized multi-service stack (db, backend, frontend on 80/443, SSL volumes)
 ├── .env.example                             # Production environment variables template
-├── .gitignore                               # Protects credentials, .pem keys, and build outputs
+├── .gitignore                               # Protects credentials, .pem keys, database dumps and archives
 └── DOCKER_AND_CLOUD_DEPLOYMENT_DOCUMENTATION.txt  # Full deployment specifications & database details
 ```
 
@@ -2569,6 +2593,7 @@ git add .
 git commit -m "feat: updates for cloud deployment"
 git push origin main
 # GitHub Actions automatically builds and deploys to AWS EC2 in under 2 minutes
+# Vercel automatically builds and deploys to Global Edge CDN in ~30 seconds
 ```
 
 ### 2. One-Click Direct Deployment Script
@@ -2602,32 +2627,36 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 
 ---
 
-## 🚦 Verification Checklist (Day 16: AWS Cloud & Docker Deployment)
+## 🚦 Verification Checklist (Day 16: Cloud Infrastructure, Docker & CI/CD Deployment)
 
-### 1. Live Public Cloud Storefront with Let's Encrypt TLS 1.3
-1. Open **`https://13.48.47.35.sslip.io`** in your browser.
-2. Confirm the **Green SSL Lock / Secure Connection** badge in the browser address bar with 0 warnings.
+### 1. Live Public Storefronts with HTTPS & Let's Encrypt TLS 1.3
+1. Open **`https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`** (Vercel Edge) and **`https://13.48.47.35.sslip.io`** (AWS EC2).
+2. Confirm the **Green SSL Lock / Secure Connection** badge in the browser address bar with 0 warnings on both URLs.
 3. Test accessing `http://13.48.47.35` and confirm it automatically 301-redirects to the secure HTTPS URL.
-4. Verify multi-stage containerized architecture (`backend`, `frontend`, `postgres`) running smoothly on AWS EC2.
+4. Verify multi-stage containerized architecture (`backend`, `frontend`, `postgres`) running healthy on AWS EC2.
 
 ### 2. Product Catalog & High-Resolution Image Reverse Proxy
-1. Browse catalog items on the direct cloud URL (`https://13.48.47.35.sslip.io`).
-2. Verify that high-resolution product media files load via the `/uploads/products/...` Nginx reverse proxy with HTTP 200 responses over HTTPS.
+1. Browse catalog items on the live storefront.
+2. Verify that high-resolution product media files load via the `/uploads/products/...` reverse proxy with HTTP 200 responses over HTTPS.
 3. Verify SPA client-side routing on page refreshes without 404 errors.
 
-### 3. End-to-End Core E-Commerce Workflow
-1. Test customer checkout via Cash on Delivery (COD) or Razorpay Sandbox.
-2. Verify the 5-stage warehouse order fulfillment pipeline (`STOCK ALLOCATED` ➡️ `DELIVERED`).
-3. Confirm transactional email dispatch for order confirmations.
+### 3. Backend Proxy Connectivity & Zero Mixed-Content
+1. Verify that all API calls from `https://shop-stack-enterprise-multi-vendor-xi.vercel.app/api/*` reverse-proxy cleanly to `https://13.48.47.35.sslip.io/api/*` with zero mixed-content warnings.
+2. Test session authentication, JWT headers, and CORS responses across the reverse proxy.
 
 ### 4. Automated 19-Table Database Synchronization
 1. Execute `powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction cloud-to-local` to pull all 19 PostgreSQL tables.
 2. Verify local database schema and records match cloud state.
 3. Run background watcher `-Watch` mode for continuous live sync.
 
-### 5. Automated GitHub Actions CI/CD to AWS EC2
-1. Push a commit to `main` branch.
-2. Confirm `.github/workflows/deploy.yml` executes successfully and deploys containers to EC2 with zero manual SSH steps.
+### 5. Automated Dual-Target Push-to-Deploy CI/CD
+1. Make a code update in the repository and push to `main` (`git push origin main`).
+2. Confirm Vercel automatically deploys the frontend within ~30 seconds.
+3. Confirm GitHub Actions workflow (`.github/workflows/deploy.yml`) builds and hot-reloads Docker containers on AWS EC2 with automatic cache pruning.
+
+### 6. Zero Plaintext Secrets & Repository Security Compliance
+1. Verify working tree and commit history contain no hardcoded database passwords, private keys, or API tokens.
+2. Confirm multi-tier `.gitignore` actively protects `.env*`, `*.sql`, `*.dump`, `*.tar.gz`, and `*.pem` files.
 
 ---
 
@@ -2726,13 +2755,18 @@ if (targetRole.equalsIgnoreCase("VENDOR")) {
   * Introduced an optional **"6-Digit Vendor ID (If Any)"** input field in the login dialog.
   * If a registered vendor enters their email, password, and their assigned 6-digit Vendor ID, the system automatically authenticates and activates their **Vendor Profile**.
   * If a registered vendor leaves the Vendor ID field blank, the platform logs them in as a **Customer**, enabling them to browse and shop without merchant privileges.
-* **Floating Error Banner on Unassigned Vendor IDs**:
-  * If a customer, admin, or warehouse staff enters an unassigned or invalid Vendor ID during login, authentication halts gracefully and displays a dynamic floating error notification:
+
+---
+
+### 3. Dynamic Floating Alert on Unassigned / Mismatched Vendor IDs
+* **Real-Time Client-Side Validation**:
+  * If a customer, admin, or warehouse staff enters an unassigned or invalid Vendor ID during login, authentication halts gracefully.
+  * Displays an animated floating error banner:
     > ⚠️ *"Vendor ID not detected. Please verify your 6-digit vendor identification number or leave blank to sign in as a customer."*
 
 ---
 
-### 3. Unified Default Home Dashboard Landing & Streamlined Navigation
+### 4. Unified Default Home Dashboard Landing & Streamlined Navigation
 * **Universal Home Landing**:
   * Upon successful authentication, all user roles (**Customer**, **Vendor**, **Admin**, and **Warehouse Staff**) land directly on the **Home Dashboard** (`Browse Catalog`), providing immediate visibility into products, stock availability, and global platform state.
 * **Direct Navigation Action Buttons**:
@@ -2745,7 +2779,7 @@ if (targetRole.equalsIgnoreCase("VENDOR")) {
 
 ---
 
-### 4. Synchronized Product & Warehouse Inventory Inspection Matrix
+### 5. Synchronized Product & Warehouse Inventory Inspection Matrix
 * **Role-Aware Storefront Interaction**:
   * Purchase actions (*"Add to Cart"*, *"⚡ Buy Now"*) and review submissions are automatically suppressed for logged-in Administrator and Warehouse Staff accounts to maintain audit purity.
 * **Admin System Inspection Matrix (`[ 🔍 Inspect Details ]`)**:
@@ -2764,7 +2798,7 @@ if (targetRole.equalsIgnoreCase("VENDOR")) {
 
 ---
 
-### 5. Marketplace Analytics & Activity Stream Realignment
+### 6. Marketplace Analytics & Activity Stream Realignment
 * Corrected live marketplace activity event feeds in the Admin Console to accurately synchronize:
   * Multi-vendor order placement timestamps and fulfillment status transitions.
   * Automated 10% platform commission deductions.
@@ -2772,55 +2806,28 @@ if (targetRole.equalsIgnoreCase("VENDOR")) {
 
 ---
 
-### 6. Production Secrets Sanitization & Multi-Tier `.gitignore` Governance
-* **Sanitized Plaintext Credentials**:
-  * Cleaned all hardcoded database credentials, Razorpay secret keys, and SMTP email passwords across `backend/src/main/resources/application.properties`, `docker-compose.yml`, and frontend fallback constants.
-  * Configured dynamic environment fallback patterns (`${VAR:placeholder}`) across all configuration files.
-* **Untracked Sensitive Artifacts & Backups**:
-  * Purged all SQL database dumps (`deploy/*.sql`), binary archives (`deploy/uploads.tar.gz`), and SSH private keys (`*.pem`, `*.key`) from the Git index.
-* **Reinforced Multi-Tier `.gitignore`**:
-  * Root, backend, and frontend `.gitignore` rules updated to automatically block `.env*`, database dumps (`*.sql`, `*.dump`), media archives (`*.tar.gz`, `*.zip`), keystores (`*.p12`, `*.jks`), and build outputs.
-
----
-
-### 7. Automated Hybrid Push-to-Deploy CI/CD (Vercel + AWS EC2)
-* **Unified Vercel Edge Frontend**:
-  * Vercel serves the production React storefront at **`https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`**.
-  * Dynamic reverse proxy in `vercel.json` forwards `/api/*` and `/uploads/*` requests seamlessly to the secure AWS EC2 backend with full SSL encryption (`https://13.48.47.35.sslip.io`).
-* **Automated Dual-Target CI/CD Pipeline**:
-  * Pushing to GitHub `main` branch (`git push origin main`) automatically triggers:
-    1. **Vercel Build**: Rebuilds the frontend bundle and deploys to the global edge network in ~30 seconds.
-    2. **GitHub Actions (`.github/workflows/deploy.yml`)**: SSHs into AWS EC2, prunes build caches, pulls latest commits, rebuilds Docker containers, and performs a zero-downtime hot reload in ~2 minutes.
-
----
-
 ## 📂 Project Structure Updates (Day 17)
 
 ```
 ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/
-├── .github/workflows/
-│   └── deploy.yml                        # Automated EC2 CI/CD pipeline with Docker builder cache pruning
 ├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Login.jsx                 # Automatic role detection, vendor ID validation & floating alert
-│   │   │   ├── CustomerDashboard.jsx     # Strict RBAC profile, removed customer mode switch for Admin/Staff, added Back button
-│   │   │   ├── HomeDashboard.jsx         # Synchronized Admin Inspect Details & Staff Inspect Inventory modals
-│   │   │   ├── Navbar.jsx                # Dynamic top navbar role action badges ([Admin Console], [Warehouse Panel])
-│   │   │   └── CustomerProfile.jsx       # Streamlined profile view for administrative actors
-│   │   └── App.jsx                       # Session route guards, role synchronization & default home landing
-│   └── .gitignore                        # Frontend build and environment ignore rules
-├── backend/
-│   ├── src/main/
-│   │   ├── java/com/shopstack/controller/
-│   │   │   ├── AuthController.java       # Server-side RBAC transition matrix & vendor ID validation
-│   │   │   └── ProductController.java    # Synchronized product inspection telemetry endpoints
-│   │   └── resources/
-│   │       └── application.properties    # Environment-variable parameterized configuration
-│   └── .gitignore                        # Backend target, upload and environment ignore rules
-├── vercel.json                           # Vercel SPA build config and EC2 reverse-proxy rewrite rules
-├── docker-compose.yml                    # Parameterized production multi-container orchestration
-└── .gitignore                            # Root security ignore protecting keys, secrets, and database dumps
+│   └── src/
+│       ├── components/
+│       │   ├── Login.jsx                 # Automatic role detection, vendor ID validation & floating alert
+│       │   ├── CustomerDashboard.jsx     # Strict RBAC profile, removed customer mode switch for Admin/Staff, added Back button
+│       │   ├── HomeDashboard.jsx         # Synchronized Admin Inspect Details & Staff Inspect Inventory modals
+│       │   ├── Navbar.jsx                # Dynamic top navbar role action badges ([Admin Console], [Warehouse Panel])
+│       │   └── CustomerProfile.jsx       # Streamlined profile view for administrative actors
+│       └── App.jsx                       # Session route guards, role synchronization & default home landing
+└── backend/
+    └── src/
+        └── main/
+            └── java/
+                └── com/
+                    └── shopstack/
+                        └── controller/
+                            ├── AuthController.java       # Server-side RBAC transition matrix & vendor ID validation
+                            └── ProductController.java    # Synchronized product inspection telemetry endpoints
 ```
 
 ---
@@ -2856,11 +2863,5 @@ ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/
 - [x] **Admin Product Inspection**: As Admin, browse storefront cards and click **`[ 🔍 Inspect Details ]`**. Confirm synchronized modal shows SKU, vendor details, platform commission (10%), and financial splits.
 - [x] **Staff Inventory Inspection**: As Staff, browse storefront cards and click **`[ 📦 Inspect Inventory ]`**. Confirm synchronized modal displays physical stock, allocated count, reorder threshold, and restock status.
 - [x] Verify that *"Add to Cart"*, *"Buy Now"*, and review submission controls are disabled for Admin and Staff.
-
-### 4. Live Cloud Deployment & Security Verification
-- [x] **Vercel Live Storefront**: Open `https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`. Confirm Day 17 UI updates, `[ 👁️ Inspect Details ]`, `[ 🛡️ Admin Console ]`, and `[ 📦 Warehouse Panel ]` badges appear.
-- [x] **Backend Proxy Connectivity**: Confirm products load and authentication succeeds over HTTPS with zero mixed-content errors.
-- [x] **Automated Push-to-Deploy**: Verify that pushing commits to `origin main` automatically builds Vercel frontend and triggers GitHub Actions deployment to AWS EC2.
-- [x] **Zero Plaintext Secrets**: Confirm working tree and commit history contain no hardcoded database passwords, private keys, or credentials.
 
 
