@@ -1825,17 +1825,17 @@ export default function CustomerDashboard({
                 </div>
               ) : (
                 <div className="table-container">
-                  <table className="custom-table" style={{ minWidth: '1150px' }}>
+                  <table className="custom-table" style={{ minWidth: '880px' }}>
                     <thead>
                       <tr>
-                        <th style={{ minWidth: '130px' }}>Date & Time</th>
-                        <th style={{ minWidth: '140px' }}>Order ID</th>
-                        <th style={{ minWidth: '120px' }}>Method</th>
-                        <th style={{ minWidth: '180px' }}>Razorpay Payment ID</th>
-                        <th style={{ minWidth: '130px' }}>Total Amount</th>
-                        <th style={{ minWidth: '130px', textAlign: 'center' }}>Payment Status</th>
-                        <th style={{ minWidth: '120px', textAlign: 'center' }}>Refunds</th>
-                        <th style={{ textAlign: 'center', minWidth: '140px' }}>Action</th>
+                        <th style={{ minWidth: '110px' }}>Date & Time</th>
+                        <th style={{ minWidth: '110px' }}>Order ID</th>
+                        <th style={{ minWidth: '90px' }}>Method</th>
+                        <th style={{ minWidth: '150px' }}>Razorpay Payment ID</th>
+                        <th style={{ minWidth: '100px' }}>Total Amount</th>
+                        <th style={{ minWidth: '110px', textAlign: 'center' }}>Payment Status</th>
+                        <th style={{ minWidth: '110px', textAlign: 'center' }}>Refunds</th>
+                        <th style={{ textAlign: 'center', minWidth: '100px' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
