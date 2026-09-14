@@ -1203,7 +1203,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                           return (
                             <tr key={s.id}>
                               <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                                {s.createdAt}
+                                {s.createdAt || 'Recent'}
                               </td>
                               <td style={{ fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--accent-blue)' }}>
                                 {s.orderId}
@@ -1220,7 +1220,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                               <td style={{ fontWeight: '800', color: isRefunded ? 'var(--text-muted)' : 'var(--accent-emerald)', fontSize: '14px' }}>
                                 {isRefunded ? '₹0.00' : `₹${Number(s.netPayoutAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                               </td>
-                              <td>
+                              <td style={{ textAlign: 'center' }}>
                                 {isRefunded ? (
                                   <span className="badge badge-rejected" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '700' }}>
                                     <RotateCcw size={11} /> REFUNDED
@@ -1234,6 +1234,9 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                                     <Clock size={12} /> PENDING
                                   </span>
                                 )}
+                              </td>
+                              <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                                {isRefunded ? 'Order Refunded' : isSettled ? (s.settledAt || s.createdAt || 'Settled') : 'Pending Disbursal'}
                               </td>
                             </tr>
                           );

@@ -4163,7 +4163,7 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
 
                           return (
                             <tr key={s.id}>
-                              <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{s.createdAt}</td>
+                              <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{s.createdAt || 'Recent'}</td>
                               <td>
                                 <span className="badge badge-vendor" style={{ fontSize: '11px' }}>
                                   Vendor #{s.vendorId}
@@ -4182,7 +4182,7 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                               <td style={{ fontWeight: '800', color: isRefunded ? 'var(--text-muted)' : 'var(--accent-emerald)', fontSize: '14px' }}>
                                 {isRefunded ? '₹0.00' : `₹${Number(s.netPayoutAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                               </td>
-                              <td>
+                              <td style={{ textAlign: 'center' }}>
                                 {isRefunded ? (
                                   <span className="badge badge-rejected" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '700' }}>
                                     <RotateCcw size={11} /> REFUNDED
@@ -4198,7 +4198,7 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                                 )}
                               </td>
                               <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                                {isRefunded ? 'Order Refunded' : (s.settledAt || 'Pending transfer')}
+                                {isRefunded ? 'Order Refunded' : isSettled ? (s.settledAt || s.createdAt || 'Settled') : 'Pending transfer'}
                               </td>
                               <td style={{ textAlign: 'center' }}>
                                 {isRefunded ? (

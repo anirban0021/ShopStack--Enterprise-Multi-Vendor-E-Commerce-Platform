@@ -93,8 +93,9 @@ public class AdminController {
         try {
             List<Settlement> settlements = settlementRepository.findAllByOrderByIdDesc();
             List<Order> orders = orderRepository.findAll();
-            Map<String, String> orderStatusMap = orders.stream()
-                    .collect(Collectors.toMap(Order::getOrderId, o -> o.getStatus() != null ? o.getStatus().toUpperCase() : "", (a, b) -> a));
+            Map<String, Order> orderMap = orders.stream()
+                    .filter(o -> o.getOrderId() != null)
+                    .collect(Collectors.toMap(Order::getOrderId, o -> o, (a, b) -> a));
 
             double totalGross = 0;
             double totalCommission = 0;
@@ -103,7 +104,20 @@ public class AdminController {
             double settledPayout = 0;
 
             for (Settlement s : settlements) {
-                String ordSt = orderStatusMap.getOrDefault(s.getOrderId(), "");
+                Order matchedOrder = orderMap.get(s.getOrderId());
+                String ordSt = (matchedOrder != null && matchedOrder.getStatus() != null) ? matchedOrder.getStatus().toUpperCase() : "";
+
+                // Auto-populate missing createdAt from order date
+                if ((s.getCreatedAt() == null || s.getCreatedAt().trim().isEmpty()) && matchedOrder != null && matchedOrder.getDate() != null) {
+                    s.setCreatedAt(matchedOrder.getDate());
+                    try { settlementRepository.save(s); } catch (Exception ignored) {}
+                }
+
+                // Auto-populate missing settledAt for SETTLED status
+                if ("SETTLED".equalsIgnoreCase(s.getStatus()) && (s.getSettledAt() == null || s.getSettledAt().trim().isEmpty())) {
+                    s.setSettledAt(s.getCreatedAt() != null ? s.getCreatedAt() : new SimpleDateFormat("MMM dd, yyyy").format(new Date()));
+                    try { settlementRepository.save(s); } catch (Exception ignored) {}
+                }
                 
                 // If order is refunded or cancelled, sync settlement status to REFUNDED / CANCELLED and zero out net payout
                 if ("REFUNDED".equalsIgnoreCase(ordSt) || "CANCELLED".equalsIgnoreCase(ordSt)) {
