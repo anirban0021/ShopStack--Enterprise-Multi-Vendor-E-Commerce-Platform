@@ -30,14 +30,14 @@ jobs:
             echo "❌ Missing secret: EC2_HOST (should be 13.48.47.35)"
             ERRORS=$((ERRORS + 1))
           else
-            echo "✅ EC2_HOST is configured: $EC2_HOST"
+            echo "✅ EC2_HOST is configured."
           fi
 
           if [ -z "$EC2_USER" ]; then
             echo "❌ Missing secret: EC2_USER (should be ubuntu)"
             ERRORS=$((ERRORS + 1))
           else
-            echo "✅ EC2_USER is configured: $EC2_USER"
+            echo "✅ EC2_USER is configured."
           fi
 
           if [ -z "$EC2_SSH_KEY" ]; then
@@ -66,38 +66,22 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          echo "🔌 Verifying SSH connection to EC2 ($EC2_USER@$EC2_HOST)..."
+          echo "🔌 Verifying SSH connection to EC2..."
           ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no -o ConnectTimeout=15 "${EC2_USER}@${EC2_HOST}" "echo '✅ SSH connection established successfully!'"
 
-      - name: Sync Repository Files to EC2 via Rsync
+      - name: Sync Repository Code & Deploy on EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          echo "🚀 Syncing files to EC2..."
-          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no "${EC2_USER}@${EC2_HOST}" "mkdir -p /home/ubuntu/ShopStack"
-          
-          rsync -avz \
-            -e "ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no" \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude 'node_modules' \
-            --exclude 'target' \
-            --exclude 'dist' \
-            --exclude '*.pem' \
-            --exclude '*.key' \
-            --exclude '.env' \
-            ./ "${EC2_USER}@${EC2_HOST}:/home/ubuntu/ShopStack/"
-
-      - name: Rebuild & Restart Docker Containers on EC2
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-        run: |
-          echo "🐳 Rebuilding and starting Docker containers on EC2..."
+          echo "🚀 Pulling latest code and building on EC2 host..."
           ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no "${EC2_USER}@${EC2_HOST}" 'bash -s' << 'EOF'
             set -e
             cd /home/ubuntu/ShopStack
+
+            # Pull latest git commits from main
+            git fetch origin main
+            git reset --hard origin/main
 
             # Create .env from template if missing
             if [ ! -f .env ]; then
@@ -108,19 +92,17 @@ jobs:
             # Set execution permissions for scripts
             chmod +x deploy/*.sh 2>/dev/null || true
 
-            # Free up Docker build cache and unused layers
-            echo "🧹 Cleaning old Docker build cache..."
-            sudo docker builder prune -af --filter "until=24h" || true
+            # Free up Docker build cache, dangling layers, and apt cache to prevent ENOSPC disk exhaustion
+            echo "🧹 Cleaning Docker build caches..."
+            sudo docker builder prune -af || true
+            sudo docker image prune -af || true
+            sudo apt-get clean || true
 
             # Build and deploy with Docker Compose
-            echo "🏗️ Rebuilding Docker containers..."
+            echo "🏗️ Rebuilding Docker containers from latest source..."
             sudo docker compose down --remove-orphans || true
-            sudo docker container prune -f || true
             sudo docker compose build
             sudo docker compose up -d --force-recreate --remove-orphans
-
-            # Clean up dangling images
-            sudo docker image prune -f || true
 
             echo "========================================="
             echo "📊 Docker Container Status:"
