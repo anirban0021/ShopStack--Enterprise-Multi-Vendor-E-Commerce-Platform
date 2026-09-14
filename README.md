@@ -2602,46 +2602,32 @@ powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction local-to-
 
 ---
 
-## 🚦 Verification Checklist (Day 16)
+## 🚦 Verification Checklist (Day 16: AWS Cloud & Docker Deployment)
 
-### 1. Live Public Storefront with HTTPS & Authentication
-1. Open **`https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`** (or **`https://13.48.47.35.sslip.io`**) in your browser.
+### 1. Live Public Cloud Storefront with Let's Encrypt TLS 1.3
+1. Open **`https://13.48.47.35.sslip.io`** in your browser.
 2. Confirm the **Green SSL Lock / Secure Connection** badge in the browser address bar with 0 warnings.
 3. Test accessing `http://13.48.47.35` and confirm it automatically 301-redirects to the secure HTTPS URL.
-4. Verify role-based login and registration flows for all 4 distinct actor profiles:
-   - **Administrator**: `admin@admin` / `admin123`
-   - **Customer**: `customer@gmail.com` / `customer123`
-   - **Vendor**: `seller@seller` / `seller123` (Vendor ID: `123456`)
-   - **Warehouse Staff**: `staff@staff` / `staff123`
-5. Verify session authentication, JWT/CORS headers, and dynamic role switching through the secure reverse proxy.
+4. Verify multi-stage containerized architecture (`backend`, `frontend`, `postgres`) running smoothly on AWS EC2.
 
-### 2. Product Catalog & High-Resolution Image Delivery
-1. Browse catalog items on the live storefront (`https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`).
-2. Verify that high-resolution product media files load smoothly via the `/uploads/products/...` reverse proxy with HTTP 200 responses over HTTPS.
-3. Open product details and test the multi-image gallery carousels and zoom previews.
+### 2. Product Catalog & High-Resolution Image Reverse Proxy
+1. Browse catalog items on the direct cloud URL (`https://13.48.47.35.sslip.io`).
+2. Verify that high-resolution product media files load via the `/uploads/products/...` Nginx reverse proxy with HTTP 200 responses over HTTPS.
+3. Verify SPA client-side routing on page refreshes without 404 errors.
 
-### 3. Shopping Cart, "Buy Now" & Payment Gateway Flow
-1. Add items to cart or click **"⚡ Buy Now"** for direct single-item checkout.
-2. Apply promo coupons (e.g. `SAVE20`).
-3. Complete checkout via Razorpay (Test/Sandbox mode) or Cash on Delivery (COD).
-4. Verify the order is created, confirmation email is dispatched, and order details appear in **Customer Order History**.
+### 3. End-to-End Core E-Commerce Workflow
+1. Test customer checkout via Cash on Delivery (COD) or Razorpay Sandbox.
+2. Verify the 5-stage warehouse order fulfillment pipeline (`STOCK ALLOCATED` ➡️ `DELIVERED`).
+3. Confirm transactional email dispatch for order confirmations.
 
-### 4. Multi-Role Fulfillment & Warehouse Workflow
-1. Log in as Warehouse Staff (`@staff` account).
-2. Move allocated orders along the fulfillment pipeline:
-   `1. STOCK ALLOCATED` ➡️ `2. PRODUCT PICKED` ➡️ `3. ORDER PACKED` ➡️ `4. READY FOR SHIPMENT` ➡️ `SHIPPED`.
-3. Verify delivery handover (`DELIVERED`) and automated financial settlement generation in the Admin console.
+### 4. Automated 19-Table Database Synchronization
+1. Execute `powershell -ExecutionPolicy Bypass -File deploy\sync-db.ps1 -Direction cloud-to-local` to pull all 19 PostgreSQL tables.
+2. Verify local database schema and records match cloud state.
+3. Run background watcher `-Watch` mode for continuous live sync.
 
-### 5. Automated Real-Time Database Synchronization
-1. Register a new user or place an order on `https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`.
-2. Observe real-time automatic synchronization to your local PostgreSQL database (`shopstack_db`) via `CloudSyncService.java` or `deploy\sync-db.ps1 -Watch`.
-3. Inspect local database rows in pgAdmin to verify all relational records match.
-
-### 6. Automated GitHub Actions CI/CD Verification
-1. Make a code update in `frontend/src/` or `backend/src/`.
-2. Commit and push to `main` branch (`git push origin main`).
-3. Open the **Actions** tab on GitHub and confirm that the deployment workflow executes and passes with a green checkmark.
-4. Refresh `https://shop-stack-enterprise-multi-vendor-xi.vercel.app/` to verify changes are live immediately with zero downtime.
+### 5. Automated GitHub Actions CI/CD to AWS EC2
+1. Push a commit to `main` branch.
+2. Confirm `.github/workflows/deploy.yml` executes successfully and deploys containers to EC2 with zero manual SSH steps.
 
 ---
 
