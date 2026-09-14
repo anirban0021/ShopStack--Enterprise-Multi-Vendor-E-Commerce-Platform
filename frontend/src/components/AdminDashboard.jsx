@@ -426,9 +426,35 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
     }
   };
 
-  const handleExportCSV = (type = reportType) => {
-    window.open(`http://localhost:8080/api/admin/reports/export?type=${type}`);
-    showFlash('success', `${type} Business Report CSV download triggered!`);
+  const handleExportCSV = async (type = reportType) => {
+    try {
+      const res = await axios.get(`http://localhost:8080/api/admin/reports/export?type=${type}`, {
+        responseType: 'blob'
+      });
+      
+      let filename = `report_${type.toLowerCase()}_${Date.now()}.csv`;
+      const disposition = res.headers && (res.headers['content-disposition'] || res.headers['Content-Disposition']);
+      if (disposition && disposition.indexOf('filename=') !== -1) {
+        const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+        if (matches != null && matches[1]) {
+          filename = matches[1].replace(/['"]/g, '').trim();
+        }
+      }
+
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      showFlash('success', `${type} Business Report CSV downloaded successfully!`);
+    } catch (err) {
+      console.error("Failed to export CSV report", err);
+      showFlash('error', `Failed to export ${type} report CSV. Please try again.`);
+    }
   };
 
   const fetchCoupons = async () => {
