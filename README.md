@@ -2786,28 +2786,55 @@ if (targetRole.equalsIgnoreCase("VENDOR")) {
 
 ---
 
+### 6. Production Secrets Sanitization & Multi-Tier `.gitignore` Governance
+* **Sanitized Plaintext Credentials**:
+  * Cleaned all hardcoded database credentials, Razorpay secret keys, and SMTP email passwords across `backend/src/main/resources/application.properties`, `docker-compose.yml`, and frontend fallback constants.
+  * Configured dynamic environment fallback patterns (`${VAR:placeholder}`) across all configuration files.
+* **Untracked Sensitive Artifacts & Backups**:
+  * Purged all SQL database dumps (`deploy/*.sql`), binary archives (`deploy/uploads.tar.gz`), and SSH private keys (`*.pem`, `*.key`) from the Git index.
+* **Reinforced Multi-Tier `.gitignore`**:
+  * Root, backend, and frontend `.gitignore` rules updated to automatically block `.env*`, database dumps (`*.sql`, `*.dump`), media archives (`*.tar.gz`, `*.zip`), keystores (`*.p12`, `*.jks`), and build outputs.
+
+---
+
+### 7. Automated Hybrid Push-to-Deploy CI/CD (Vercel + AWS EC2)
+* **Unified Vercel Edge Frontend**:
+  * Vercel serves the production React storefront at **`https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`**.
+  * Dynamic reverse proxy in `vercel.json` forwards `/api/*` and `/uploads/*` requests seamlessly to the secure AWS EC2 backend with full SSL encryption (`https://13.48.47.35.sslip.io`).
+* **Automated Dual-Target CI/CD Pipeline**:
+  * Pushing to GitHub `main` branch (`git push origin main`) automatically triggers:
+    1. **Vercel Build**: Rebuilds the frontend bundle and deploys to the global edge network in ~30 seconds.
+    2. **GitHub Actions (`.github/workflows/deploy.yml`)**: SSHs into AWS EC2, prunes build caches, pulls latest commits, rebuilds Docker containers, and performs a zero-downtime hot reload in ~2 minutes.
+
+---
+
 ## 📂 Project Structure Updates (Day 17)
 
 ```
 ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/
+├── .github/workflows/
+│   └── deploy.yml                        # Automated EC2 CI/CD pipeline with Docker builder cache pruning
 ├── frontend/
-│   └── src/
-│       ├── components/
-│       │   ├── Login.jsx                 # Automatic role detection, vendor ID validation & floating alert
-│       │   ├── CustomerDashboard.jsx     # Strict RBAC profile, removed customer mode switch for Admin/Staff, added Back button
-│       │   ├── HomeDashboard.jsx         # Synchronized Admin Inspect Details & Staff Inspect Inventory modals
-│       │   ├── Navbar.jsx                # Dynamic top navbar role action badges ([Admin Console], [Warehouse Panel])
-│       │   └── CustomerProfile.jsx       # Streamlined profile view for administrative actors
-│       └── App.jsx                       # Session route guards, role synchronization & default home landing
-└── backend/
-    └── src/
-        └── main/
-            └── java/
-                └── com/
-                    └── shopstack/
-                        └── controller/
-                            ├── AuthController.java       # Server-side RBAC transition matrix & vendor ID validation
-                            └── ProductController.java    # Synchronized product inspection telemetry endpoints
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Login.jsx                 # Automatic role detection, vendor ID validation & floating alert
+│   │   │   ├── CustomerDashboard.jsx     # Strict RBAC profile, removed customer mode switch for Admin/Staff, added Back button
+│   │   │   ├── HomeDashboard.jsx         # Synchronized Admin Inspect Details & Staff Inspect Inventory modals
+│   │   │   ├── Navbar.jsx                # Dynamic top navbar role action badges ([Admin Console], [Warehouse Panel])
+│   │   │   └── CustomerProfile.jsx       # Streamlined profile view for administrative actors
+│   │   └── App.jsx                       # Session route guards, role synchronization & default home landing
+│   └── .gitignore                        # Frontend build and environment ignore rules
+├── backend/
+│   ├── src/main/
+│   │   ├── java/com/shopstack/controller/
+│   │   │   ├── AuthController.java       # Server-side RBAC transition matrix & vendor ID validation
+│   │   │   └── ProductController.java    # Synchronized product inspection telemetry endpoints
+│   │   └── resources/
+│   │       └── application.properties    # Environment-variable parameterized configuration
+│   └── .gitignore                        # Backend target, upload and environment ignore rules
+├── vercel.json                           # Vercel SPA build config and EC2 reverse-proxy rewrite rules
+├── docker-compose.yml                    # Parameterized production multi-container orchestration
+└── .gitignore                            # Root security ignore protecting keys, secrets, and database dumps
 ```
 
 ---
@@ -2843,5 +2870,11 @@ ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/
 - [x] **Admin Product Inspection**: As Admin, browse storefront cards and click **`[ 🔍 Inspect Details ]`**. Confirm synchronized modal shows SKU, vendor details, platform commission (10%), and financial splits.
 - [x] **Staff Inventory Inspection**: As Staff, browse storefront cards and click **`[ 📦 Inspect Inventory ]`**. Confirm synchronized modal displays physical stock, allocated count, reorder threshold, and restock status.
 - [x] Verify that *"Add to Cart"*, *"Buy Now"*, and review submission controls are disabled for Admin and Staff.
+
+### 4. Live Cloud Deployment & Security Verification
+- [x] **Vercel Live Storefront**: Open `https://shop-stack-enterprise-multi-vendor-xi.vercel.app/`. Confirm Day 17 UI updates, `[ 👁️ Inspect Details ]`, `[ 🛡️ Admin Console ]`, and `[ 📦 Warehouse Panel ]` badges appear.
+- [x] **Backend Proxy Connectivity**: Confirm products load and authentication succeeds over HTTPS with zero mixed-content errors.
+- [x] **Automated Push-to-Deploy**: Verify that pushing commits to `origin main` automatically builds Vercel frontend and triggers GitHub Actions deployment to AWS EC2.
+- [x] **Zero Plaintext Secrets**: Confirm working tree and commit history contain no hardcoded database passwords, private keys, or credentials.
 
 
