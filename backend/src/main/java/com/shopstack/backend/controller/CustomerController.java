@@ -67,6 +67,9 @@ public class CustomerController {
     private com.shopstack.backend.repository.ReviewRepository reviewRepository;
 
     @Autowired
+    private com.shopstack.backend.service.FileStorageService fileStorageService;
+
+    @Autowired
     private WarehouseService warehouseService;
 
     @Autowired
@@ -267,6 +270,7 @@ public class CustomerController {
             map.put("deliveryAddress", order.getDeliveryAddress());
             map.put("feedbackRating", order.getFeedbackRating());
             map.put("feedbackComment", order.getFeedbackComment());
+            map.put("feedbackImage", order.getFeedbackImage());
             map.put("items", items);
             return map;
         }).collect(Collectors.toList());
@@ -298,6 +302,7 @@ public class CustomerController {
             map.put("deliveryAddress", order.getDeliveryAddress());
             map.put("feedbackRating", order.getFeedbackRating());
             map.put("feedbackComment", order.getFeedbackComment());
+            map.put("feedbackImage", order.getFeedbackImage());
             map.put("items", items);
             return map;
         }).collect(Collectors.toList());
@@ -423,6 +428,20 @@ public class CustomerController {
             comment = payload.get("comment").toString();
             order.setFeedbackComment(comment);
         }
+
+        String image = null;
+        if (payload.containsKey("image") && payload.get("image") != null) {
+            image = payload.get("image").toString();
+        } else if (payload.containsKey("feedbackImage") && payload.get("feedbackImage") != null) {
+            image = payload.get("feedbackImage").toString();
+        }
+        if (image != null && !image.trim().isEmpty()) {
+            image = fileStorageService.processAndSaveIfBase64(image.trim());
+            order.setFeedbackImage(image);
+        } else if (payload.containsKey("removeImage") && Boolean.parseBoolean(payload.get("removeImage").toString())) {
+            order.setFeedbackImage(null);
+        }
+
         orderRepository.save(order);
 
         // Derive reviewer name
@@ -457,6 +476,11 @@ public class CustomerController {
                         rev.setComment(comment);
                         rev.setReviewerName(reviewerName);
                         rev.setDate(formattedDate);
+                        if (image != null && !image.trim().isEmpty()) {
+                            rev.setImageUrl(image);
+                        } else if (payload.containsKey("removeImage") && Boolean.parseBoolean(payload.get("removeImage").toString())) {
+                            rev.setImageUrl(null);
+                        }
                     } else {
                         rev = new com.shopstack.backend.model.Review(
                             item.getProductId(),
@@ -464,7 +488,8 @@ public class CustomerController {
                             reviewerName,
                             rating,
                             comment,
-                            formattedDate
+                            formattedDate,
+                            image
                         );
                     }
                     reviewRepository.save(rev);
@@ -476,6 +501,7 @@ public class CustomerController {
         resp.put("orderId", order.getOrderId());
         resp.put("feedbackRating", order.getFeedbackRating());
         resp.put("feedbackComment", order.getFeedbackComment());
+        resp.put("feedbackImage", order.getFeedbackImage());
         resp.put("status", "SUCCESS");
         return ResponseEntity.ok(resp);
     }

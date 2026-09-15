@@ -125,10 +125,15 @@ public class Order {
 
     private Integer feedbackRating;
     private String feedbackComment;
+    @jakarta.persistence.Column(columnDefinition = "TEXT")
+    private String feedbackImage;
 
     public Integer getFeedbackRating() { return feedbackRating; }
     public void setFeedbackRating(Integer feedbackRating) { this.feedbackRating = feedbackRating; }
 
     public String getFeedbackComment() { return feedbackComment; }
     public void setFeedbackComment(String feedbackComment) { this.feedbackComment = feedbackComment; }
+
+    public String getFeedbackImage() { return feedbackImage; }
+    public void setFeedbackImage(String feedbackImage) { this.feedbackImage = feedbackImage; }
 }

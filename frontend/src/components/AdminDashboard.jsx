@@ -230,6 +230,7 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
   const [reviewSearchTerm, setReviewSearchTerm] = useState('');
   const [reviewFilterRating, setReviewFilterRating] = useState('ALL');
   const [isDeletingReviewId, setIsDeletingReviewId] = useState(null);
+  const [adminReviewLightboxImg, setAdminReviewLightboxImg] = useState(null);
 
   const fetchAdminReviews = async () => {
     setIsLoadingReviews(true);
@@ -4792,6 +4793,39 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                           }}>
                             "{r.comment || 'No comment provided.'}"
                           </div>
+
+                          {/* Customer Unboxing / Review Photo */}
+                          {r.reviewImage && (
+                            <div style={{ marginTop: '10px' }}>
+                              <div 
+                                onClick={() => setAdminReviewLightboxImg({ url: formatImageUrl(r.reviewImage), reviewer: r.reviewerName, product: r.productName })}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  background: 'var(--bg-input)',
+                                  border: '1px solid var(--border-light)',
+                                  borderRadius: '8px',
+                                  padding: '6px 10px',
+                                  cursor: 'pointer',
+                                  transition: 'transform 0.15s ease'
+                                }}
+                                title="Click to view full customer unboxing photo"
+                              >
+                                <img 
+                                  src={formatImageUrl(r.reviewImage)} 
+                                  alt="Customer Review Photo" 
+                                  style={{ width: '42px', height: '42px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)' }} 
+                                />
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <span style={{ fontSize: '11.5px', fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Eye size={12} style={{ color: 'var(--accent-teal)' }} /> Customer Photo
+                                  </span>
+                                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>Click to view</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* Card Footer: Moderation Action */}
@@ -4823,6 +4857,40 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                   </div>
                 );
               })()}
+            </div>
+          )}
+
+          {/* Admin Customer Review Photo Lightbox */}
+          {adminReviewLightboxImg && (
+            <div 
+              className="image-lightbox-overlay" 
+              style={{ zIndex: 99999 }}
+              onClick={() => setAdminReviewLightboxImg(null)}
+            >
+              <div className="lightbox-header" onClick={(e) => e.stopPropagation()}>
+                <div className="lightbox-title">
+                  <Eye size={18} style={{ color: 'var(--accent-teal)' }} />
+                  <span>Review Photo: {adminReviewLightboxImg.product}</span>
+                  <span className="badge badge-customer" style={{ marginLeft: '6px', fontSize: '11px' }}>Uploaded by {adminReviewLightboxImg.reviewer || 'Customer'}</span>
+                </div>
+                <button 
+                  type="button" 
+                  className="lightbox-close-btn" 
+                  onClick={() => setAdminReviewLightboxImg(null)}
+                  title="Close Preview (Esc)"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="lightbox-main-stage" onClick={(e) => e.stopPropagation()}>
+                <div className="lightbox-img-wrapper" style={{ maxHeight: '80vh', maxWidth: '85vw' }}>
+                  <img 
+                    src={adminReviewLightboxImg.url} 
+                    alt="Customer Review Photo" 
+                    style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }} 
+                  />
+                </div>
+              </div>
             </div>
           )}
 

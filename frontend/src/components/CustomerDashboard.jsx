@@ -5,7 +5,8 @@ import {
   CheckCircle2, AlertCircle, Phone, MapPin, Sun, Moon, Heart, 
   ShoppingCart, Plus, Minus, Trash2, Check,
   CreditCard, QrCode, Smartphone, ArrowRight, ShieldCheck, Lock, Store, Truck,
-  Receipt, RotateCcw, DollarSign, Clock, HelpCircle, FileText, CheckCircle, Search, Filter, AlertTriangle
+  Receipt, RotateCcw, DollarSign, Clock, HelpCircle, FileText, CheckCircle, Search, Filter, AlertTriangle,
+  UploadCloud, Image, Camera, Eye, Maximize2
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 import { extractErrorMessage } from '../utils/errorHandler';
@@ -114,9 +115,45 @@ export default function CustomerDashboard({
   // Experience feedback survey states
   const [feedbackRatingInput, setFeedbackRatingInput] = useState({});
   const [feedbackCommentInput, setFeedbackCommentInput] = useState({});
+  const [feedbackImageInput, setFeedbackImageInput] = useState({});
   const [editingFeedbackOrderId, setEditingFeedbackOrderId] = useState(null);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState({});
+  const [isUploadingFeedbackImage, setIsUploadingFeedbackImage] = useState({});
+  const [previewLightboxImage, setPreviewLightboxImage] = useState(null);
   const [orderRefundsMap, setOrderRefundsMap] = useState({});
+
+  const handleFeedbackImageUpload = async (orderId, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('error', 'File Too Large', 'Please select an image smaller than 5MB.');
+      return;
+    }
+
+    setIsUploadingFeedbackImage(prev => ({ ...prev, [orderId]: true }));
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await axios.post('http://localhost:8080/api/products/upload-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (res.data && res.data.imageUrl) {
+        setFeedbackImageInput(prev => ({ ...prev, [orderId]: res.data.imageUrl }));
+        showToast('success', 'Image Uploaded', 'Product review photo attached.');
+      }
+    } catch (err) {
+      // Fallback: Read as base64 data URL
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFeedbackImageInput(prev => ({ ...prev, [orderId]: event.target.result }));
+        showToast('success', 'Image Attached', 'Product review photo attached.');
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsUploadingFeedbackImage(prev => ({ ...prev, [orderId]: false }));
+    }
+  };
 
   const fetchTransactions = async () => {
     if (!profile.id) return;
@@ -1677,6 +1714,7 @@ export default function CustomerDashboard({
                                       setEditingFeedbackOrderId(ord.orderId);
                                       setFeedbackRatingInput(prev => ({ ...prev, [ord.orderId]: ord.feedbackRating }));
                                       setFeedbackCommentInput(prev => ({ ...prev, [ord.orderId]: ord.feedbackComment || '' }));
+                                      setFeedbackImageInput(prev => ({ ...prev, [ord.orderId]: ord.feedbackImage || '' }));
                                     }}
                                     className="btn btn-secondary"
                                     style={{ 
@@ -1710,10 +1748,51 @@ export default function CustomerDashboard({
                                   background: 'rgba(255, 255, 255, 0.03)',
                                   padding: '8px 12px',
                                   borderRadius: '6px',
-                                  borderLeft: '3px solid var(--accent-teal)'
+                                  borderLeft: '3px solid var(--accent-teal)',
+                                  marginBottom: ord.feedbackImage ? '10px' : '0'
                                 }}>
                                   "{ord.feedbackComment || 'No comment provided.'}"
                                 </div>
+
+                                {/* Customer Review Attached Photo */}
+                                {ord.feedbackImage && (
+                                  <div style={{ marginTop: '10px' }}>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', display: 'block', marginBottom: '5px' }}>
+                                      Attached Customer Photo:
+                                    </span>
+                                    <div 
+                                      onClick={() => setPreviewLightboxImage(ord.feedbackImage)}
+                                      style={{ 
+                                        position: 'relative', 
+                                        display: 'inline-block', 
+                                        cursor: 'pointer',
+                                        borderRadius: '8px',
+                                        overflow: 'hidden',
+                                        border: '1.5px solid var(--border-color)',
+                                        boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+                                      }}
+                                      title="Click to view full photo"
+                                    >
+                                      <img 
+                                        src={formatImageUrl(ord.feedbackImage)} 
+                                        alt="Customer Review Photo" 
+                                        style={{ width: '80px', height: '80px', objectFit: 'cover', display: 'block' }}
+                                      />
+                                      <div style={{ 
+                                        position: 'absolute', 
+                                        bottom: '4px', 
+                                        right: '4px', 
+                                        background: 'rgba(0,0,0,0.65)', 
+                                        borderRadius: '4px', 
+                                        padding: '3px', 
+                                        display: 'flex', 
+                                        color: '#fff' 
+                                      }}>
+                                        <Eye size={12} />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1773,21 +1852,116 @@ export default function CustomerDashboard({
                                     className="form-input"
                                     style={{ flex: 1, height: '36px', fontSize: '12.5px', padding: '6px 10px', borderRadius: '6px' }}
                                   />
+                                </div>
+
+                                {/* Review Image Upload Control & Preview */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px dashed var(--border-color)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                    <label 
+                                      htmlFor={`review-img-upload-${ord.orderId}`}
+                                      className="btn btn-secondary"
+                                      style={{ 
+                                        padding: '5px 12px', 
+                                        fontSize: '12px', 
+                                        cursor: 'pointer', 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        gap: '6px',
+                                        borderRadius: '6px',
+                                        background: 'var(--bg-secondary)',
+                                        border: '1px solid var(--border-color)'
+                                      }}
+                                    >
+                                      {isUploadingFeedbackImage[ord.orderId] ? (
+                                        <RefreshCw size={13} className="spin" />
+                                      ) : (
+                                        <UploadCloud size={14} style={{ color: 'var(--accent-teal)' }} />
+                                      )}
+                                      <span>{isUploadingFeedbackImage[ord.orderId] ? 'Uploading Photo...' : '📷 Upload Review Image'}</span>
+                                    </label>
+                                    <input 
+                                      id={`review-img-upload-${ord.orderId}`}
+                                      type="file" 
+                                      accept="image/*"
+                                      disabled={isUploadingFeedbackImage[ord.orderId]}
+                                      onChange={(e) => handleFeedbackImageUpload(ord.orderId, e)}
+                                      style={{ display: 'none' }}
+                                    />
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                      Attach photo of delivered product (PNG, JPG, WebP up to 5MB)
+                                    </span>
+                                  </div>
+
+                                  {/* Uploaded Image Preview */}
+                                  {(feedbackImageInput[ord.orderId] !== undefined ? feedbackImageInput[ord.orderId] : ord.feedbackImage) && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+                                      <div style={{ position: 'relative', width: '64px', height: '64px', borderRadius: '8px', overflow: 'hidden', border: '1.5px solid var(--accent-teal)' }}>
+                                        <img 
+                                          src={formatImageUrl(feedbackImageInput[ord.orderId] !== undefined ? feedbackImageInput[ord.orderId] : ord.feedbackImage)} 
+                                          alt="Review attachment" 
+                                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => setFeedbackImageInput(prev => ({ ...prev, [ord.orderId]: '' }))}
+                                          style={{ 
+                                            position: 'absolute', 
+                                            top: '2px', 
+                                            right: '2px', 
+                                            background: 'rgba(0,0,0,0.75)', 
+                                            color: '#ff4d4f', 
+                                            border: 'none', 
+                                            borderRadius: '50%', 
+                                            width: '18px', 
+                                            height: '18px', 
+                                            cursor: 'pointer', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center',
+                                            padding: 0
+                                          }}
+                                          title="Remove attached image"
+                                        >
+                                          <X size={11} />
+                                        </button>
+                                      </div>
+                                      <div style={{ fontSize: '11.5px', color: 'var(--accent-emerald)', fontWeight: '600' }}>
+                                        ✓ Photo attached to review
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Form Action Buttons */}
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-start', marginTop: '2px' }}>
                                   <button
                                     type="button"
-                                    disabled={isSubmittingFeedback[ord.orderId]}
+                                    disabled={isSubmittingFeedback[ord.orderId] || isUploadingFeedbackImage[ord.orderId]}
                                     onClick={async () => {
                                       const rating = feedbackRatingInput[ord.orderId] !== undefined ? feedbackRatingInput[ord.orderId] : (ord.feedbackRating || 5);
                                       const comment = feedbackCommentInput[ord.orderId] !== undefined ? feedbackCommentInput[ord.orderId] : (ord.feedbackComment || '');
+                                      const image = feedbackImageInput[ord.orderId] !== undefined ? feedbackImageInput[ord.orderId] : (ord.feedbackImage || '');
+                                      const removeImage = feedbackImageInput[ord.orderId] === '';
+
                                       setIsSubmittingFeedback(prev => ({ ...prev, [ord.orderId]: true }));
                                       try {
-                                        await axios.post(`http://localhost:8080/api/customer/orders/${ord.orderId}/feedback`, { rating, comment });
+                                        await axios.post(`http://localhost:8080/api/customer/orders/${ord.orderId}/feedback`, { 
+                                          rating, 
+                                          comment,
+                                          image: image || null,
+                                          removeImage
+                                        });
                                         if (setOrders) {
-                                          setOrders(prev => prev.map(o => o.orderId === ord.orderId ? { ...o, feedbackRating: rating, feedbackComment: comment } : o));
+                                          setOrders(prev => prev.map(o => o.orderId === ord.orderId ? { 
+                                            ...o, 
+                                            feedbackRating: rating, 
+                                            feedbackComment: comment,
+                                            feedbackImage: removeImage ? null : (image || o.feedbackImage)
+                                          } : o));
                                         }
                                         if (fetchOrders) await fetchOrders();
                                         setEditingFeedbackOrderId(null);
-                                        showToast('success', 'Review Saved!', 'Your review and ratings have been submitted.');
+                                        showToast('success', 'Review Saved!', 'Your review, rating, and photo have been submitted.');
                                       } catch (err) {
                                         showToast('error', 'Submission Failed', 'Could not record review. Please try again.');
                                       } finally {
@@ -1796,7 +1970,7 @@ export default function CustomerDashboard({
                                     }}
                                     className="btn btn-primary"
                                     style={{ 
-                                      padding: '7px 16px', 
+                                      padding: '8px 18px', 
                                       fontSize: '12px', 
                                       fontWeight: '600',
                                       background: 'var(--accent-teal)', 
@@ -1806,13 +1980,12 @@ export default function CustomerDashboard({
                                       cursor: 'pointer',
                                       display: 'inline-flex',
                                       alignItems: 'center',
-                                      gap: '5px',
-                                      whiteSpace: 'nowrap'
+                                      gap: '6px'
                                     }}
                                   >
                                     {isSubmittingFeedback[ord.orderId] ? (
                                       <>
-                                        <RefreshCw size={13} className="spin" /> Saving...
+                                        <RefreshCw size={13} className="spin" /> Saving Review...
                                       </>
                                     ) : editingFeedbackOrderId === ord.orderId ? (
                                       <>
@@ -1829,7 +2002,7 @@ export default function CustomerDashboard({
                                       type="button"
                                       onClick={() => setEditingFeedbackOrderId(null)}
                                       className="btn btn-secondary"
-                                      style={{ padding: '7px 12px', fontSize: '12px', borderRadius: '6px' }}
+                                      style={{ padding: '8px 14px', fontSize: '12px', borderRadius: '6px' }}
                                     >
                                       Cancel
                                     </button>
@@ -3537,6 +3710,49 @@ export default function CustomerDashboard({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Review Photo Preview Lightbox Modal */}
+      {previewLightboxImage && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setPreviewLightboxImage(null)} 
+          style={{ zIndex: 9999, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+          >
+            <button 
+              type="button" 
+              onClick={() => setPreviewLightboxImage(null)}
+              style={{ 
+                position: 'absolute', 
+                top: '-42px', 
+                right: '0', 
+                background: 'rgba(255,255,255,0.2)', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: '50%', 
+                width: '34px', 
+                height: '34px', 
+                cursor: 'pointer', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                transition: 'background 0.2s'
+              }}
+              title="Close image view"
+            >
+              <X size={20} />
+            </button>
+            <img 
+              src={formatImageUrl(previewLightboxImage)} 
+              alt="Full resolution review attachment" 
+              style={{ maxWidth: '100%', maxHeight: '85vh', borderRadius: '10px', objectFit: 'contain', boxShadow: '0 12px 40px rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.1)' }} 
+            />
           </div>
         </div>
       )}

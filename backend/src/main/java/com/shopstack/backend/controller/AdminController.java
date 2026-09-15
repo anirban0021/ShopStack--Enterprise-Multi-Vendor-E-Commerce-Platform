@@ -915,6 +915,7 @@ public class AdminController {
                 rMap.put("rating", r.getRating());
                 rMap.put("comment", r.getComment());
                 rMap.put("date", r.getDate());
+                rMap.put("reviewImage", r.getImageUrl());
 
                 Product prod = productMap.get(r.getProductId());
                 if (prod != null) {

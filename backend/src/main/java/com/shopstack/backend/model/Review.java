@@ -21,6 +21,9 @@ public class Review {
     private String comment;
     private String date;
 
+    @jakarta.persistence.Column(columnDefinition = "TEXT")
+    private String imageUrl;
+
     public Review() {}
 
     public Review(Long productId, Long userId, String reviewerName, int rating, String comment, String date) {
@@ -30,6 +33,16 @@ public class Review {
         this.rating = rating;
         this.comment = comment;
         this.date = date;
+    }
+
+    public Review(Long productId, Long userId, String reviewerName, int rating, String comment, String date, String imageUrl) {
+        this.productId = productId;
+        this.userId = userId;
+        this.reviewerName = reviewerName;
+        this.rating = rating;
+        this.comment = comment;
+        this.date = date;
+        this.imageUrl = imageUrl;
     }
 
     public Long getId() { return id; }
@@ -52,4 +65,7 @@ public class Review {
 
     public String getDate() { return date; }
     public void setDate(String date) { this.date = date; }
+
+    public String getImageUrl() { return imageUrl; }
+    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
 }

@@ -587,6 +587,9 @@ public class ProductController {
         if (review.getRating() < 1 || review.getRating() > 5) {
             return ResponseEntity.badRequest().body("Rating must be between 1 and 5 stars.");
         }
+        if (review.getImageUrl() != null && !review.getImageUrl().trim().isEmpty()) {
+            review.setImageUrl(fileStorageService.processAndSaveIfBase64(review.getImageUrl().trim()));
+        }
         Review saved = reviewRepository.save(review);
         return ResponseEntity.ok(saved);
     }
@@ -647,6 +650,12 @@ public class ProductController {
             }
             r.setRating(Integer.parseInt(payload.get("rating").toString()));
             r.setComment(payload.get("comment").toString());
+            if (payload.containsKey("imageUrl") && payload.get("imageUrl") != null) {
+                String img = payload.get("imageUrl").toString().trim();
+                r.setImageUrl(fileStorageService.processAndSaveIfBase64(img));
+            } else if (payload.containsKey("removeImage") && Boolean.parseBoolean(payload.get("removeImage").toString())) {
+                r.setImageUrl(null);
+            }
             Review saved = reviewRepository.save(r);
             return ResponseEntity.ok(saved);
         }

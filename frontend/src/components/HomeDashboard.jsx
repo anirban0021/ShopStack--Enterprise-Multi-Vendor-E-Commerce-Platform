@@ -5,7 +5,7 @@ import {
   Package, LogOut, X, Trash2, Plus, Minus, Sun, Moon, Star, 
   MessageSquare, ShieldAlert, Store, ShoppingBag, Send, Truck, Check, Bell,
   CreditCard, QrCode, Smartphone, CheckCircle2, ArrowRight, ShieldCheck, Lock,
-  ExternalLink, Maximize2, Zap, Eye
+  ExternalLink, Maximize2, Zap, Eye, Camera, UploadCloud, Image
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 import { extractErrorMessage } from '../utils/errorHandler';
@@ -180,8 +180,13 @@ export default function HomeDashboard({
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [showLightbox, setShowLightbox] = useState(false);
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
+  const [reviewImage, setReviewImage] = useState('');
+  const [isUploadingReviewImg, setIsUploadingReviewImg] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState(null);
   const [editReviewForm, setEditReviewForm] = useState({ rating: 5, comment: '' });
+  const [editReviewImage, setEditReviewImage] = useState('');
+  const [isUploadingEditReviewImg, setIsUploadingEditReviewImg] = useState(false);
+  const [reviewLightboxImg, setReviewLightboxImg] = useState(null);
 
   // Lightbox keyboard navigation (Left/Right arrow keys & Escape)
   useEffect(() => {
@@ -691,6 +696,67 @@ export default function HomeDashboard({
     }
   };
 
+  const handleReviewImageUpload = async (e, isEditing = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showFlash('error', "Please upload a valid image file (PNG, JPG, JPEG, WebP).");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showFlash('error', "Image size exceeds 5MB limit. Please choose a smaller photo.");
+      return;
+    }
+
+    if (isEditing) {
+      setIsUploadingEditReviewImg(true);
+    } else {
+      setIsUploadingReviewImg(true);
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await axios.post('http://localhost:8080/api/products/upload-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (res.data && res.data.imageUrl) {
+        if (isEditing) {
+          setEditReviewImage(res.data.imageUrl);
+        } else {
+          setReviewImage(res.data.imageUrl);
+        }
+        showFlash('success', "Review photo uploaded successfully!");
+      } else {
+        throw new Error('No imageUrl returned');
+      }
+    } catch (err) {
+      console.warn("Direct upload failed, falling back to Base64 encoding", err);
+      const reader = new FileReader();
+      reader.onload = (uploadEvt) => {
+        const base64Data = uploadEvt.target.result;
+        if (isEditing) {
+          setEditReviewImage(base64Data);
+        } else {
+          setReviewImage(base64Data);
+        }
+        showFlash('success', "Review photo attached!");
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      if (isEditing) {
+        setIsUploadingEditReviewImg(false);
+      } else {
+        setIsUploadingReviewImg(false);
+      }
+      e.target.value = '';
+    }
+  };
+
   const handleAddReview = async (e) => {
     e.preventDefault();
     if (!reviewForm.comment.trim()) {
@@ -702,6 +768,7 @@ export default function HomeDashboard({
       const payload = {
         rating: reviewForm.rating,
         comment: reviewForm.comment,
+        imageUrl: reviewImage || null,
         reviewerName: user.fullName || "Anonymous Customer",
         userId: user.id,
         date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
@@ -713,6 +780,7 @@ export default function HomeDashboard({
       const res = await axios.get(`http://localhost:8080/api/products/${selectedProduct.id}/reviews`);
       setProductReviews(res.data);
       setReviewForm({ rating: 5, comment: '' });
+      setReviewImage('');
       showFlash('success', "Review submitted successfully!");
       fetchProducts();
     } catch (err) {
@@ -723,11 +791,13 @@ export default function HomeDashboard({
   const handleStartEditReview = (rev) => {
     setEditingReviewId(rev.id);
     setEditReviewForm({ rating: rev.rating, comment: rev.comment });
+    setEditReviewImage(rev.imageUrl || '');
   };
 
   const handleCancelEditReview = () => {
     setEditingReviewId(null);
     setEditReviewForm({ rating: 5, comment: '' });
+    setEditReviewImage('');
   };
 
   const handleUpdateReview = async (e, reviewId) => {
@@ -740,6 +810,7 @@ export default function HomeDashboard({
       const payload = {
         rating: editReviewForm.rating,
         comment: editReviewForm.comment,
+        imageUrl: editReviewImage || null,
         userId: user.id
       };
       await axios.put(`http://localhost:8080/api/products/reviews/${reviewId}`, payload);
@@ -748,6 +819,7 @@ export default function HomeDashboard({
       const res = await axios.get(`http://localhost:8080/api/products/${selectedProduct.id}/reviews`);
       setProductReviews(res.data);
       setEditingReviewId(null);
+      setEditReviewImage('');
       showFlash('success', "Review updated successfully!");
       fetchProducts();
     } catch (err) {
@@ -2298,21 +2370,69 @@ export default function HomeDashboard({
                   <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '20px', marginBottom: '24px' }}>
                     <h4 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px' }}>Write a Customer Review</h4>
                     <form onSubmit={handleAddReview} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Your Rating:</span>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <Star 
-                              key={star} 
-                              size={18} 
-                              onClick={() => setReviewForm({ ...reviewForm, rating: star })}
-                              fill={star <= reviewForm.rating ? '#fbbf24' : 'none'}
-                              style={{ color: '#fbbf24', cursor: 'pointer' }}
-                              className="star-interactive"
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Your Rating:</span>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star 
+                                key={star} 
+                                size={18} 
+                                onClick={() => setReviewForm({ ...reviewForm, rating: star })}
+                                fill={star <= reviewForm.rating ? '#fbbf24' : 'none'}
+                                style={{ color: '#fbbf24', cursor: 'pointer' }}
+                                className="star-interactive"
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Attach Photo Button */}
+                        <div>
+                          <label 
+                            style={{ 
+                              display: 'inline-flex', 
+                              alignItems: 'center', 
+                              gap: '6px', 
+                              padding: '5px 12px', 
+                              background: 'var(--bg-secondary)', 
+                              border: '1px solid var(--border-color)', 
+                              borderRadius: '6px', 
+                              fontSize: '12px', 
+                              cursor: 'pointer',
+                              color: 'var(--text-secondary)'
+                            }}
+                          >
+                            <Camera size={14} style={{ color: 'var(--accent-teal)' }} />
+                            <span>{isUploadingReviewImg ? 'Uploading...' : reviewImage ? 'Change Photo' : 'Attach Photo'}</span>
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              onChange={(e) => handleReviewImageUpload(e, false)} 
+                              style={{ display: 'none' }} 
                             />
-                          ))}
+                          </label>
                         </div>
                       </div>
+
+                      {/* Uploaded Photo Preview */}
+                      {reviewImage && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-secondary)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                          <img 
+                            src={formatImageUrl(reviewImage)} 
+                            alt="Attached Review" 
+                            style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} 
+                          />
+                          <span style={{ fontSize: '12px', color: 'var(--text-primary)', flex: 1 }}>Photo attached</span>
+                          <button 
+                            type="button" 
+                            onClick={() => setReviewImage('')}
+                            style={{ background: 'none', border: 'none', color: 'var(--accent-rose)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px' }}
+                          >
+                            <X size={14} /> Remove
+                          </button>
+                        </div>
+                      )}
 
                       <div className="input-icon-wrapper">
                         <input 
@@ -2349,7 +2469,7 @@ export default function HomeDashboard({
                           return (
                             <div key={rev.id} className="review-item" style={{ background: 'var(--bg-card)', border: '1px dashed var(--accent-indigo)', padding: '16px' }}>
                               <form onSubmit={(e) => handleUpdateReview(e, rev.id)} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                   <span className="review-author" style={{ fontWeight: 'bold' }}>Editing Your Review</span>
                                   <div style={{ display: 'flex', gap: '4px' }}>
                                     {[1, 2, 3, 4, 5].map((star) => (
@@ -2364,6 +2484,7 @@ export default function HomeDashboard({
                                     ))}
                                   </div>
                                 </div>
+
                                 <div className="input-icon-wrapper">
                                   <input 
                                     type="text"
@@ -2374,6 +2495,51 @@ export default function HomeDashboard({
                                     style={{ width: '100%' }}
                                   />
                                 </div>
+
+                                {/* Edit Photo attachment */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                  <label 
+                                    style={{ 
+                                      display: 'inline-flex', 
+                                      alignItems: 'center', 
+                                      gap: '6px', 
+                                      padding: '4px 10px', 
+                                      background: 'var(--bg-secondary)', 
+                                      border: '1px solid var(--border-color)', 
+                                      borderRadius: '6px', 
+                                      fontSize: '11.5px', 
+                                      cursor: 'pointer',
+                                      color: 'var(--text-secondary)'
+                                    }}
+                                  >
+                                    <Camera size={13} style={{ color: 'var(--accent-teal)' }} />
+                                    <span>{isUploadingEditReviewImg ? 'Uploading...' : editReviewImage ? 'Replace Photo' : 'Attach Photo'}</span>
+                                    <input 
+                                      type="file" 
+                                      accept="image/*" 
+                                      onChange={(e) => handleReviewImageUpload(e, true)} 
+                                      style={{ display: 'none' }} 
+                                    />
+                                  </label>
+
+                                  {editReviewImage && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <img 
+                                        src={formatImageUrl(editReviewImage)} 
+                                        alt="Preview" 
+                                        style={{ width: '30px', height: '30px', borderRadius: '4px', objectFit: 'cover' }} 
+                                      />
+                                      <button 
+                                        type="button" 
+                                        onClick={() => setEditReviewImage('')}
+                                        style={{ background: 'none', border: 'none', color: 'var(--accent-rose)', cursor: 'pointer', fontSize: '11px' }}
+                                      >
+                                        Remove Photo
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
                                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                                   <button type="button" onClick={handleCancelEditReview} className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '12px' }}>
                                     Cancel
@@ -2408,7 +2574,7 @@ export default function HomeDashboard({
                                 {isOwner && (
                                   <div style={{ display: 'flex', gap: '8px', fontSize: '12px' }}>
                                     <button 
-                                      type="button"
+                                      type="button" 
                                       onClick={() => handleStartEditReview(rev)} 
                                       style={{ background: 'none', border: 'none', color: 'var(--accent-blue)', cursor: 'pointer', padding: '0', textDecoration: 'underline' }}
                                     >
@@ -2416,7 +2582,7 @@ export default function HomeDashboard({
                                     </button>
                                     <span style={{ color: 'var(--text-muted)' }}>|</span>
                                     <button 
-                                      type="button"
+                                      type="button" 
                                       onClick={() => handleDeleteReview(rev.id)} 
                                       style={{ background: 'none', border: 'none', color: 'var(--accent-rose)', cursor: 'pointer', padding: '0', textDecoration: 'underline' }}
                                     >
@@ -2427,6 +2593,42 @@ export default function HomeDashboard({
                               </div>
                             </div>
                             <p className="review-comment" style={{ marginTop: '8px' }}>{rev.comment}</p>
+
+                            {/* Customer Uploaded Review Photo */}
+                            {rev.imageUrl && (
+                              <div style={{ marginTop: '10px' }}>
+                                <div 
+                                  onClick={() => setReviewLightboxImg({ url: formatImageUrl(rev.imageUrl), author: rev.reviewerName, product: selectedProduct.name })}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-color)',
+                                    borderRadius: '8px',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    maxWidth: '100%'
+                                  }}
+                                  title="Click to view customer photo"
+                                >
+                                  <img 
+                                    src={formatImageUrl(rev.imageUrl)} 
+                                    alt="Customer Unboxing Photo" 
+                                    style={{ width: '46px', height: '46px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-light)' }} 
+                                  />
+                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <Camera size={13} style={{ color: 'var(--accent-teal)' }} /> Customer Photo
+                                    </span>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                      <Eye size={11} /> Click to enlarge
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -2438,6 +2640,40 @@ export default function HomeDashboard({
           </div>
         );
       })()}
+
+      {/* Customer Review Image Lightbox Modal */}
+      {reviewLightboxImg && (
+        <div 
+          className="image-lightbox-overlay" 
+          style={{ zIndex: 99999 }}
+          onClick={() => setReviewLightboxImg(null)}
+        >
+          <div className="lightbox-header" onClick={(e) => e.stopPropagation()}>
+            <div className="lightbox-title">
+              <Camera size={18} style={{ color: 'var(--accent-teal)' }} />
+              <span>Customer Review Photo: {reviewLightboxImg.product}</span>
+              <span className="badge badge-customer" style={{ marginLeft: '6px', fontSize: '11px' }}>By {reviewLightboxImg.author}</span>
+            </div>
+            <button 
+              type="button" 
+              className="lightbox-close-btn" 
+              onClick={() => setReviewLightboxImg(null)}
+              title="Close Preview (Esc)"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="lightbox-main-stage" onClick={(e) => e.stopPropagation()}>
+            <div className="lightbox-img-wrapper" style={{ maxHeight: '80vh', maxWidth: '85vw' }}>
+              <img 
+                src={reviewLightboxImg.url} 
+                alt="Customer Review Photo" 
+                style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }} 
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* In-App Fullscreen Image Gallery Lightbox (Slides images one by one with arrows/touch) */}
       {showLightbox && selectedProduct && (() => {
