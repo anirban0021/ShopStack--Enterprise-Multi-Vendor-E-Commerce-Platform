@@ -64,6 +64,9 @@ public class CustomerController {
     private AddressRepository addressRepository;
 
     @Autowired
+    private com.shopstack.backend.repository.ReviewRepository reviewRepository;
+
+    @Autowired
     private WarehouseService warehouseService;
 
     @Autowired
@@ -262,6 +265,8 @@ public class CustomerController {
             map.put("recipientName", order.getRecipientName());
             map.put("recipientPhone", order.getRecipientPhone());
             map.put("deliveryAddress", order.getDeliveryAddress());
+            map.put("feedbackRating", order.getFeedbackRating());
+            map.put("feedbackComment", order.getFeedbackComment());
             map.put("items", items);
             return map;
         }).collect(Collectors.toList());
@@ -291,6 +296,8 @@ public class CustomerController {
             map.put("recipientName", order.getRecipientName());
             map.put("recipientPhone", order.getRecipientPhone());
             map.put("deliveryAddress", order.getDeliveryAddress());
+            map.put("feedbackRating", order.getFeedbackRating());
+            map.put("feedbackComment", order.getFeedbackComment());
             map.put("items", items);
             return map;
         }).collect(Collectors.toList());
@@ -391,21 +398,85 @@ public class CustomerController {
         return ResponseEntity.ok(order);
     }
 
-    // Customer submits post-fulfillment feedback/survey
+    // Customer submits post-fulfillment feedback/survey and syncs to product reviews
     @PostMapping("/orders/{orderId}/feedback")
+    @Transactional
     public ResponseEntity<?> submitOrderFeedback(@PathVariable String orderId, @RequestBody Map<String, Object> payload) {
         Optional<Order> orderOpt = orderRepository.findByOrderId(orderId);
         if (orderOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         Order order = orderOpt.get();
-        if (payload.containsKey("rating")) {
-            order.setFeedbackRating(Integer.parseInt(payload.get("rating").toString()));
+        int rating = 5;
+        if (payload.containsKey("rating") && payload.get("rating") != null) {
+            try {
+                rating = Integer.parseInt(payload.get("rating").toString());
+                if (rating < 1) rating = 1;
+                if (rating > 5) rating = 5;
+            } catch (Exception e) {
+                rating = 5;
+            }
+            order.setFeedbackRating(rating);
         }
-        if (payload.containsKey("comment")) {
-            order.setFeedbackComment(payload.get("comment").toString());
+        String comment = "";
+        if (payload.containsKey("comment") && payload.get("comment") != null) {
+            comment = payload.get("comment").toString();
+            order.setFeedbackComment(comment);
         }
         orderRepository.save(order);
-        return ResponseEntity.ok(order);
+
+        // Derive reviewer name
+        String reviewerName = order.getRecipientName();
+        if (reviewerName == null || reviewerName.trim().isEmpty()) {
+            if (order.getUserId() != null) {
+                Optional<User> uOpt = userRepository.findById(order.getUserId());
+                if (uOpt.isPresent() && uOpt.get().getFullName() != null && !uOpt.get().getFullName().trim().isEmpty()) {
+                    reviewerName = uOpt.get().getFullName();
+                } else {
+                    reviewerName = "Verified Customer";
+                }
+            } else {
+                reviewerName = "Verified Customer";
+            }
+        }
+
+        String formattedDate = new java.text.SimpleDateFormat("MMM dd, yyyy").format(new java.util.Date());
+
+        // Synchronize review to each purchased product in this order
+        List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
+        if (items != null && !items.isEmpty()) {
+            for (OrderItem item : items) {
+                if (item.getProductId() != null) {
+                    List<com.shopstack.backend.model.Review> existing = 
+                        reviewRepository.findByUserIdAndProductId(order.getUserId(), item.getProductId());
+                    
+                    com.shopstack.backend.model.Review rev;
+                    if (existing != null && !existing.isEmpty()) {
+                        rev = existing.get(0);
+                        rev.setRating(rating);
+                        rev.setComment(comment);
+                        rev.setReviewerName(reviewerName);
+                        rev.setDate(formattedDate);
+                    } else {
+                        rev = new com.shopstack.backend.model.Review(
+                            item.getProductId(),
+                            order.getUserId(),
+                            reviewerName,
+                            rating,
+                            comment,
+                            formattedDate
+                        );
+                    }
+                    reviewRepository.save(rev);
+                }
+            }
+        }
+
+        Map<String, Object> resp = new java.util.HashMap<>();
+        resp.put("orderId", order.getOrderId());
+        resp.put("feedbackRating", order.getFeedbackRating());
+        resp.put("feedbackComment", order.getFeedbackComment());
+        resp.put("status", "SUCCESS");
+        return ResponseEntity.ok(resp);
     }
 }

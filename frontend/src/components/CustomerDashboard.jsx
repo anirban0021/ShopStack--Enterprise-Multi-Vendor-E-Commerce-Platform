@@ -114,6 +114,8 @@ export default function CustomerDashboard({
   // Experience feedback survey states
   const [feedbackRatingInput, setFeedbackRatingInput] = useState({});
   const [feedbackCommentInput, setFeedbackCommentInput] = useState({});
+  const [editingFeedbackOrderId, setEditingFeedbackOrderId] = useState(null);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState({});
   const [orderRefundsMap, setOrderRefundsMap] = useState({});
 
   const fetchTransactions = async () => {
@@ -1642,71 +1644,196 @@ export default function CustomerDashboard({
                           <div style={{
                             marginTop: '12px',
                             background: 'var(--bg-primary)',
-                            padding: '12px',
-                            borderRadius: '8px',
-                            border: '1.5px solid rgba(20, 184, 166, 0.25)'
+                            padding: '14px',
+                            borderRadius: '10px',
+                            border: '1.5px solid rgba(20, 184, 166, 0.3)',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
                           }}>
-                            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>Post-Fulfillment Experience Survey</h4>
-                            {ord.feedbackRating != null ? (
-                              <div style={{ fontSize: '13px' }}>
-                                <span style={{ color: '#f59e0b', fontSize: '16px' }}>
-                                  {'★'.repeat(ord.feedbackRating)}{'☆'.repeat(5 - ord.feedbackRating)}
-                                </span>
-                                <div style={{ color: 'var(--text-secondary)', marginTop: '4px', fontStyle: 'italic' }}>
+                            {ord.feedbackRating != null && editingFeedbackOrderId !== ord.orderId ? (
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <h4 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                      Product & Delivery Review
+                                    </h4>
+                                    <span style={{ 
+                                      display: 'inline-flex', 
+                                      alignItems: 'center', 
+                                      gap: '4px', 
+                                      background: 'rgba(20, 184, 166, 0.15)', 
+                                      color: 'var(--accent-teal)', 
+                                      fontSize: '11px', 
+                                      fontWeight: '700', 
+                                      padding: '2px 8px', 
+                                      borderRadius: '12px', 
+                                      border: '1px solid rgba(20, 184, 166, 0.35)' 
+                                    }}>
+                                      <CheckCircle2 size={12} /> Submitted
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingFeedbackOrderId(ord.orderId);
+                                      setFeedbackRatingInput(prev => ({ ...prev, [ord.orderId]: ord.feedbackRating }));
+                                      setFeedbackCommentInput(prev => ({ ...prev, [ord.orderId]: ord.feedbackComment || '' }));
+                                    }}
+                                    className="btn btn-secondary"
+                                    style={{ 
+                                      padding: '4px 10px', 
+                                      fontSize: '11.5px', 
+                                      display: 'inline-flex', 
+                                      alignItems: 'center', 
+                                      gap: '5px',
+                                      borderRadius: '6px',
+                                      border: '1px solid var(--border-color)',
+                                      background: 'var(--bg-secondary)',
+                                      color: 'var(--text-primary)',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <Edit2 size={12} style={{ color: 'var(--accent-teal)' }} /> Edit Review
+                                  </button>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                  <span style={{ color: '#f59e0b', fontSize: '16px', letterSpacing: '2px' }}>
+                                    {'★'.repeat(ord.feedbackRating)}{'☆'.repeat(5 - ord.feedbackRating)}
+                                  </span>
+                                  <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                    {ord.feedbackRating}.0 / 5.0
+                                  </span>
+                                </div>
+                                <div style={{ 
+                                  color: 'var(--text-secondary)', 
+                                  fontSize: '12.5px', 
+                                  fontStyle: 'italic',
+                                  background: 'rgba(255, 255, 255, 0.03)',
+                                  padding: '8px 12px',
+                                  borderRadius: '6px',
+                                  borderLeft: '3px solid var(--accent-teal)'
+                                }}>
                                   "{ord.feedbackComment || 'No comment provided.'}"
                                 </div>
                               </div>
                             ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>Rate Delivery:</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                    {editingFeedbackOrderId === ord.orderId ? 'Edit Product & Delivery Review' : 'Rate Your Experience & Review Products'}
+                                  </h4>
+                                  {editingFeedbackOrderId === ord.orderId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingFeedbackOrderId(null)}
+                                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                    >
+                                      <X size={13} /> Cancel
+                                    </button>
+                                  )}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>Your Rating:</span>
                                   <div style={{ display: 'flex', gap: '4px' }}>
                                     {[1, 2, 3, 4, 5].map(star => {
-                                      const currentVal = feedbackRatingInput[ord.orderId] || 5;
+                                      const currentVal = feedbackRatingInput[ord.orderId] !== undefined ? feedbackRatingInput[ord.orderId] : (ord.feedbackRating || 5);
                                       return (
                                         <span 
                                           key={star}
-                                          onClick={() => setFeedbackRatingInput({
-                                            ...feedbackRatingInput,
+                                          onClick={() => setFeedbackRatingInput(prev => ({
+                                            ...prev,
                                             [ord.orderId]: star
-                                          })}
-                                          style={{ cursor: 'pointer', fontSize: '18px', color: star <= currentVal ? '#f59e0b' : 'var(--text-muted)' }}
+                                          }))}
+                                          style={{ 
+                                            cursor: 'pointer', 
+                                            fontSize: '20px', 
+                                            color: star <= currentVal ? '#f59e0b' : 'var(--text-muted)',
+                                            transition: 'transform 0.15s'
+                                          }}
+                                          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.2)'}
+                                          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                                         >
                                           ★
                                         </span>
                                       );
                                     })}
                                   </div>
+                                  <span style={{ fontSize: '12px', fontWeight: '600', color: '#f59e0b' }}>
+                                    ({feedbackRatingInput[ord.orderId] !== undefined ? feedbackRatingInput[ord.orderId] : (ord.feedbackRating || 5)} Stars)
+                                  </span>
                                 </div>
-                                <div style={{ display: 'flex', gap: '8px' }}>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                   <input 
                                     type="text"
-                                    placeholder="Tell us about the product and carrier delivery..."
-                                    value={feedbackCommentInput[ord.orderId] || ''}
-                                    onChange={(e) => setFeedbackCommentInput({
-                                      ...feedbackCommentInput,
+                                    placeholder="Tell us about product quality and delivery experience..."
+                                    value={feedbackCommentInput[ord.orderId] !== undefined ? feedbackCommentInput[ord.orderId] : (ord.feedbackComment || '')}
+                                    onChange={(e) => setFeedbackCommentInput(prev => ({
+                                      ...prev,
                                       [ord.orderId]: e.target.value
-                                    })}
+                                    }))}
                                     className="form-input"
-                                    style={{ flex: 1, height: '32px', fontSize: '12px', padding: '4px 8px' }}
+                                    style={{ flex: 1, height: '36px', fontSize: '12.5px', padding: '6px 10px', borderRadius: '6px' }}
                                   />
                                   <button
+                                    type="button"
+                                    disabled={isSubmittingFeedback[ord.orderId]}
                                     onClick={async () => {
-                                      const rating = feedbackRatingInput[ord.orderId] || 5;
-                                      const comment = feedbackCommentInput[ord.orderId] || '';
+                                      const rating = feedbackRatingInput[ord.orderId] !== undefined ? feedbackRatingInput[ord.orderId] : (ord.feedbackRating || 5);
+                                      const comment = feedbackCommentInput[ord.orderId] !== undefined ? feedbackCommentInput[ord.orderId] : (ord.feedbackComment || '');
+                                      setIsSubmittingFeedback(prev => ({ ...prev, [ord.orderId]: true }));
                                       try {
                                         await axios.post(`http://localhost:8080/api/customer/orders/${ord.orderId}/feedback`, { rating, comment });
-                                        showToast('success', 'Thank you!', 'Your order feedback has been saved.');
-                                        if (fetchOrders) fetchOrders();
+                                        if (setOrders) {
+                                          setOrders(prev => prev.map(o => o.orderId === ord.orderId ? { ...o, feedbackRating: rating, feedbackComment: comment } : o));
+                                        }
+                                        if (fetchOrders) await fetchOrders();
+                                        setEditingFeedbackOrderId(null);
+                                        showToast('success', 'Review Saved!', 'Your review and ratings have been submitted.');
                                       } catch (err) {
-                                        showToast('error', 'Submission Failed', 'Could not record feedback.');
+                                        showToast('error', 'Submission Failed', 'Could not record review. Please try again.');
+                                      } finally {
+                                        setIsSubmittingFeedback(prev => ({ ...prev, [ord.orderId]: false }));
                                       }
                                     }}
                                     className="btn btn-primary"
-                                    style={{ padding: '4px 12px', fontSize: '12px', background: 'var(--accent-teal)', border: 'none', color: '#fff' }}
+                                    style={{ 
+                                      padding: '7px 16px', 
+                                      fontSize: '12px', 
+                                      fontWeight: '600',
+                                      background: 'var(--accent-teal)', 
+                                      border: 'none', 
+                                      color: '#fff',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      whiteSpace: 'nowrap'
+                                    }}
                                   >
-                                    Submit
+                                    {isSubmittingFeedback[ord.orderId] ? (
+                                      <>
+                                        <RefreshCw size={13} className="spin" /> Saving...
+                                      </>
+                                    ) : editingFeedbackOrderId === ord.orderId ? (
+                                      <>
+                                        <Save size={13} /> Update Review
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Check size={13} /> Submit Review
+                                      </>
+                                    )}
                                   </button>
+                                  {editingFeedbackOrderId === ord.orderId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingFeedbackOrderId(null)}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '7px 12px', fontSize: '12px', borderRadius: '6px' }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             )}

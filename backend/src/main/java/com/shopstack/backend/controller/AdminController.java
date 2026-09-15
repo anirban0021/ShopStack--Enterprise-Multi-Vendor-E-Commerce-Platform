@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -889,4 +890,96 @@ public class AdminController {
 
         return p;
     }
+
+    /**
+     * Get all customer reviews with enriched product metadata and statistical breakdown
+     */
+    @GetMapping("/reviews")
+    public ResponseEntity<?> getAllReviews() {
+        try {
+            List<com.shopstack.backend.model.Review> reviews = reviewRepository.findAllByOrderByIdDesc();
+            List<Product> allProducts = productRepository.findAll();
+            Map<Long, Product> productMap = allProducts.stream()
+                    .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
+
+            List<Map<String, Object>> enrichedReviews = new ArrayList<>();
+            double totalScore = 0;
+            int star5 = 0, star4 = 0, star3 = 0, star2 = 0, star1 = 0;
+
+            for (com.shopstack.backend.model.Review r : reviews) {
+                Map<String, Object> rMap = new HashMap<>();
+                rMap.put("id", r.getId());
+                rMap.put("productId", r.getProductId());
+                rMap.put("userId", r.getUserId());
+                rMap.put("reviewerName", r.getReviewerName() != null ? r.getReviewerName() : "Customer");
+                rMap.put("rating", r.getRating());
+                rMap.put("comment", r.getComment());
+                rMap.put("date", r.getDate());
+
+                Product prod = productMap.get(r.getProductId());
+                if (prod != null) {
+                    rMap.put("productName", prod.getName());
+                    rMap.put("productCategory", prod.getCategory());
+                    rMap.put("productPrice", prod.getPrice());
+                    rMap.put("productImage", prod.getImages() != null && !prod.getImages().isEmpty() ? prod.getImages().get(0) : null);
+                } else {
+                    rMap.put("productName", "Product #" + r.getProductId());
+                    rMap.put("productCategory", "General");
+                    rMap.put("productPrice", 0.0);
+                    rMap.put("productImage", null);
+                }
+
+                totalScore += r.getRating();
+                if (r.getRating() == 5) star5++;
+                else if (r.getRating() == 4) star4++;
+                else if (r.getRating() == 3) star3++;
+                else if (r.getRating() == 2) star2++;
+                else if (r.getRating() == 1) star1++;
+
+                enrichedReviews.add(rMap);
+            }
+
+            int totalCount = reviews.size();
+            double avgRating = totalCount > 0 ? Math.round((totalScore / totalCount) * 10.0) / 10.0 : 0.0;
+
+            Map<String, Object> breakdown = new HashMap<>();
+            breakdown.put("5", star5);
+            breakdown.put("4", star4);
+            breakdown.put("3", star3);
+            breakdown.put("2", star2);
+            breakdown.put("1", star1);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("reviews", enrichedReviews);
+            response.put("totalReviews", totalCount);
+            response.put("averageRating", avgRating);
+            response.put("breakdown", breakdown);
+            response.put("positiveCount", star5 + star4);
+            response.put("criticalCount", star1 + star2);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to fetch reviews", "details", e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete/Moderate customer review by ID
+     */
+    @DeleteMapping("/reviews/{reviewId}")
+    public ResponseEntity<?> deleteReview(@PathVariable Long reviewId) {
+        try {
+            Optional<com.shopstack.backend.model.Review> opt = reviewRepository.findById(reviewId);
+            if (opt.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            reviewRepository.deleteById(reviewId);
+            return ResponseEntity.ok(Map.of("status", "SUCCESS", "message", "Review deleted successfully."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to delete review", "details", e.getMessage()));
+        }
+    }
 }
+

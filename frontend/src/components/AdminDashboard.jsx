@@ -6,7 +6,8 @@ import {
   Clock, AlertTriangle, Eye, DollarSign, Package, ShieldCheck, ArrowRight,
   Truck, CornerUpLeft, ThumbsUp, ThumbsDown, Users, BarChart3, Settings, 
   FileSpreadsheet, HardDrive, Database, TrendingUp, Ticket, ArrowRightLeft, Plus, FileText,
-  Trash2, Layers, Tag, ExternalLink, Power, Ban, Sun, Moon, ArrowLeft, ChevronDown, LogOut
+  Trash2, Layers, Tag, ExternalLink, Power, Ban, Sun, Moon, ArrowLeft, ChevronDown, LogOut,
+  Star, MessageSquare
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
 import { extractErrorMessage } from '../utils/errorHandler';
@@ -215,6 +216,53 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
   });
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
   const [allProductsList, setAllProductsList] = useState([]);
+
+  // Customer Reviews & Ratings States
+  const [reviewsData, setReviewsData] = useState({
+    reviews: [],
+    totalReviews: 0,
+    averageRating: 0.0,
+    breakdown: { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 },
+    positiveCount: 0,
+    criticalCount: 0
+  });
+  const [isLoadingReviews, setIsLoadingReviews] = useState(false);
+  const [reviewSearchTerm, setReviewSearchTerm] = useState('');
+  const [reviewFilterRating, setReviewFilterRating] = useState('ALL');
+  const [isDeletingReviewId, setIsDeletingReviewId] = useState(null);
+
+  const fetchAdminReviews = async () => {
+    setIsLoadingReviews(true);
+    try {
+      const res = await axios.get('http://localhost:8080/api/admin/reviews');
+      setReviewsData(res.data || {
+        reviews: [],
+        totalReviews: 0,
+        averageRating: 0.0,
+        breakdown: { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 },
+        positiveCount: 0,
+        criticalCount: 0
+      });
+    } catch (err) {
+      console.error("Failed to load customer reviews", err);
+    } finally {
+      setIsLoadingReviews(false);
+    }
+  };
+
+  const handleDeleteCustomerReview = async (reviewId) => {
+    if (!window.confirm("Are you sure you want to delete this customer review?")) return;
+    setIsDeletingReviewId(reviewId);
+    try {
+      await axios.delete(`http://localhost:8080/api/admin/reviews/${reviewId}`);
+      showFlash('success', 'Customer review removed successfully.');
+      fetchAdminReviews();
+    } catch (err) {
+      showFlash('error', 'Failed to remove customer review.');
+    } finally {
+      setIsDeletingReviewId(null);
+    }
+  };
 
   const dropdownRef = useRef(null);
 
@@ -659,6 +707,7 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
     fetchReportData(reportType);
     fetchCoupons();
     fetchCouponAnalytics();
+    fetchAdminReviews();
   }, []);
 
   // Close notifications dropdown when clicking outside
@@ -1197,6 +1246,17 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
         >
           <ShieldAlert size={17} style={{ color: activeTab === 'products' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
           <span>Product Approvals ({pendingProducts.length})</span>
+        </button>
+
+        {/* Customer Reviews & Ratings tab */}
+        <button
+          type="button"
+          onClick={() => { setActiveTab('reviews'); fetchAdminReviews(); }}
+          className={`sidebar-item ${activeTab === 'reviews' ? 'sidebar-item-active' : ''}`}
+          style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: activeTab === 'reviews' ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
+        >
+          <Star size={17} style={{ color: activeTab === 'reviews' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
+          <span>Customer Reviews ({reviewsData.totalReviews || reviewsData.reviews?.length || 0})</span>
         </button>
 
         {/* Dedicated Returns & Refunds Tab */}
@@ -4434,6 +4494,335 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* TAB: CUSTOMER REVIEWS & RATINGS */}
+          {activeTab === 'reviews' && (
+            <div style={{ animation: 'fadeIn 0.3s ease' }}>
+              <div className="flex-between" style={{ marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h2 style={{ fontSize: '24px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Star size={24} style={{ color: '#f59e0b' }} /> Customer Reviews & Ratings Hub
+                  </h2>
+                  <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                    Comprehensive platform-wide audit of customer sentiment, post-fulfillment reviews, and dynamic product star ratings.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchAdminReviews}
+                  disabled={isLoadingReviews}
+                  className="btn btn-secondary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <RefreshCw size={15} className={isLoadingReviews ? 'spin' : ''} />
+                  <span>Refresh Reviews</span>
+                </button>
+              </div>
+
+              {/* KPI Summary Cards */}
+              <div className="metrics-grid" style={{ marginBottom: '24px', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                <div className="metric-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+                  <div className="metric-header">
+                    <span className="metric-title">Average Platform Rating</span>
+                    <Star size={18} style={{ color: '#f59e0b' }} />
+                  </div>
+                  <div className="metric-value" style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                    <span>{reviewsData.averageRating?.toFixed(1) || '0.0'}</span>
+                    <span style={{ fontSize: '14px', color: '#f59e0b', letterSpacing: '1px' }}>
+                      {'★'.repeat(Math.round(reviewsData.averageRating || 0))}{'☆'.repeat(5 - Math.round(reviewsData.averageRating || 0))}
+                    </span>
+                  </div>
+                  <span className="metric-trend" style={{ color: 'var(--text-muted)' }}>
+                    Calculated across {reviewsData.totalReviews || 0} reviews
+                  </span>
+                </div>
+
+                <div className="metric-card" style={{ borderLeft: '4px solid var(--accent-teal)' }}>
+                  <div className="metric-header">
+                    <span className="metric-title">Total Reviews Submitted</span>
+                    <MessageSquare size={18} style={{ color: 'var(--accent-teal)' }} />
+                  </div>
+                  <div className="metric-value">{reviewsData.totalReviews || 0}</div>
+                  <span className="metric-trend" style={{ color: 'var(--accent-teal)' }}>
+                    Verified purchase feedback
+                  </span>
+                </div>
+
+                <div className="metric-card" style={{ borderLeft: '4px solid var(--accent-emerald)' }}>
+                  <div className="metric-header">
+                    <span className="metric-title">Positive Sentiment (4★ & 5★)</span>
+                    <ThumbsUp size={18} style={{ color: 'var(--accent-emerald)' }} />
+                  </div>
+                  <div className="metric-value" style={{ color: 'var(--accent-emerald)' }}>
+                    {reviewsData.positiveCount || 0}
+                    <span style={{ fontSize: '14px', marginLeft: '6px', fontWeight: '500', color: 'var(--text-muted)' }}>
+                      ({reviewsData.totalReviews ? Math.round((reviewsData.positiveCount / reviewsData.totalReviews) * 100) : 0}%)
+                    </span>
+                  </div>
+                  <span className="metric-trend" style={{ color: 'var(--accent-emerald)' }}>
+                    Satisfied customer experiences
+                  </span>
+                </div>
+
+                <div className="metric-card" style={{ borderLeft: '4px solid var(--accent-rose)' }}>
+                  <div className="metric-header">
+                    <span className="metric-title">Critical Attention (1★ & 2★)</span>
+                    <AlertTriangle size={18} style={{ color: 'var(--accent-rose)' }} />
+                  </div>
+                  <div className="metric-value" style={{ color: 'var(--accent-rose)' }}>
+                    {reviewsData.criticalCount || 0}
+                  </div>
+                  <span className="metric-trend" style={{ color: 'var(--text-muted)' }}>
+                    Low rating escalation queue
+                  </span>
+                </div>
+              </div>
+
+              {/* Star Rating Distribution Progress Bars */}
+              <div style={{
+                background: 'var(--bg-secondary)',
+                borderRadius: '12px',
+                padding: '20px',
+                border: '1px solid var(--border-color)',
+                marginBottom: '24px'
+              }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                  Rating Distribution Breakdown
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {[5, 4, 3, 2, 1].map(stars => {
+                    const count = reviewsData.breakdown ? (reviewsData.breakdown[stars.toString()] || 0) : 0;
+                    const pct = reviewsData.totalReviews > 0 ? Math.round((count / reviewsData.totalReviews) * 100) : 0;
+                    return (
+                      <div key={stars} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px' }}>
+                        <span style={{ width: '65px', color: 'var(--text-secondary)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                          {stars} Stars <span style={{ color: '#f59e0b' }}>★</span>
+                        </span>
+                        <div style={{ flex: 1, height: '8px', background: 'var(--bg-input)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${pct}%`,
+                            height: '100%',
+                            background: stars >= 4 ? 'var(--accent-emerald)' : stars === 3 ? '#f59e0b' : 'var(--accent-rose)',
+                            borderRadius: '4px',
+                            transition: 'width 0.4s ease'
+                          }} />
+                        </div>
+                        <span style={{ width: '90px', textAlign: 'right', color: 'var(--text-muted)', fontSize: '12px' }}>
+                          {count} ({pct}%)
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Toolbar: Search & Star Filters */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '18px',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12.5px', color: 'var(--text-muted)', fontWeight: '600' }}>Filter Stars:</span>
+                  {['ALL', '5', '4', '3', '2', '1'].map(val => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setReviewFilterRating(val)}
+                      className={`btn ${reviewFilterRating === val ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{
+                        padding: '4px 12px',
+                        fontSize: '12px',
+                        borderRadius: '20px',
+                        background: reviewFilterRating === val ? 'var(--accent-teal)' : 'var(--bg-secondary)',
+                        color: reviewFilterRating === val ? '#fff' : 'var(--text-secondary)',
+                        border: reviewFilterRating === val ? 'none' : '1px solid var(--border-color)'
+                      }}
+                    >
+                      {val === 'ALL' ? 'All Ratings' : `${val} ★`}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ position: 'relative', width: '280px' }}>
+                  <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search reviewer, product, comment..."
+                    value={reviewSearchTerm}
+                    onChange={(e) => setReviewSearchTerm(e.target.value)}
+                    className="form-input"
+                    style={{ width: '100%', paddingLeft: '32px', height: '36px', fontSize: '12.5px', borderRadius: '8px' }}
+                  />
+                  {reviewSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setReviewSearchTerm('')}
+                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Reviews List */}
+              {isLoadingReviews ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <RefreshCw size={24} className="spin" style={{ margin: '0 auto 12px auto' }} />
+                  <p>Loading customer reviews...</p>
+                </div>
+              ) : (() => {
+                const filteredReviews = (reviewsData.reviews || []).filter(r => {
+                  if (reviewFilterRating !== 'ALL' && r.rating !== parseInt(reviewFilterRating)) {
+                    return false;
+                  }
+                  if (reviewSearchTerm.trim()) {
+                    const term = reviewSearchTerm.toLowerCase();
+                    const rName = (r.reviewerName || '').toLowerCase();
+                    const pName = (r.productName || '').toLowerCase();
+                    const comment = (r.comment || '').toLowerCase();
+                    if (!rName.includes(term) && !pName.includes(term) && !comment.includes(term)) {
+                      return false;
+                    }
+                  }
+                  return true;
+                });
+
+                if (filteredReviews.length === 0) {
+                  return (
+                    <div style={{
+                      padding: '48px 20px',
+                      textAlign: 'center',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: '12px',
+                      border: '1px dashed var(--border-color)'
+                    }}>
+                      <Star size={36} style={{ color: 'var(--text-muted)', margin: '0 auto 12px auto' }} />
+                      <h4 style={{ margin: '0 0 6px 0', fontSize: '16px', color: 'var(--text-primary)' }}>No Reviews Found</h4>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
+                        {reviewSearchTerm || reviewFilterRating !== 'ALL' 
+                          ? 'No customer reviews match your active filter criteria.' 
+                          : 'No reviews have been submitted by customers yet.'}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '16px' }}>
+                    {filteredReviews.map(r => (
+                      <div
+                        key={r.id}
+                        style={{
+                          background: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '12px',
+                          padding: '16px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                          position: 'relative'
+                        }}
+                      >
+                        <div>
+                          {/* Product Info Header */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', borderBottom: '1px solid var(--border-light)', paddingBottom: '10px' }}>
+                            {r.productImage ? (
+                              <img
+                                src={formatImageUrl(r.productImage)}
+                                alt={r.productName}
+                                style={{ width: '44px', height: '44px', borderRadius: '8px', objectFit: 'cover', border: '1px solid var(--border-color)' }}
+                              />
+                            ) : (
+                              <div style={{ width: '44px', height: '44px', borderRadius: '8px', background: 'var(--bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <ProductIcon category={r.productCategory} size={20} />
+                              </div>
+                            )}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: '700', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {r.productName}
+                              </h4>
+                              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', gap: '8px', marginTop: '2px' }}>
+                                <span>Category: {r.productCategory || 'General'}</span>
+                                {r.productPrice > 0 && <span>• ₹{Number(r.productPrice).toLocaleString('en-IN')}</span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Reviewer & Rating */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <div>
+                              <strong style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'block' }}>
+                                {r.reviewerName || 'Customer'}
+                              </strong>
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                {r.date || 'Recent review'}
+                              </span>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ color: '#f59e0b', fontSize: '15px', letterSpacing: '2px' }}>
+                                {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                              </div>
+                              <span style={{ fontSize: '11px', fontWeight: '700', color: r.rating >= 4 ? 'var(--accent-emerald)' : r.rating === 3 ? '#f59e0b' : 'var(--accent-rose)' }}>
+                                {r.rating}.0 / 5.0
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Comment Box */}
+                          <div style={{
+                            background: 'rgba(255, 255, 255, 0.02)',
+                            border: '1px solid var(--border-light)',
+                            borderLeft: `3px solid ${r.rating >= 4 ? 'var(--accent-teal)' : r.rating === 3 ? '#f59e0b' : 'var(--accent-rose)'}`,
+                            padding: '10px 12px',
+                            borderRadius: '6px',
+                            fontSize: '12.5px',
+                            color: 'var(--text-secondary)',
+                            fontStyle: 'italic',
+                            lineHeight: '1.4',
+                            marginTop: '8px',
+                            wordBreak: 'break-word'
+                          }}>
+                            "{r.comment || 'No comment provided.'}"
+                          </div>
+                        </div>
+
+                        {/* Card Footer: Moderation Action */}
+                        <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            Review ID: #{r.id}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={isDeletingReviewId === r.id}
+                            onClick={() => handleDeleteCustomerReview(r.id)}
+                            className="btn btn-secondary"
+                            style={{
+                              padding: '4px 10px',
+                              fontSize: '11.5px',
+                              color: 'var(--accent-rose)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              borderRadius: '6px'
+                            }}
+                          >
+                            <Trash2 size={12} />
+                            <span>{isDeletingReviewId === r.id ? 'Deleting...' : 'Moderate / Delete'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
