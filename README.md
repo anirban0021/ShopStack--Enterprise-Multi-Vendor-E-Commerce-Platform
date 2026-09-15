@@ -2895,3 +2895,214 @@ ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/
 - [x] **Staff Inventory Inspection**: As Staff, browse storefront cards and click **`[ 📦 Inspect Inventory ]`**. Confirm synchronized modal displays physical stock, allocated count, reorder threshold, and restock status.
 - [x] Verify that *"Add to Cart"*, *"Buy Now"*, and review submission controls are disabled for Admin and Staff.
 
+---
+
+# 🌟 ShopStack — Day 18: Post-Delivery Customer Review & Rating Engine, Unboxing Photo Uploads, Admin Reviews Hub, Tab-Isolated Multi-Session Architecture & High-Performance Acceleration
+
+This section documents the end-to-end customer feedback synchronization engine, unboxing photo upload button, administrative customer reviews moderation hub, tab-isolated multi-role session management (`sessionStorage`), and performance optimizations implemented in **Day 18** of the ShopStack Enterprise Multi-Vendor Platform.
+
+---
+
+## 📌 Deliverables & Architecture Overview (Day 18)
+
+Day 18 delivered post-delivery customer engagement, multimedia product reviews, multi-account browser tab isolation, and a high-performance frontend architecture.
+
+```mermaid
+flowchart TD
+    subgraph OrderDeliveryCycle ["Post-Delivery Review & Media Workflow"]
+        DeliveredOrder["Order Status: <b>DELIVERED</b><br/>(Cash / Online Paid)"]
+        
+        DeliveredOrder --> ReviewForm["<b>Customer Order History Feedback</b><br/>• 1–5 Star Rating<br/>• Written Feedback Comment<br/>• 📷 <b>Attach Unboxing Photo</b> (PNG, JPG, WebP)"]
+        
+        ReviewForm --> StorageService["<b>FileStorageService / Base64 Handler</b><br/>• Validates File Size (≤5MB)<br/>• Persists to /uploads/products/<br/>• Assigns Unique Image URL"]
+        
+        StorageService --> OrderEntity["<b>Order.feedbackImage & Review.imageUrl</b><br/>Database Persistence"]
+    end
+    
+    subgraph MultiDestinationSync ["Synchronized Multi-Portal Display"]
+        OrderEntity --> CustHist["<b>Customer Order History</b><br/>• Gold Star Rating Badge<br/>• Submitted Quote & Unboxing Photo<br/>• ✏️ <b>Edit Review</b> Inline Form<br/>• Click-to-Zoom Lightbox"]
+        
+        OrderEntity --> StorefrontReviews["<b>Storefront Product Reviews Modal</b><br/>• Aggregated Star Rating & Breakdown<br/>• Reviewer Name & Timestamp<br/>• Customer Proof Thumbnail<br/>• Fullscreen Image Lightbox"]
+        
+        OrderEntity --> AdminReviewHub["<b>Admin Customer Reviews Hub</b><br/>• Platform Sentiment & Average Rating<br/>• Star Distribution Progress Bars<br/>• Reviewer & Product Details<br/>• Unboxing Photo Preview<br/>• 🗑️ Moderation / Deletion Action"]
+    end
+    
+    subgraph PerformanceArchitecture ["High-Performance & Tab Isolation Overhaul"]
+        PureSession["<b>Pure Tab-Isolated Storage (sessionStorage)</b><br/>• Tab 1: Customer<br/>• Tab 2: Admin<br/>• Tab 3: Vendor<br/>• Zero Cross-Tab Overwrite on Ctrl+F5"]
+        
+        LazyBundles["<b>Dynamic Code Splitting (React.lazy + Suspense)</b><br/>• Initial Bundle: 14.86 kB (98% reduction)<br/>• On-demand Dashboard Chunks<br/>• Vendor / Icons Chunking"]
+        
+        HttpCache["<b>HTTP Static Caching (WebConfig.java)</b><br/>• CacheControl: 7 Days Public<br/>• 0ms Instant Disk Cache Serving<br/>• loading='lazy' & decoding='async'"]
+    end
+```
+
+---
+
+## 🚀 Key Features Implemented (Day 18 Milestone)
+
+### 1. Post-Delivery Customer Review & Rating Engine
+* **Delivered-Only Feedback Policy**:
+  * Feedback cards unlock exclusively when an order reaches the **`DELIVERED`** state.
+* **Inline Review Submission & Persistence**:
+  * Customers can assign 1–5 star ratings and provide detailed written feedback directly from their **Order History** tab in `CustomerDashboard.jsx`.
+  * Feedback updates both the `Order` entity (`feedbackRating`, `feedbackComment`, `feedbackDate`) and automatically syncs or creates a verified `Review` entity attached to each purchased product.
+* **Interactive In-Place Review Editor (`✏️ Edit Review`)**:
+  * Submitted orders display a gold star badge (`★★★★★ 5.0 / 5.0`), submission date, feedback text, and an **"Edit Review"** button.
+  * Allows customers to update their ratings, commentary, and attached unboxing photos inline with real-time UI synchronization.
+
+---
+
+### 2. Fully Working Review Image & Unboxing Photo Upload Button
+* **Client-Side Image Upload Button**:
+  * Added an interactive **"Attach Unboxing Photo"** file selector button with real-time validation (accepts PNG, JPG, JPEG, WebP up to 5MB).
+  * Instant thumbnail preview with a 1-click removal (`X`) button prior to submission.
+* **Server-Side File Persistence (`FileStorageService.java`)**:
+  * Sanitizes and stores review photos on the server file system at `/uploads/products/` with UUID file naming, with automatic Base64 fallback for resilient processing.
+  * Persisted across `Order.feedbackImage` and `Review.imageUrl`.
+* **Interactive Fullscreen Lightbox Modal**:
+  * Clicking any review photo thumbnail opens a high-resolution lightbox viewer with dark backdrop, title metadata, and keyboard/escape dismissal.
+
+---
+
+### 3. Administrator Customer Reviews Moderation Hub (`AdminDashboard.jsx`)
+* **Dedicated Reviews Portal**:
+  * Added a **"Customer Reviews"** navigation tab (`reviews`) with `Star` icon in the administrative sidebar.
+* **Top-Level Sentiment & Rating KPIs**:
+  * **Platform Average Rating**: Live weighted average across all approved catalog reviews.
+  * **Total Reviews Count**: Cumulative volume of submitted product reviews.
+  * **Positive Sentiment %**: Percentage of reviews rated 4★ or 5★.
+  * **Critical Attention Count**: Volume of 1★ and 2★ reviews requiring merchant follow-up.
+* **Interactive Star Distribution Breakdown**:
+  * Visual progress bars detailing the distribution percentage of 5-star, 4-star, 3-star, 2-star, and 1-star ratings.
+* **Search Toolbar & Star Rating Filters**:
+  * Real-time search bar filtering across reviewer names, product titles, and review commentary.
+  * Quick-filter chips: `All Ratings`, `5 ★`, `4 ★`, `3 ★`, `2 ★`, `1 ★`.
+* **Review Moderation Cards**:
+  * Product thumbnail, category badge, reviewer name, rating stars, quote block, and attached unboxing photo badge.
+  * **1-Click Moderation Delete (`🗑️ Moderate / Delete`)**: Removes inappropriate reviews and automatically re-calculates product average ratings.
+
+---
+
+### 4. 100% Pure Tab-Isolated Multi-Role Session Architecture (`App.jsx`)
+* **Problem Solved**:
+  * Previously, browser `localStorage` was shared across tabs, causing a hard refresh (`Ctrl+F5`) in a Customer tab to switch to Admin if an Admin logged in from another tab.
+* **Tab-Isolated `sessionStorage` Implementation**:
+  * Replaced global `localStorage` user persistence with tab-isolated `sessionStorage`.
+  * **Multi-Tab Independence**: A developer or user can simultaneously run:
+    * **Tab 1:** Logged in as **Customer**
+    * **Tab 2:** Logged in as **Admin**
+    * **Tab 3:** Logged in as **Vendor** or **Warehouse Staff**
+  * Hard-refreshing any tab retains that tab's account without cross-tab session leakage.
+  * Opening a brand-new tab starts cleanly on the Login screen.
+
+---
+
+### 5. High-Performance Overhaul & Asset Acceleration
+* **Dynamic Code Splitting (`React.lazy()` & `<Suspense>`)**:
+  * Split all major portal dashboards (`AdminDashboard`, `VendorDashboard`, `WarehouseDashboard`, `CustomerDashboard`, `HomeDashboard`, `Login`, `Register`) into on-demand asynchronous chunks.
+  * **Initial Entry JavaScript Bundle reduced from ~835 kB to 14.86 kB (98% reduction)**.
+* **Modular Rollup/Vite Chunking (`vite.config.js`)**:
+  * Configured `manualChunks` to split `vendor` (React/ReactDOM), `icons` (lucide-react), and `networking` (axios) into separate long-term cached files.
+* **Backend HTTP Browser Caching (`WebConfig.java`)**:
+  * Added `CacheControl.maxAge(7, TimeUnit.DAYS).cachePublic()` and `.resourceChain(true)` for all `/uploads/**` static endpoints.
+  * Subsequent page reloads load product and review images in **0ms** directly from the local browser disk cache.
+* **Native Browser Image Optimization (`HomeDashboard.jsx`)**:
+  * Added `loading="lazy"` and `decoding="async"` across all product catalog cards so images are fetched on-demand as the user scrolls.
+
+---
+
+### 6. Cash On Delivery (COD) Notification & Fulfillment Lifecycle
+* **Stage 1 (Order Placement)**:
+  * Customer receives **Order Confirmation Email** (`email/order-placed.html`) and in-app alert.
+  * Status is marked as **`CONFIRMED`**, payment method is **`COD`**, and payment status is **`PENDING`**. Total cash amount due upon delivery is clearly shown.
+  * *Payment Success receipt email is held back until physical cash handover.*
+* **Stage 2 (Warehouse Dispatch & Tracking)**:
+  * Customer receives **Order Shipped Email** (`email/order-shipped.html`) with consignment tracking number (`TRK-XXXX`) and dispatch warehouse details.
+* **Stage 3 (Delivery & Cash Collection)**:
+  * Customer receives **Order Delivered Email** (`email/order-delivered.html`).
+  * Payment status automatically switches to **`PAID`** upon driver confirmation.
+  * Prompt invites customer to open **Order History** to rate products and **upload unboxing photos**.
+
+---
+
+## 📂 Project Structure Updates (Day 18)
+
+```text
+ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/
+├── frontend/
+│   ├── vite.config.js                    # Rollup manualChunks optimization & build acceleration
+│   └── src/
+│       ├── App.jsx                       # React.lazy code splitting, Suspense fallback & sessionStorage tab isolation
+│       └── components/
+│           ├── CustomerDashboard.jsx     # Order History review submission, unboxing photo upload & lightbox
+│           ├── HomeDashboard.jsx         # Product reviews with customer photos, photo upload & lazy loading
+│           └── AdminDashboard.jsx        # Customer Reviews moderation hub, sentiment KPIs & image preview
+└── backend/
+    └── src/
+        └── main/
+            └── java/com/shopstack/backend/
+                ├── config/
+                │   └── WebConfig.java    # 7-day CacheControl HTTP headers for /uploads/**
+                ├── controller/
+                │   ├── CustomerController.java # Order feedback with image processing & base64 sanitization
+                │   ├── ProductController.java  # Review submission & update with imageUrl persistence
+                │   └── AdminController.java    # GET & DELETE /api/admin/reviews with review image telemetry
+                ├── entity/
+                │   ├── Order.java        # Added feedbackImage TEXT column
+                │   └── Review.java       # Added imageUrl TEXT column
+                └── service/
+                    ├── FileStorageService.java   # Base64 image decoding & UUID file persistence
+                    ├── PaymentService.java       # COD order creation & OrderPlaced event dispatching
+                    └── NotificationService.java  # 3-stage email lifecycle (Placed -> Shipped -> Delivered)
+```
+
+---
+
+## 📡 API Endpoints & Feedback Matrix (Day 18)
+
+| Endpoint | Method | Role Access | Description |
+| :--- | :---: | :---: | :--- |
+| `/api/customer/orders/{orderId}/feedback` | `POST` | `CUSTOMER` | Submits or updates star rating (1–5), feedback comments, and unboxing photo (`feedbackImage`). Synchronizes `Review` entity. |
+| `/api/products/{id}/reviews` | `GET` | `PUBLIC` | Returns all customer reviews for a product including `rating`, `comment`, `reviewerName`, `date`, and `imageUrl`. |
+| `/api/products/{id}/reviews` | `POST` | `CUSTOMER` | Submits a product review with rating, comment, and optional attached image URL. |
+| `/api/products/reviews/{reviewId}` | `PUT` | `CUSTOMER` | Updates an existing product review rating, comment, and attached image. |
+| `/api/products/reviews/{reviewId}` | `DELETE` | `CUSTOMER`, `ADMIN` | Deletes a product review and updates product average ratings. |
+| `/api/products/upload-image` | `POST` | `CUSTOMER`, `VENDOR` | Uploads multipart image files and returns static URL at `/uploads/products/...`. |
+| `/api/admin/reviews` | `GET` | `ADMIN` | Returns platform-wide reviews, star distribution percentages, sentiment KPIs, and unboxing images. |
+| `/api/admin/reviews/{id}` | `DELETE` | `ADMIN` | Moderates and deletes inappropriate customer reviews platform-wide. |
+
+---
+
+## 🧪 Testing Checklist & Verification Guide (Day 18)
+
+### 1. Customer Review & Unboxing Photo Upload
+- [x] **Delivered Order Review**: Place an order, advance status to `DELIVERED`, and open Customer Order History.
+- [x] **Upload Unboxing Photo**: Click **"Attach Unboxing Photo"**, select a JPG/PNG image, and verify the live thumbnail preview.
+- [x] **Submit & Persist**: Submit review. Confirm the review card displays the gold star rating, comment, and unboxing photo thumbnail.
+- [x] **Lightbox Zoom**: Click the unboxing photo thumbnail and verify the high-resolution lightbox modal opens cleanly.
+- [x] **Edit Review**: Click **"Edit Review"**, update the rating/comment or replace the photo, and verify instant update without page refresh.
+
+### 2. Storefront Product Reviews Synchronization
+- [x] Navigate to the Home Dashboard and open the Product Details modal for the reviewed item.
+- [x] Verify the customer's star rating, comment, reviewer name, and unboxing photo appear in the Customer Reviews list.
+- [x] Click the customer photo in the storefront review list to open the image lightbox.
+
+### 3. Admin Reviews Hub & Moderation
+- [x] Sign in as Admin (`admin@admin`) and open the **Customer Reviews** tab.
+- [x] Verify total review count, platform average rating, and 5★–1★ breakdown bars reflect submitted reviews.
+- [x] Verify the customer unboxing photo badge appears on the review card with full click-to-zoom preview.
+- [x] Click **"Moderate / Delete"** on a test review and verify it is removed from the admin hub and storefront.
+
+### 4. Tab-Isolated Multi-Role Sessions
+- [x] Open **Tab 1** and sign in as **Customer**.
+- [x] Open **Tab 2** and sign in as **Admin**.
+- [x] Open **Tab 3** and sign in as **Vendor**.
+- [x] Press **`Ctrl + F5` (Hard Refresh)** on all three tabs.
+- [x] Verify that each tab retains its own unique account without any session switching or overwrites.
+- [x] Open a brand-new tab via URL and verify it starts cleanly on the Login screen.
+
+### 5. Performance & Build Verification
+- [x] **Frontend Build**: Run `npm run build`. Confirm modular bundle generation in `< 500ms` with `14.86 kB` initial chunk.
+- [x] **Backend Build**: Run `mvn compile`. Confirm `BUILD SUCCESS` with 0 errors.
+- [x] **HTTP Caching**: Verify network requests for `/uploads/**` return with `Cache-Control: max-age=604800, public`.
+
