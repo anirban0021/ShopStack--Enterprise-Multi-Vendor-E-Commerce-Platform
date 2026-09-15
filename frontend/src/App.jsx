@@ -1,14 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { LogOut, X, AlertTriangle } from 'lucide-react';
-import Register from './components/Register';
-import Login from './components/Login';
-import HomeDashboard from './components/HomeDashboard';
-import CustomerDashboard from './components/CustomerDashboard';
-import VendorDashboard from './components/VendorDashboard';
-import AdminDashboard from './components/AdminDashboard';
-import WarehouseDashboard from './components/WarehouseDashboard';
 import MobileBottomNav from './components/MobileBottomNav';
 import axios from 'axios';
+
+// Dynamic route-based code splitting: loads dashboards only when accessed
+const Register = lazy(() => import('./components/Register'));
+const Login = lazy(() => import('./components/Login'));
+const HomeDashboard = lazy(() => import('./components/HomeDashboard'));
+const CustomerDashboard = lazy(() => import('./components/CustomerDashboard'));
+const VendorDashboard = lazy(() => import('./components/VendorDashboard'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const WarehouseDashboard = lazy(() => import('./components/WarehouseDashboard'));
+
+function DashboardLoadingFallback() {
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '16px',
+      background: 'var(--bg-primary, #0f172a)',
+      color: 'var(--text-primary, #f8fafc)'
+    }}>
+      <div className="spin" style={{
+        width: '38px',
+        height: '38px',
+        borderRadius: '50%',
+        border: '3px solid rgba(59, 130, 246, 0.2)',
+        borderTopColor: 'var(--accent-blue, #3b82f6)'
+      }} />
+      <span style={{ fontSize: '13.5px', fontWeight: '500', color: 'var(--text-secondary, #94a3b8)', letterSpacing: '0.2px' }}>
+        Loading ShopStack...
+      </span>
+    </div>
+  );
+}
 
 function App() {
   // Purge any legacy global auth keys from localStorage once on boot
@@ -303,111 +331,113 @@ function App() {
 
   return (
     <div>
-      {view === 'home' && currentUser ? (
-        <HomeDashboard 
-          user={currentUser} 
-          cart={cart}
-          setCart={setCart}
-          orders={orders}
-          setOrders={setOrders}
-          wishlist={wishlist}
-          setWishlist={setWishlist}
-          toggleWishlist={toggleWishlist}
-          addToCart={addToCart}
-          fetchOrders={fetchOrders}
-          onLogout={handleLogout} 
-          onGoToProfile={(tab) => {
-            setIsCartOpen(false);
-            setProfileTab(tab || 'profile');
-            navigateTo('profile');
-          }} 
-          onGoToVendor={() => {
-            setIsCartOpen(false);
-            navigateTo('vendor-dashboard');
-          }}
-          onGoToAdmin={() => {
-            setIsCartOpen(false);
-            navigateTo('admin-dashboard');
-          }}
-          onGoToWarehouse={() => {
-            setIsCartOpen(false);
-            navigateTo('warehouse-dashboard');
-          }}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          isCartOpen={isCartOpen}
-          setIsCartOpen={setIsCartOpen}
-        />
-      ) : view === 'profile' && currentUser ? (
-        <CustomerDashboard 
-          user={currentUser} 
-          orders={orders}
-          setOrders={setOrders}
-          cart={cart}
-          setCart={setCart}
-          wishlist={wishlist}
-          setWishlist={setWishlist}
-          toggleWishlist={toggleWishlist}
-          addToCart={addToCart}
-          fetchOrders={fetchOrders}
-          fetchWishlist={fetchWishlist}
-          onUpdateUser={handleUpdateUser}
-          onLogout={handleLogout} 
-          onGoToHome={() => navigateTo('home')} 
-          onGoToAdmin={() => navigateTo('admin-dashboard')}
-          onGoToWarehouse={() => navigateTo('warehouse-dashboard')}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          initialTab={profileTab}
-        />
-      ) : view === 'vendor-dashboard' && currentUser ? (
-        <VendorDashboard 
-          user={currentUser} 
-          onGoToHome={() => navigateTo('home')} 
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          onLogout={handleLogout}
-        />
-      ) : view === 'admin-dashboard' && currentUser ? (
-        <AdminDashboard 
-          user={currentUser} 
-          onGoToHome={() => navigateTo('home')} 
-          onGoToProfile={(tab) => {
-            setIsCartOpen(false);
-            setProfileTab(tab || 'profile');
-            navigateTo('profile');
-          }}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          onLogout={handleLogout}
-        />
-      ) : view === 'warehouse-dashboard' && currentUser ? (
-        <WarehouseDashboard 
-          user={currentUser} 
-          onGoToHome={() => navigateTo('home')} 
-          onGoToProfile={(tab) => {
-            setIsCartOpen(false);
-            setProfileTab(tab || 'profile');
-            navigateTo('profile');
-          }}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          onLogout={handleLogout}
-        />
-      ) : view === 'login' ? (
-        <Login 
-          switchToRegister={() => navigateTo('register')} 
-          onLoginSuccess={handleLoginSuccess}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-        />
-      ) : (
-        <Register 
-          switchToLogin={() => navigateTo('login')} 
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-        />
-      )}
+      <Suspense fallback={<DashboardLoadingFallback />}>
+        {view === 'home' && currentUser ? (
+          <HomeDashboard 
+            user={currentUser} 
+            cart={cart}
+            setCart={setCart}
+            orders={orders}
+            setOrders={setOrders}
+            wishlist={wishlist}
+            setWishlist={setWishlist}
+            toggleWishlist={toggleWishlist}
+            addToCart={addToCart}
+            fetchOrders={fetchOrders}
+            onLogout={handleLogout} 
+            onGoToProfile={(tab) => {
+              setIsCartOpen(false);
+              setProfileTab(tab || 'profile');
+              navigateTo('profile');
+            }} 
+            onGoToVendor={() => {
+              setIsCartOpen(false);
+              navigateTo('vendor-dashboard');
+            }}
+            onGoToAdmin={() => {
+              setIsCartOpen(false);
+              navigateTo('admin-dashboard');
+            }}
+            onGoToWarehouse={() => {
+              setIsCartOpen(false);
+              navigateTo('warehouse-dashboard');
+            }}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+            isCartOpen={isCartOpen}
+            setIsCartOpen={setIsCartOpen}
+          />
+        ) : view === 'profile' && currentUser ? (
+          <CustomerDashboard 
+            user={currentUser} 
+            orders={orders}
+            setOrders={setOrders}
+            cart={cart}
+            setCart={setCart}
+            wishlist={wishlist}
+            setWishlist={setWishlist}
+            toggleWishlist={toggleWishlist}
+            addToCart={addToCart}
+            fetchOrders={fetchOrders}
+            fetchWishlist={fetchWishlist}
+            onUpdateUser={handleUpdateUser}
+            onLogout={handleLogout} 
+            onGoToHome={() => navigateTo('home')} 
+            onGoToAdmin={() => navigateTo('admin-dashboard')}
+            onGoToWarehouse={() => navigateTo('warehouse-dashboard')}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+            initialTab={profileTab}
+          />
+        ) : view === 'vendor-dashboard' && currentUser ? (
+          <VendorDashboard 
+            user={currentUser} 
+            onGoToHome={() => navigateTo('home')} 
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+            onLogout={handleLogout}
+          />
+        ) : view === 'admin-dashboard' && currentUser ? (
+          <AdminDashboard 
+            user={currentUser} 
+            onGoToHome={() => navigateTo('home')} 
+            onGoToProfile={(tab) => {
+              setIsCartOpen(false);
+              setProfileTab(tab || 'profile');
+              navigateTo('profile');
+            }}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+            onLogout={handleLogout}
+          />
+        ) : view === 'warehouse-dashboard' && currentUser ? (
+          <WarehouseDashboard 
+            user={currentUser} 
+            onGoToHome={() => navigateTo('home')} 
+            onGoToProfile={(tab) => {
+              setIsCartOpen(false);
+              setProfileTab(tab || 'profile');
+              navigateTo('profile');
+            }}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+            onLogout={handleLogout}
+          />
+        ) : view === 'login' ? (
+          <Login 
+            switchToRegister={() => navigateTo('register')} 
+            onLoginSuccess={handleLoginSuccess}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+          />
+        ) : (
+          <Register 
+            switchToLogin={() => navigateTo('login')} 
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+          />
+        )}
+      </Suspense>
 
       {/* Logout Re-assurance / Confirmation Modal */}
       {showLogoutConfirm && (
