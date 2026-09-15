@@ -11,8 +11,17 @@ import MobileBottomNav from './components/MobileBottomNav';
 import axios from 'axios';
 
 function App() {
+  // Purge any legacy global auth keys from localStorage once on boot
+  useEffect(() => {
+    try {
+      localStorage.removeItem('shopstack_user');
+      localStorage.removeItem('shopstack_cart');
+      localStorage.removeItem('shopstack_orders');
+    } catch (e) {}
+  }, []);
+
   const [view, setView] = useState(() => {
-    const savedUser = sessionStorage.getItem('shopstack_user') || localStorage.getItem('shopstack_user');
+    const savedUser = sessionStorage.getItem('shopstack_user');
     if (savedUser) {
       try {
         const u = JSON.parse(savedUser);
@@ -25,10 +34,10 @@ function App() {
     return 'login';
   });
   
-  // Persistent user state (isolated per browser tab via sessionStorage, falling back to localStorage)
+  // Persistent user state (100% isolated per browser tab via sessionStorage)
   const [currentUser, setCurrentUser] = useState(() => {
     try {
-      const savedUser = sessionStorage.getItem('shopstack_user') || localStorage.getItem('shopstack_user');
+      const savedUser = sessionStorage.getItem('shopstack_user');
       if (!savedUser) return null;
       const u = JSON.parse(savedUser);
       if (u && u.email) {
@@ -44,10 +53,10 @@ function App() {
     }
   });
 
-  // Persistent cart state
+  // Persistent cart state (isolated per tab)
   const [cart, setCart] = useState(() => {
     try {
-      const savedCart = sessionStorage.getItem('shopstack_cart') || localStorage.getItem('shopstack_cart');
+      const savedCart = sessionStorage.getItem('shopstack_cart');
       const parsed = savedCart ? JSON.parse(savedCart) : [];
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
@@ -55,10 +64,10 @@ function App() {
     }
   });
 
-  // Persistent order history state
+  // Persistent order history state (isolated per tab)
   const [orders, setOrders] = useState(() => {
     try {
-      const savedOrders = sessionStorage.getItem('shopstack_orders') || localStorage.getItem('shopstack_orders');
+      const savedOrders = sessionStorage.getItem('shopstack_orders');
       const parsed = savedOrders ? JSON.parse(savedOrders) : [];
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
@@ -88,18 +97,16 @@ function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  // Save state updates (sessionStorage ensures each browser tab has isolated user & cart data)
+  // Save state updates (sessionStorage ensures each browser tab has completely isolated user & cart data)
   useEffect(() => {
     try {
       sessionStorage.setItem('shopstack_cart', JSON.stringify(cart));
-      localStorage.setItem('shopstack_cart', JSON.stringify(cart));
     } catch (e) {}
   }, [cart]);
 
   useEffect(() => {
     try {
       sessionStorage.setItem('shopstack_orders', JSON.stringify(orders));
-      localStorage.setItem('shopstack_orders', JSON.stringify(orders));
     } catch (e) {}
   }, [orders]);
 
@@ -107,12 +114,10 @@ function App() {
     if (currentUser) {
       try {
         sessionStorage.setItem('shopstack_user', JSON.stringify(currentUser));
-        localStorage.setItem('shopstack_user', JSON.stringify(currentUser));
       } catch (e) {}
     } else {
       try {
         sessionStorage.removeItem('shopstack_user');
-        localStorage.removeItem('shopstack_user');
       } catch (e) {}
     }
   }, [currentUser]);
