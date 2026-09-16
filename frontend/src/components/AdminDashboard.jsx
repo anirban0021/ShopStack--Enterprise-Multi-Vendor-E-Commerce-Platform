@@ -28,46 +28,6 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const userMenuRef = useRef(null);
 
-  // Dynamic Admin Notifications State
-  const [notificationList, setNotificationList] = useState([]);
-
-  const refreshNotifications = () => {
-    const list = generateAdminNotifications({
-      user,
-      pendingProductsCount: pendingProducts?.length || 0,
-      ordersCount: dashboardSummary?.totalOrders || 0,
-      vendorsCount: vendorsList?.length || 0,
-      onGoToTab: (tab) => {
-        setActiveTab(tab);
-      }
-    });
-    setNotificationList(list);
-  };
-
-  useEffect(() => {
-    refreshNotifications();
-  }, [user, pendingProducts, dashboardSummary, vendorsList]);
-
-  const handleMarkNotifAsRead = (id) => {
-    markNotifAsRead(id, user?.id);
-    refreshNotifications();
-  };
-
-  const handleMarkAllNotifsAsRead = () => {
-    markAllNotifsAsRead(notificationList.map(n => n.id), user?.id);
-    refreshNotifications();
-  };
-
-  const handleClearAllNotifs = () => {
-    clearAllNotifs(user?.id);
-    refreshNotifications();
-  };
-
-  const handleDismissNotif = (id) => {
-    dismissNotif(id, user?.id);
-    refreshNotifications();
-  };
-
   // Close user dropdown when clicking outside
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -141,6 +101,46 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
   const [isLoadingVendorProducts, setIsLoadingVendorProducts] = useState(false);
   const [inspectingProductDetail, setInspectingProductDetail] = useState(null);
   const [vendorDetailTab, setVendorDetailTab] = useState('products'); // 'products' | 'overview'
+
+  // Dynamic Admin Notifications State
+  const [notificationList, setNotificationList] = useState([]);
+
+  const refreshNotifications = () => {
+    const list = generateAdminNotifications({
+      user,
+      pendingProductsCount: pendingProducts?.length || 0,
+      ordersCount: dashboardSummary?.totalOrders || 0,
+      vendorsCount: vendorsList?.length || 0,
+      onGoToTab: (tab) => {
+        setActiveTab(tab);
+      }
+    });
+    setNotificationList(list);
+  };
+
+  useEffect(() => {
+    refreshNotifications();
+  }, [user, pendingProducts, dashboardSummary, vendorsList]);
+
+  const handleMarkNotifAsRead = (id) => {
+    markNotifAsRead(id, user?.id);
+    refreshNotifications();
+  };
+
+  const handleMarkAllNotifsAsRead = () => {
+    markAllNotifsAsRead(notificationList.map(n => n.id), user?.id);
+    refreshNotifications();
+  };
+
+  const handleClearAllNotifs = () => {
+    clearAllNotifs(user?.id);
+    refreshNotifications();
+  };
+
+  const handleDismissNotif = (id) => {
+    dismissNotif(id, user?.id);
+    refreshNotifications();
+  };
 
   // System Diagnostics States
   const [systemStatus, setSystemStatus] = useState({
