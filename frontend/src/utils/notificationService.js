@@ -1,7 +1,7 @@
 /**
  * ShopStack Notification Service
- * Manages dynamic notifications, read/unread states, and domain-specific alerts
- * for Customer, Vendor, Admin, and Warehouse Dashboards.
+ * Manages real dynamic notifications and read/unread states for each dashboard
+ * strictly based on live user role and data without mock coupons or promotional noise.
  */
 
 const NOTIF_STORAGE_KEY_PREFIX = 'shopstack_read_notifs_';
@@ -60,17 +60,12 @@ export function clearAllNotifs(userId = 'guest') {
 }
 
 /**
- * Generate rich customer notifications
+ * Generate real customer order notifications strictly from active orders
  */
 export function generateCustomerNotifications({
   user,
   orders = [],
-  wishlist = [],
-  products = [],
-  onOpenOrders,
-  onOpenCart,
-  onOpenWishlist,
-  onCopyCoupon
+  onOpenOrders
 }) {
   const userId = user?.id || 'guest';
   const readIds = getReadNotifIds(userId);
@@ -79,7 +74,7 @@ export function generateCustomerNotifications({
 
   const list = [];
 
-  // 1. Order Lifecycle Notifications from real orders
+  // Order Lifecycle Notifications from real customer orders
   if (Array.isArray(orders)) {
     orders.forEach((order, idx) => {
       const orderId = order.id || `ORD-${idx + 1}`;
@@ -94,8 +89,8 @@ export function generateCustomerNotifications({
           category: 'orders',
           iconType: 'order_confirmed',
           title: `Order #${orderId} Confirmed & Paid`,
-          message: `Payment of ₹${amount} successful. ${itemCount} item(s) being prepared by seller.`,
-          time: 'Just now',
+          message: `Payment of ₹${amount} received. ${itemCount} item(s) are being prepped for dispatch.`,
+          time: 'Recent',
           badge: 'CONFIRMED',
           badgeType: 'success',
           actionLabel: 'Track Order',
@@ -108,8 +103,8 @@ export function generateCustomerNotifications({
           category: 'orders',
           iconType: 'order_shipped',
           title: `Order #${orderId} Dispatched`,
-          message: `Your package has left the fulfillment hub with ${order.deliveryPartner || 'ShopStack Express'}.`,
-          time: '2h ago',
+          message: `Package shipped via ${order.deliveryPartner || 'ShopStack Logistics'}. In transit.`,
+          time: 'Recent',
           badge: 'IN TRANSIT',
           badgeType: 'info',
           actionLabel: 'Live Tracking',
@@ -122,9 +117,9 @@ export function generateCustomerNotifications({
           category: 'orders',
           iconType: 'order_shipped',
           title: `Order #${orderId} Out for Delivery`,
-          message: `Delivery agent is on the way to your address! Arriving today.`,
-          time: '1h ago',
-          badge: 'ARRIVING TODAY',
+          message: `Delivery agent is on the way to your shipping address. Arriving today.`,
+          time: 'Recent',
+          badge: 'OUT FOR DELIVERY',
           badgeType: 'warning',
           actionLabel: 'Track Agent',
           onAction: () => onOpenOrders && onOpenOrders(order)
@@ -136,11 +131,11 @@ export function generateCustomerNotifications({
           category: 'orders',
           iconType: 'order_delivered',
           title: `Order #${orderId} Delivered`,
-          message: `Package was successfully delivered. Enjoy your purchase! Leave a review to earn reward points.`,
-          time: 'Yesterday',
+          message: `Package successfully delivered. View invoice or leave a verified review.`,
+          time: 'Recent',
           badge: 'DELIVERED',
           badgeType: 'success',
-          actionLabel: 'View Invoice',
+          actionLabel: 'View Order',
           onAction: () => onOpenOrders && onOpenOrders(order)
         });
       } else if (status === 'CANCELLED') {
@@ -150,8 +145,8 @@ export function generateCustomerNotifications({
           category: 'orders',
           iconType: 'warning',
           title: `Order #${orderId} Cancelled & Refunded`,
-          message: `Refund of ₹${amount} initiated to your original payment method.`,
-          time: '1d ago',
+          message: `Order was cancelled. Refund of ₹${amount} initiated to source payment method.`,
+          time: 'Recent',
           badge: 'REFUNDED',
           badgeType: 'danger',
           actionLabel: 'View Details',
@@ -160,63 +155,6 @@ export function generateCustomerNotifications({
       }
     });
   }
-
-  // 2. Active Coupons & Discount Vouchers
-  list.push({
-    id: 'cust_coupon_welcome20',
-    category: 'offers',
-    iconType: 'coupon',
-    title: '🎉 Flat 20% OFF Welcome Coupon',
-    message: 'Use coupon code WELCOME20 to get 20% off on your checkout (max discount ₹500).',
-    time: 'Live',
-    codeToCopy: 'WELCOME20',
-    badge: '20% OFF',
-    badgeType: 'warning',
-    actionLabel: 'Copy Code',
-    onAction: () => onCopyCoupon && onCopyCoupon('WELCOME20')
-  });
-
-  list.push({
-    id: 'cust_coupon_festive150',
-    category: 'offers',
-    iconType: 'coupon',
-    title: '✨ Special ₹150 OFF Voucher',
-    message: 'Extra ₹150 discount on orders above ₹999 across all store categories. Code: FESTIVE150',
-    time: 'Limited Time',
-    codeToCopy: 'FESTIVE150',
-    badge: '₹150 OFF',
-    badgeType: 'warning',
-    actionLabel: 'Copy Code',
-    onAction: () => onCopyCoupon && onCopyCoupon('FESTIVE150')
-  });
-
-  list.push({
-    id: 'cust_coupon_freeship',
-    category: 'offers',
-    iconType: 'coupon',
-    title: '🚚 Free Express Shipping Coupon',
-    message: 'Zero shipping fee on cart orders above ₹499. Apply code FREESHIP at checkout.',
-    time: 'Active',
-    codeToCopy: 'FREESHIP',
-    badge: 'FREE DELIVERY',
-    badgeType: 'success',
-    actionLabel: 'Copy Code',
-    onAction: () => onCopyCoupon && onCopyCoupon('FREESHIP')
-  });
-
-  // 3. Featured Deal / Price Drops
-  list.push({
-    id: 'cust_deal_megasale',
-    category: 'offers',
-    iconType: 'discount',
-    title: '🔥 Mega Tech Deals Live',
-    message: 'Up to 50% discount on Smart Gadgets, Audio, and Premium Electronics this week!',
-    time: 'Today',
-    badge: 'HOT DEAL',
-    badgeType: 'danger',
-    actionLabel: 'Explore Deals',
-    onAction: () => onOpenCart && onOpenCart()
-  });
 
   // Filter out dismissed notifications and attach read flag
   return list
@@ -228,14 +166,15 @@ export function generateCustomerNotifications({
 }
 
 /**
- * Generate rich Vendor notifications
+ * Generate real Vendor notifications including both merchant sales and personal purchases
  */
 export function generateVendorNotifications({
   user,
   products = [],
-  orders = [],
-  earnings = 0,
-  onGoToTab
+  orders = [], // Merchant orders received from customers
+  purchaseOrders = [], // Orders the vendor bought as a customer
+  onGoToTab,
+  onOpenPurchaseOrder
 }) {
   const userId = user?.id || 'vendor';
   const readIds = getReadNotifIds(userId);
@@ -244,39 +183,90 @@ export function generateVendorNotifications({
 
   const list = [];
 
-  // 1. New Orders for vendor
-  if (Array.isArray(orders) && orders.length > 0) {
-    const recentOrder = orders[0];
-    const orderId = recentOrder.id || '1042';
-    const amount = Number(recentOrder.totalAmount || 1899).toLocaleString('en-IN');
-    list.push({
-      id: `vend_order_new_${orderId}`,
-      category: 'orders',
-      iconType: 'order_placed',
-      title: `📦 New Order #${orderId} Received`,
-      message: `Customer placed an order for ₹${amount}. Ready for packing & shipping label generation.`,
-      time: '10m ago',
-      badge: 'ACTION REQUIRED',
-      badgeType: 'warning',
-      actionLabel: 'Fulfill Order',
-      onAction: () => onGoToTab && onGoToTab('orders')
-    });
-  } else {
-    list.push({
-      id: 'vend_order_sample',
-      category: 'orders',
-      iconType: 'order_placed',
-      title: '📦 Order Management Ready',
-      message: 'Your merchant store is live. New customer orders will trigger real-time notifications here.',
-      time: 'Live',
-      badge: 'ONLINE',
-      badgeType: 'success',
-      actionLabel: 'View Orders',
-      onAction: () => onGoToTab && onGoToTab('orders')
+  // 1. Personal Purchase Orders (Vendor ordering as a customer)
+  if (Array.isArray(purchaseOrders) && purchaseOrders.length > 0) {
+    purchaseOrders.forEach((pOrder, idx) => {
+      const orderId = pOrder.id || `ORD-${idx + 1}`;
+      const status = (pOrder.orderStatus || 'PLACED').toUpperCase();
+      const amount = Number(pOrder.totalAmount || 0).toLocaleString('en-IN');
+
+      if (status === 'PLACED' || status === 'PROCESSING' || status === 'CONFIRMED') {
+        list.push({
+          id: `vend_purchase_conf_${orderId}`,
+          category: 'orders',
+          iconType: 'order_confirmed',
+          title: `My Purchase #${orderId} Confirmed`,
+          message: `Payment of ₹${amount} received. Seller is preparing your order.`,
+          time: 'Recent',
+          badge: 'PURCHASE CONFIRMED',
+          badgeType: 'success',
+          actionLabel: 'Track Purchase',
+          onAction: () => onOpenPurchaseOrder && onOpenPurchaseOrder(pOrder)
+        });
+      } else if (status === 'SHIPPED') {
+        list.push({
+          id: `vend_purchase_ship_${orderId}`,
+          category: 'orders',
+          iconType: 'order_shipped',
+          title: `My Purchase #${orderId} Dispatched`,
+          message: `Your package is in transit with ${pOrder.deliveryPartner || 'ShopStack Express'}.`,
+          time: 'Recent',
+          badge: 'IN TRANSIT',
+          badgeType: 'info',
+          actionLabel: 'Live Tracking',
+          onAction: () => onOpenPurchaseOrder && onOpenPurchaseOrder(pOrder)
+        });
+      } else if (status === 'OUT_FOR_DELIVERY') {
+        list.push({
+          id: `vend_purchase_ofd_${orderId}`,
+          category: 'orders',
+          iconType: 'order_shipped',
+          title: `My Purchase #${orderId} Out for Delivery`,
+          message: `Courier driver is delivering your purchase today.`,
+          time: 'Recent',
+          badge: 'ARRIVING TODAY',
+          badgeType: 'warning',
+          actionLabel: 'Track Agent',
+          onAction: () => onOpenPurchaseOrder && onOpenPurchaseOrder(pOrder)
+        });
+      } else if (status === 'DELIVERED') {
+        list.push({
+          id: `vend_purchase_del_${orderId}`,
+          category: 'orders',
+          iconType: 'order_delivered',
+          title: `My Purchase #${orderId} Delivered`,
+          message: `Your ordered item was successfully delivered.`,
+          time: 'Recent',
+          badge: 'DELIVERED',
+          badgeType: 'success',
+          actionLabel: 'View Order',
+          onAction: () => onOpenPurchaseOrder && onOpenPurchaseOrder(pOrder)
+        });
+      }
     });
   }
 
-  // 2. Product Approvals & Status
+  // 2. Incoming Customer Orders (Sales received by vendor)
+  if (Array.isArray(orders) && orders.length > 0) {
+    orders.forEach((order) => {
+      const orderId = order.id || '1042';
+      const amount = Number(order.totalAmount || 0).toLocaleString('en-IN');
+      list.push({
+        id: `vend_order_new_${orderId}`,
+        category: 'orders',
+        iconType: 'order_placed',
+        title: `Store Order #${orderId} Received`,
+        message: `Customer purchased items worth ₹${amount}. Ready for packing & fulfillment.`,
+        time: 'Recent',
+        badge: 'NEW SALE',
+        badgeType: 'warning',
+        actionLabel: 'Fulfill Order',
+        onAction: () => onGoToTab && onGoToTab('orders')
+      });
+    });
+  }
+
+  // 3. Product Quality Moderation & Approvals
   if (Array.isArray(products)) {
     const approvedProducts = products.filter(p => p.approvalStatus === 'APPROVED' || !p.approvalStatus);
     const pendingProducts = products.filter(p => p.approvalStatus === 'PENDING');
@@ -288,77 +278,48 @@ export function generateVendorNotifications({
         id: `vend_prod_appr_${p.id || 1}`,
         category: 'products',
         iconType: 'product_approved',
-        title: `✅ Product Approved: ${p.name || 'Your Product'}`,
-        message: `Your listing passed admin quality compliance and is actively visible in store searches.`,
-        time: '3h ago',
-        badge: 'LIVE IN STORE',
+        title: `Product Approved: ${p.name || 'Listing'}`,
+        message: `Admin approved your listing. It is live and searchable in store catalog.`,
+        time: 'Recent',
+        badge: 'APPROVED',
         badgeType: 'success',
-        actionLabel: 'View Catalog',
+        actionLabel: 'View Products',
         onAction: () => onGoToTab && onGoToTab('products')
       });
     }
 
     if (pendingProducts.length > 0) {
-      const p = pendingProducts[0];
       list.push({
-        id: `vend_prod_pend_${p.id || 2}`,
+        id: `vend_prod_pend_${pendingProducts.length}`,
         category: 'products',
         iconType: 'product_pending',
-        title: `⏳ In Review: ${p.name || 'New Listing'}`,
-        message: `${pendingProducts.length} product(s) in administrator quality moderation queue.`,
-        time: '1h ago',
-        badge: 'PENDING REVIEW',
+        title: `${pendingProducts.length} Listing(s) in Review`,
+        message: `Products submitted are currently in administrator moderation queue.`,
+        time: 'Recent',
+        badge: 'IN REVIEW',
         badgeType: 'warning',
         actionLabel: 'Check Status',
         onAction: () => onGoToTab && onGoToTab('products')
       });
     }
 
-    // 3. Low Stock Alerts
+    // 4. Low Stock Alerts
     if (lowStockProducts.length > 0) {
       const p = lowStockProducts[0];
       list.push({
         id: `vend_stock_low_${p.id || 3}`,
         category: 'stock',
         iconType: 'low_stock',
-        title: `⚠️ Low Stock Warning: ${p.name || 'Inventory Item'}`,
-        message: `Only ${p.stock} unit(s) left in inventory! Restock to prevent lost sales orders.`,
-        time: '30m ago',
+        title: `Low Stock: ${p.name || 'Product'}`,
+        message: `Only ${p.stock} units remaining in stock. Restock soon to prevent stockout.`,
+        time: 'Recent',
         badge: 'LOW STOCK',
         badgeType: 'danger',
-        actionLabel: 'Restock SKU',
+        actionLabel: 'Manage Stock',
         onAction: () => onGoToTab && onGoToTab('inventory')
       });
     }
   }
-
-  // 4. Payouts & Settlement
-  list.push({
-    id: 'vend_payout_ready',
-    category: 'payouts',
-    iconType: 'payout',
-    title: '💰 Payout Settlement Processed',
-    message: 'Merchant revenue calculation updated for this cycle. Available balance ready for transfer.',
-    time: '1d ago',
-    badge: 'PAYOUTS',
-    badgeType: 'purple',
-    actionLabel: 'View Statement',
-    onAction: () => onGoToTab && onGoToTab('payouts')
-  });
-
-  // 5. Customer Review Feedback
-  list.push({
-    id: 'vend_review_feedback',
-    category: 'system',
-    iconType: 'system',
-    title: '⭐ 5-Star Customer Review',
-    message: 'A verified buyer left positive 5-star feedback on your product catalog.',
-    time: '2d ago',
-    badge: 'FEEDBACK',
-    badgeType: 'success',
-    actionLabel: 'View Analytics',
-    onAction: () => onGoToTab && onGoToTab('analytics')
-  });
 
   return list
     .filter(item => !dismissedIds.includes(item.id))
@@ -369,7 +330,7 @@ export function generateVendorNotifications({
 }
 
 /**
- * Generate rich Admin notifications
+ * Generate real Admin notifications
  */
 export function generateAdminNotifications({
   user,
@@ -391,71 +352,47 @@ export function generateAdminNotifications({
       id: `admin_pend_prods_${pendingProductsCount}`,
       category: 'approvals',
       iconType: 'admin_alert',
-      title: `🛡️ ${pendingProductsCount} Product(s) Pending Review`,
+      title: `${pendingProductsCount} Product(s) Pending Review`,
       message: 'New vendor catalog submissions awaiting administrator verification and approval.',
       time: 'Live',
       badge: 'URGENT REVIEW',
       badgeType: 'danger',
-      actionLabel: 'Review Queue',
+      actionLabel: 'Review Listings',
       onAction: () => onGoToTab && onGoToTab('products')
     });
   }
 
   // 2. Vendor Management
-  list.push({
-    id: 'admin_vendor_onboard',
-    category: 'vendors',
-    iconType: 'product_approved',
-    title: '🏪 Merchant Ecosystem Active',
-    message: `${vendorsCount || 'Multiple'} registered vendor stores operating on the multi-vendor network.`,
-    time: '1h ago',
-    badge: 'VENDORS',
-    badgeType: 'purple',
-    actionLabel: 'Manage Vendors',
-    onAction: () => onGoToTab && onGoToTab('vendors')
-  });
+  if (vendorsCount > 0) {
+    list.push({
+      id: 'admin_vendor_onboard',
+      category: 'vendors',
+      iconType: 'product_approved',
+      title: `${vendorsCount} Registered Merchants Active`,
+      message: 'Vendor accounts and store profiles active on the marketplace.',
+      time: 'Recent',
+      badge: 'VENDORS',
+      badgeType: 'purple',
+      actionLabel: 'Manage Vendors',
+      onAction: () => onGoToTab && onGoToTab('vendors')
+    });
+  }
 
   // 3. Platform Order Volume
-  list.push({
-    id: 'admin_orders_traffic',
-    category: 'orders',
-    iconType: 'order_confirmed',
-    title: '💳 Platform Transaction Stream',
-    message: `${ordersCount || 'Live'} customer orders processed across regional zones and hubs.`,
-    time: '2h ago',
-    badge: 'PLATFORM REVENUE',
-    badgeType: 'success',
-    actionLabel: 'View Orders',
-    onAction: () => onGoToTab && onGoToTab('orders')
-  });
-
-  // 4. Logistics & Warehouses
-  list.push({
-    id: 'admin_logistics_status',
-    category: 'system',
-    iconType: 'shipping',
-    title: '🚚 Warehouse Logistics Online',
-    message: 'Automated warehouse allocation routing orders to closest regional fulfillment centers.',
-    time: '3h ago',
-    badge: 'LOGISTICS',
-    badgeType: 'info',
-    actionLabel: 'Manage Warehouses',
-    onAction: () => onGoToTab && onGoToTab('warehouses')
-  });
-
-  // 5. Payout Settlement
-  list.push({
-    id: 'admin_payout_reconcile',
-    category: 'payouts',
-    iconType: 'payout',
-    title: '📈 Commission & Payouts Engine',
-    message: 'Platform fee deductions and vendor commission accounts reconciled.',
-    time: '1d ago',
-    badge: 'FINANCE',
-    badgeType: 'purple',
-    actionLabel: 'Manage Payouts',
-    onAction: () => onGoToTab && onGoToTab('payouts')
-  });
+  if (ordersCount > 0) {
+    list.push({
+      id: 'admin_orders_traffic',
+      category: 'orders',
+      iconType: 'order_confirmed',
+      title: `${ordersCount} Orders Processed Platform-Wide`,
+      message: 'Customer transactions and order fulfillment active across stores.',
+      time: 'Recent',
+      badge: 'ORDERS',
+      badgeType: 'success',
+      actionLabel: 'View Orders',
+      onAction: () => onGoToTab && onGoToTab('orders')
+    });
+  }
 
   return list
     .filter(item => !dismissedIds.includes(item.id))
@@ -466,7 +403,7 @@ export function generateAdminNotifications({
 }
 
 /**
- * Generate rich Warehouse Staff notifications
+ * Generate real Warehouse Staff notifications
  */
 export function generateWarehouseNotifications({
   user,
@@ -480,76 +417,21 @@ export function generateWarehouseNotifications({
 
   const list = [];
 
-  // 1. Order Allocations
+  // Order Allocations for picking
   if (pendingAllocationsCount > 0) {
     list.push({
       id: `wh_alloc_tasks_${pendingAllocationsCount}`,
       category: 'picking',
       iconType: 'warehouse_alloc',
-      title: `📦 ${pendingAllocationsCount} New Pick Task(s) Allocated`,
-      message: `Administrator assigned order items to ${user?.warehouseName || 'your facility'} for physical picking.`,
+      title: `${pendingAllocationsCount} Pick Tasks Assigned`,
+      message: `Administrator allocated order items to ${user?.warehouseName || 'your facility'} for picking.`,
       time: 'Live',
       badge: 'PRIORITY PICK',
       badgeType: 'danger',
       actionLabel: 'Open Picking Queue',
       onAction: () => onGoToQueue && onGoToQueue('fulfillment', 'pick')
     });
-  } else {
-    list.push({
-      id: 'wh_alloc_clear',
-      category: 'picking',
-      iconType: 'warehouse_alloc',
-      title: '📦 Picking Queue Clear',
-      message: 'All current picking tasks have been processed. Standing by for incoming order allocations.',
-      time: 'Live',
-      badge: 'READY',
-      badgeType: 'success',
-      actionLabel: 'View Queue',
-      onAction: () => onGoToQueue && onGoToQueue('fulfillment', 'pick')
-    });
   }
-
-  // 2. Packing & Barcoding
-  list.push({
-    id: 'wh_packing_ready',
-    category: 'packing',
-    iconType: 'pack',
-    title: '📦 Packaging & Labeling Station',
-    message: 'Picked consignments ready for carton boxing, tamper seals, and barcode verification.',
-    time: '45m ago',
-    badge: 'PACKING',
-    badgeType: 'info',
-    actionLabel: 'Open Packing Queue',
-    onAction: () => onGoToQueue && onGoToQueue('fulfillment', 'pack')
-  });
-
-  // 3. Driver & Logistics Dispatch
-  list.push({
-    id: 'wh_dispatch_pickup',
-    category: 'dispatch',
-    iconType: 'shipping',
-    title: '🚚 Carrier Dispatch Scheduled',
-    message: 'Express courier driver assigned for outbound manifest pickup and customer transit.',
-    time: '1h ago',
-    badge: 'DISPATCH',
-    badgeType: 'warning',
-    actionLabel: 'Open Dispatch Queue',
-    onAction: () => onGoToQueue && onGoToQueue('fulfillment', 'dispatch')
-  });
-
-  // 4. Inventory Bin Restock
-  list.push({
-    id: 'wh_bin_restock',
-    category: 'stock',
-    iconType: 'low_stock',
-    title: '⚠️ Fast-Moving Bin Restock Notice',
-    message: 'Automated replenishment alert: restock high-frequency pick bins from bulk racks.',
-    time: '2h ago',
-    badge: 'BIN RESTOCK',
-    badgeType: 'warning',
-    actionLabel: 'Inspect Stock',
-    onAction: () => onGoToQueue && onGoToQueue('inventory')
-  });
 
   return list
     .filter(item => !dismissedIds.includes(item.id))

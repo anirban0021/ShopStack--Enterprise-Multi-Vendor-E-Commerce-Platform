@@ -321,7 +321,7 @@ export default function NotificationCenter({
                 <p style={{ fontSize: '11.5px', color: 'var(--text-muted)', margin: '4px 0 0 0', textAlign: 'center', maxWidth: '240px' }}>
                   {activeTab === 'unread' 
                     ? "You've read all your notifications!" 
-                    : "You're all caught up with orders, payments, coupons & alerts."}
+                    : "You're all caught up! No active notifications."}
                 </p>
               </div>
             ) : (

@@ -13,6 +13,8 @@ import { extractErrorMessage } from '../utils/errorHandler';
 import { formatImageUrl } from '../utils/imageHelper';
 import { 
   generateCustomerNotifications, 
+  generateAdminNotifications,
+  generateWarehouseNotifications,
   markNotifAsRead, 
   markAllNotifsAsRead, 
   clearAllNotifs, 
@@ -227,27 +229,39 @@ export default function HomeDashboard({
   const [notificationList, setNotificationList] = useState([]);
 
   const refreshNotifications = () => {
-    const list = generateCustomerNotifications({
-      user,
-      orders,
-      wishlist,
-      products,
-      onOpenOrders: (order) => {
-        setShowOrdersModal(true);
-      },
-      onOpenCart: () => {
-        setShowCartModal(true);
-      },
-      onCopyCoupon: (code) => {
-        showFlash('success', `Coupon code "${code}" copied to clipboard! Apply at checkout.`);
-      }
-    });
+    let list = [];
+    if (isAdmin) {
+      list = generateAdminNotifications({
+        user,
+        pendingProductsCount,
+        ordersCount: orders?.length || 0,
+        onGoToTab: () => {
+          if (onGoToAdmin) onGoToAdmin();
+        }
+      });
+    } else if (isStaff) {
+      list = generateWarehouseNotifications({
+        user,
+        pendingAllocationsCount: 0,
+        onGoToQueue: () => {
+          if (onGoToWarehouse) onGoToWarehouse();
+        }
+      });
+    } else {
+      list = generateCustomerNotifications({
+        user,
+        orders,
+        onOpenOrders: () => {
+          setShowOrdersModal(true);
+        }
+      });
+    }
     setNotificationList(list);
   };
 
   useEffect(() => {
     refreshNotifications();
-  }, [user, orders, wishlist, products]);
+  }, [user, orders, pendingProductsCount, isAdmin, isStaff]);
 
   const handleMarkNotifAsRead = (id) => {
     markNotifAsRead(id, user?.id);

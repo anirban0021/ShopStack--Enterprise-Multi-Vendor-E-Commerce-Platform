@@ -392,7 +392,13 @@ function App() {
         ) : view === 'vendor-dashboard' && currentUser ? (
           <VendorDashboard 
             user={currentUser} 
+            orders={orders}
             onGoToHome={() => navigateTo('home')} 
+            onGoToProfile={(tab) => {
+              setIsCartOpen(false);
+              setProfileTab(tab || 'orders');
+              navigateTo('profile');
+            }}
             theme={theme}
             onToggleTheme={handleToggleTheme}
             onLogout={handleLogout}

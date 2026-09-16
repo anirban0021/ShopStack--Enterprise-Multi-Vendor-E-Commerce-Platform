@@ -23,7 +23,7 @@ const getWordCount = (text) => {
   return text.trim().split(/\s+/).filter(Boolean).length;
 };
 
-export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme, onLogout }) {
+export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout }) {
   const [activeTab, setActiveTab] = useState('analytics');
   const [showDropdown, setShowDropdown] = useState(false);
   const userMenuRef = useRef(null);
@@ -67,9 +67,13 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
       user,
       products,
       orders: vendorOrders,
-      earnings: stats?.totalRevenue || 0,
+      purchaseOrders: orders,
       onGoToTab: (tab) => {
         setActiveTab(tab);
+      },
+      onOpenPurchaseOrder: () => {
+        if (onGoToProfile) onGoToProfile('orders');
+        else if (onGoToHome) onGoToHome();
       }
     });
     setNotificationList(list);
@@ -77,7 +81,7 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
 
   useEffect(() => {
     refreshNotifications();
-  }, [user, products, vendorOrders, stats]);
+  }, [user, products, vendorOrders, orders]);
 
   const handleMarkNotifAsRead = (id) => {
     markNotifAsRead(id, user?.id);
@@ -620,6 +624,18 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
                     </span>
                   </div>
                 </div>
+
+                {onGoToProfile && (
+                  <div 
+                    onClick={() => { 
+                      setShowDropdown(false); 
+                      onGoToProfile('orders'); 
+                    }} 
+                    className="dropdown-item"
+                  >
+                    <User size={16} style={{ flexShrink: 0 }} /> <span>My Purchases & Profile</span>
+                  </div>
+                )}
 
                 <div onClick={() => { setShowDropdown(false); onGoToHome(); }} className="dropdown-item">
                   <ArrowLeft size={16} style={{ flexShrink: 0 }} /> <span>Browse Store</span>
