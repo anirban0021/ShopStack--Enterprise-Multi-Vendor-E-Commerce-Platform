@@ -225,6 +225,30 @@ export default function HomeDashboard({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showLightbox, selectedProduct]);
   
+  // Toast notifications
+  const [flash, setFlash] = useState({ type: '', text: '' });
+
+  const showFlash = (type, text) => {
+    let msg = text;
+    if (typeof text === 'object' && text !== null) {
+      msg = extractErrorMessage(text);
+    }
+    setFlash({ type, text: msg });
+    setTimeout(() => setFlash({ type: '', text: '' }), 3500);
+  };
+
+  // Pending products count for Admin notification bell
+  const [pendingProductsCount, setPendingProductsCount] = useState(0);
+
+  const fetchPendingProductsCount = async () => {
+    try {
+      const res = await axios.get('http://localhost:8080/api/products/pending');
+      setPendingProductsCount(res.data.length);
+    } catch (err) {
+      console.error("Failed to load pending products count", err);
+    }
+  };
+
   // Dynamic Notifications State
   const [notificationList, setNotificationList] = useState([]);
 
@@ -283,21 +307,6 @@ export default function HomeDashboard({
     refreshNotifications();
   };
 
-  // Toast notifications
-  const [flash, setFlash] = useState({ type: '', text: '' });
-
-  // Pending products count for Admin notification bell
-  const [pendingProductsCount, setPendingProductsCount] = useState(0);
-
-  const fetchPendingProductsCount = async () => {
-    try {
-      const res = await axios.get('http://localhost:8080/api/products/pending');
-      setPendingProductsCount(res.data.length);
-    } catch (err) {
-      console.error("Failed to load pending products count", err);
-    }
-  };
-
   useEffect(() => {
     fetchProducts();
     fetchOrders();
@@ -307,15 +316,6 @@ export default function HomeDashboard({
       return () => clearInterval(interval);
     }
   }, [user]);
-
-  const showFlash = (type, text) => {
-    let msg = text;
-    if (typeof text === 'object' && text !== null) {
-      msg = extractErrorMessage(text);
-    }
-    setFlash({ type, text: msg });
-    setTimeout(() => setFlash({ type: '', text: '' }), 3500);
-  };
 
   const fetchProducts = async () => {
     try {

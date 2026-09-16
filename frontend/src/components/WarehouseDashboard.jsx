@@ -82,7 +82,7 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
   const [trackingNumbers, setTrackingNumbers] = useState({});
 
   // Facility filter (defaults to user's assigned warehouse if set)
-  const [facilityFilter, setFacilityFilter] = useState(user.warehouseId ? String(user.warehouseId) : 'ALL');
+  const [facilityFilter, setFacilityFilter] = useState(user?.warehouseId ? String(user.warehouseId) : 'ALL');
 
   useEffect(() => {
     fetchData();

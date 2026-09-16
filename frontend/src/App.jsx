@@ -12,6 +12,86 @@ const VendorDashboard = lazy(() => import('./components/VendorDashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 const WarehouseDashboard = lazy(() => import('./components/WarehouseDashboard'));
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null });
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          background: 'var(--bg-primary, #0f172a)',
+          color: 'var(--text-primary, #f8fafc)',
+          textAlign: 'center'
+        }}>
+          <div style={{
+            maxWidth: '480px',
+            width: '100%',
+            padding: '32px',
+            borderRadius: '16px',
+            background: 'var(--bg-secondary, #1e293b)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '50%',
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+              color: 'var(--accent-rose, #ef4444)'
+            }}>
+              <AlertTriangle size={24} />
+            </div>
+            <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '8px' }}>
+              Something went wrong
+            </h2>
+            <p style={{ fontSize: '13.5px', color: 'var(--text-secondary, #94a3b8)', marginBottom: '24px', lineHeight: 1.5 }}>
+              {this.state.error?.message || 'An unexpected error occurred while loading this page.'}
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={this.handleReset}
+                className="btn btn-primary"
+                style={{ padding: '10px 24px', fontWeight: '600', cursor: 'pointer' }}
+              >
+                Reload Page
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function DashboardLoadingFallback() {
   return (
     <div style={{
@@ -53,8 +133,12 @@ function App() {
     if (savedUser) {
       try {
         const u = JSON.parse(savedUser);
-        if (u?.id || u?.email) return 'home';
-        return 'home';
+        if (u && (u.id || u.email)) {
+          if (u.role === 'VENDOR') return 'vendor-dashboard';
+          if (u.role === 'ADMINISTRATOR' || u.role === 'ADMIN') return 'admin-dashboard';
+          if (u.role === 'WAREHOUSE_STAFF' || u.role === 'STAFF') return 'warehouse-dashboard';
+          return 'home';
+        }
       } catch (e) {
         return 'login';
       }
@@ -170,7 +254,16 @@ function App() {
 
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);
-    navigateTo('home');
+    const role = user?.role;
+    if (role === 'VENDOR') {
+      navigateTo('vendor-dashboard');
+    } else if (role === 'ADMINISTRATOR' || role === 'ADMIN') {
+      navigateTo('admin-dashboard');
+    } else if (role === 'WAREHOUSE_STAFF' || role === 'STAFF') {
+      navigateTo('warehouse-dashboard');
+    } else {
+      navigateTo('home');
+    }
   };
 
   // Logout Confirmation Modal state
@@ -331,119 +424,121 @@ function App() {
 
   return (
     <div>
-      <Suspense fallback={<DashboardLoadingFallback />}>
-        {view === 'home' && currentUser ? (
-          <HomeDashboard 
-            user={currentUser} 
-            cart={cart}
-            setCart={setCart}
-            orders={orders}
-            setOrders={setOrders}
-            wishlist={wishlist}
-            setWishlist={setWishlist}
-            toggleWishlist={toggleWishlist}
-            addToCart={addToCart}
-            fetchOrders={fetchOrders}
-            onLogout={handleLogout} 
-            onGoToProfile={(tab) => {
-              setIsCartOpen(false);
-              setProfileTab(tab || 'profile');
-              navigateTo('profile');
-            }} 
-            onGoToVendor={() => {
-              setIsCartOpen(false);
-              navigateTo('vendor-dashboard');
-            }}
-            onGoToAdmin={() => {
-              setIsCartOpen(false);
-              navigateTo('admin-dashboard');
-            }}
-            onGoToWarehouse={() => {
-              setIsCartOpen(false);
-              navigateTo('warehouse-dashboard');
-            }}
-            theme={theme}
-            onToggleTheme={handleToggleTheme}
-            isCartOpen={isCartOpen}
-            setIsCartOpen={setIsCartOpen}
-          />
-        ) : view === 'profile' && currentUser ? (
-          <CustomerDashboard 
-            user={currentUser} 
-            orders={orders}
-            setOrders={setOrders}
-            cart={cart}
-            setCart={setCart}
-            wishlist={wishlist}
-            setWishlist={setWishlist}
-            toggleWishlist={toggleWishlist}
-            addToCart={addToCart}
-            fetchOrders={fetchOrders}
-            fetchWishlist={fetchWishlist}
-            onUpdateUser={handleUpdateUser}
-            onLogout={handleLogout} 
-            onGoToHome={() => navigateTo('home')} 
-            onGoToAdmin={() => navigateTo('admin-dashboard')}
-            onGoToWarehouse={() => navigateTo('warehouse-dashboard')}
-            theme={theme}
-            onToggleTheme={handleToggleTheme}
-            initialTab={profileTab}
-          />
-        ) : view === 'vendor-dashboard' && currentUser ? (
-          <VendorDashboard 
-            user={currentUser} 
-            orders={orders}
-            onGoToHome={() => navigateTo('home')} 
-            onGoToProfile={(tab) => {
-              setIsCartOpen(false);
-              setProfileTab(tab || 'orders');
-              navigateTo('profile');
-            }}
-            theme={theme}
-            onToggleTheme={handleToggleTheme}
-            onLogout={handleLogout}
-          />
-        ) : view === 'admin-dashboard' && currentUser ? (
-          <AdminDashboard 
-            user={currentUser} 
-            onGoToHome={() => navigateTo('home')} 
-            onGoToProfile={(tab) => {
-              setIsCartOpen(false);
-              setProfileTab(tab || 'profile');
-              navigateTo('profile');
-            }}
-            theme={theme}
-            onToggleTheme={handleToggleTheme}
-            onLogout={handleLogout}
-          />
-        ) : view === 'warehouse-dashboard' && currentUser ? (
-          <WarehouseDashboard 
-            user={currentUser} 
-            onGoToHome={() => navigateTo('home')} 
-            onGoToProfile={(tab) => {
-              setIsCartOpen(false);
-              setProfileTab(tab || 'profile');
-              navigateTo('profile');
-            }}
-            theme={theme}
-            onToggleTheme={handleToggleTheme}
-            onLogout={handleLogout}
-          />
-        ) : view === 'login' ? (
-          <Login 
-            switchToRegister={() => navigateTo('register')} 
-            onLoginSuccess={handleLoginSuccess}
-            theme={theme}
-            onToggleTheme={handleToggleTheme}
-          />
-        ) : (
-          <Register 
-            switchToLogin={() => navigateTo('login')} 
-            theme={theme}
-            onToggleTheme={handleToggleTheme}
-          />
-        )}
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<DashboardLoadingFallback />}>
+          {view === 'home' && currentUser ? (
+            <HomeDashboard 
+              user={currentUser} 
+              cart={cart}
+              setCart={setCart}
+              orders={orders}
+              setOrders={setOrders}
+              wishlist={wishlist}
+              setWishlist={setWishlist}
+              toggleWishlist={toggleWishlist}
+              addToCart={addToCart}
+              fetchOrders={fetchOrders}
+              onLogout={handleLogout} 
+              onGoToProfile={(tab) => {
+                setIsCartOpen(false);
+                setProfileTab(tab || 'profile');
+                navigateTo('profile');
+              }} 
+              onGoToVendor={() => {
+                setIsCartOpen(false);
+                navigateTo('vendor-dashboard');
+              }}
+              onGoToAdmin={() => {
+                setIsCartOpen(false);
+                navigateTo('admin-dashboard');
+              }}
+              onGoToWarehouse={() => {
+                setIsCartOpen(false);
+                navigateTo('warehouse-dashboard');
+              }}
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+              isCartOpen={isCartOpen}
+              setIsCartOpen={setIsCartOpen}
+            />
+          ) : view === 'profile' && currentUser ? (
+            <CustomerDashboard 
+              user={currentUser} 
+              orders={orders}
+              setOrders={setOrders}
+              cart={cart}
+              setCart={setCart}
+              wishlist={wishlist}
+              setWishlist={setWishlist}
+              toggleWishlist={toggleWishlist}
+              addToCart={addToCart}
+              fetchOrders={fetchOrders}
+              fetchWishlist={fetchWishlist}
+              onUpdateUser={handleUpdateUser}
+              onLogout={handleLogout} 
+              onGoToHome={() => navigateTo('home')} 
+              onGoToAdmin={() => navigateTo('admin-dashboard')}
+              onGoToWarehouse={() => navigateTo('warehouse-dashboard')}
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+              initialTab={profileTab}
+            />
+          ) : view === 'vendor-dashboard' && currentUser ? (
+            <VendorDashboard 
+              user={currentUser} 
+              orders={orders}
+              onGoToHome={() => navigateTo('home')} 
+              onGoToProfile={(tab) => {
+                setIsCartOpen(false);
+                setProfileTab(tab || 'orders');
+                navigateTo('profile');
+              }}
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+              onLogout={handleLogout}
+            />
+          ) : view === 'admin-dashboard' && currentUser ? (
+            <AdminDashboard 
+              user={currentUser} 
+              onGoToHome={() => navigateTo('home')} 
+              onGoToProfile={(tab) => {
+                setIsCartOpen(false);
+                setProfileTab(tab || 'profile');
+                navigateTo('profile');
+              }}
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+              onLogout={handleLogout}
+            />
+          ) : view === 'warehouse-dashboard' && currentUser ? (
+            <WarehouseDashboard 
+              user={currentUser} 
+              onGoToHome={() => navigateTo('home')} 
+              onGoToProfile={(tab) => {
+                setIsCartOpen(false);
+                setProfileTab(tab || 'profile');
+                navigateTo('profile');
+              }}
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+              onLogout={handleLogout}
+            />
+          ) : view === 'register' ? (
+            <Register 
+              switchToLogin={() => navigateTo('login')} 
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+            />
+          ) : (
+            <Login 
+              switchToRegister={() => navigateTo('register')} 
+              onLoginSuccess={handleLoginSuccess}
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+            />
+          )}
+        </Suspense>
+      </ErrorBoundary>
 
       {/* Logout Re-assurance / Confirmation Modal */}
       {showLogoutConfirm && (
