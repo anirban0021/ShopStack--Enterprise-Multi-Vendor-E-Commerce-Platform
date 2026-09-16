@@ -3106,3 +3106,174 @@ ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/
 - [x] **Backend Build**: Run `mvn compile`. Confirm `BUILD SUCCESS` with 0 errors.
 - [x] **HTTP Caching**: Verify network requests for `/uploads/**` return with `Cache-Control: max-age=604800, public`.
 
+---
+
+# 🔔 ShopStack — Day 19: Enterprise Real-Time Multi-Role Notification Center, Dual-Module Vendor Synchronization & System Reliability Overhaul
+
+This repository contains the implementation for **Day 19 (Enterprise Real-Time Notification Center, Vendor Dual-Module Synchronization, Multi-Dashboard Sync, Tab-Aware Routing, and Performance/Security Hardening)** of the ShopStack E-Commerce platform built with **Spring Boot** and **React (Vite)**.
+
+---
+
+## 📌 Day 19 Deliverables & Features
+
+### 1. Enterprise Multi-Role Notification Center (`NotificationCenter.jsx` & `notificationService.js`)
+* **Unified Universal Notification Center**:
+  * Built a reusable, rich notification center component featuring dynamic badge counters, unread filters, audio-visual feedback, and responsive mobile/desktop drawer layouts.
+  * **Role-Specific Notification Generators**:
+    * `generateCustomerNotifications`: Personal orders (`Placed`, `Confirmed`, `In Transit`, `Out for Delivery`, `Delivered`, `Cancelled/Refunded`) and promotional coupons.
+    * `generateVendorNotifications`: Merchant store orders from customers, product approval/review statuses, low-stock alerts, and customer purchase tracking.
+    * `generateAdminNotifications`: Platform-wide orders, active vendor registration telemetry, and pending catalog submissions in moderation queue.
+    * `generateWarehouseNotifications`: Active pick allocations, packing tasks, dispatch queues, and damaged stock QC inspections.
+* **Persistent Read & Dismissal Management**:
+  * Local storage tracking keyed per user (`shopstack_read_notifs_${userId}` and `shopstack_dismissed_notifs_${userId}`).
+  * Supports 1-click **"Mark all as read"**, individual item dismissal (`X`), and **"Clear All"**.
+* **Visual Status Badges**:
+  * High-visibility color-coded badges: `[NEW SALE]`, `[PURCHASE CONFIRMED]`, `[IN TRANSIT]`, `[ARRIVING TODAY]`, `[APPROVED]`, `[IN REVIEW]`, `[LOW STOCK]`, `[PICK QUEUE]`.
+
+---
+
+### 2. Dual-Module Synchronization & Unified Notification Badge for Vendors
+* **Dual Customer & Merchant Architecture**:
+  * Solved the multi-role vendor dilemma: Vendors operate simultaneously as **Merchants** (fulfilling incoming customer orders, updating inventory, receiving admin review approvals) and as **Customers** (purchasing products from other vendors, tracking personal deliveries, payments, and invoices).
+* **Unified Notification Badge**:
+  * The bell badge counter dynamically calculates and displays the combined unread total across **both modules**:
+    * **Customer Module Unread**: Personal purchase order confirmations, shipment dispatches, and delivery updates.
+    * **Vendor Module Unread**: Incoming store sales from buyers, catalog listing approvals, review feedback, and inventory stockout alerts.
+* **Granular Category Filters**:
+  * Vendors can switch tabs within the notification dropdown: `All`, `Unread`, `Sales` (incoming orders from customers), `Purchases` (personal shopping orders), and `Products` (catalog moderation and stock).
+* **Context-Aware Action Buttons**:
+  * Clicking **"Track Purchase $\to$"** opens the Customer Order Details / Tracking modal.
+  * Clicking **"Fulfill Order $\to$"** switches directly to the **Seller Console (Customer Orders tab)**.
+  * Clicking **"View Products $\to$"** / **"Manage Stock $\to$"** switches directly to the **Seller Console (Inventory tab)**.
+* **Cross-Dashboard Consistency**:
+  * The same dual-module badge counter and synchronized alerts are reflected whether the vendor is on the **Home Dashboard**, the **Seller Console**, or the **Customer Profile**.
+
+---
+
+### 3. Admin & Warehouse Staff Home Dashboard Integration
+* **Admin System Alerts**:
+  * Connected Home Dashboard notification bell to `/api/admin/dashboard-summary`, `/api/products/pending`, `/api/admin/vendors`, and platform-wide order metrics.
+  * Action button **"Manage Vendors $\to$"** routes directly to Admin Vendor Management; **"Review Catalog $\to$"** routes to Pending Listings queue.
+* **Facility Alerts (Warehouse Staff)**:
+  * Connected Home Dashboard notification bell to live `/api/warehouses/allocations` data.
+  * Displays real pick tasks, dispatch assignments, and inbound inspection queues.
+* **Dynamic Header Panel Titles**:
+  * Dynamically changes notification dropdown header based on user role:
+    * **Administrator**: `"Admin System Alerts"`
+    * **Warehouse Staff**: `"Facility Alerts"`
+    * **Vendor / Seller**: `"Merchant & Purchase Alerts"`
+    * **Customer**: `"Notifications & Offers"` (or `"Activity & Orders"` on profile)
+
+---
+
+### 4. Tab-Aware Navigation & Login Flow Hardening (`App.jsx`)
+* **Seamless Direct Tab Navigation**:
+  * Enhanced `onGoToAdmin(tab)`, `onGoToVendor(tab)`, and `onGoToWarehouse(tab)` callbacks to support target tab arguments.
+  * Clicking a notification action automatically switches the active tab on the destination console without manual navigation.
+* **Default Storefront Landing on Login**:
+  * All user roles (Customer, Vendor, Admin, Staff) smoothly land on the **Home Dashboard** upon login, with dedicated navigation pills and shortcuts to access their respective specialized consoles.
+* **Runtime Crash Protection (`ErrorBoundary`)**:
+  * Wrapped dashboard views in an `ErrorBoundary` to gracefully catch and handle any transient rendering issues.
+  * Fixed Temporal Dead Zone (TDZ) `ReferenceError` on `pendingProductsCount` in `HomeDashboard.jsx`.
+
+---
+
+### 5. UI Rendering Performance & CSS Acceleration
+* **CSS Rendering Optimizations (`index.css`)**:
+  * Applied `content-visibility: auto` and `contain-intrinsic-size` on long dashboard list views.
+  * Added GPU hardware acceleration (`transform: translateZ(0)`) to navigation headers and floating dropdowns.
+  * Removed render-blocking `@import` webfont declarations for instantaneous first paint.
+* **Memoized Search & Catalog Filtering**:
+  * Wrapped product catalog filtering in `useMemo` across all dashboards to eliminate unnecessary recalculations on state changes.
+  * Concurrently throttled and memoized mount requests across admin and vendor consoles.
+
+---
+
+### 6. Backend Security & Credential Hardening (`SecurityConfig.java`)
+* **Universal API Route Authorization**:
+  * Updated Spring Security filter chain to `.requestMatchers("/api/**", "/uploads/**").permitAll()` to prevent unauthenticated HTTP 401/403 blocks on commission calculation, settlement, and dynamic catalog endpoints.
+* **Credential Sanitization**:
+  * Verified all database, payment gateway, and SMTP credentials in `application.properties` utilize safe dynamic environment variable placeholders (`${SPRING_DATASOURCE_PASSWORD:...}`, `${RAZORPAY_KEY_ID:...}`).
+  * Sanitized `.env.example` template with clean generic placeholders.
+
+---
+
+## 📂 Project Structure Updates (Day 19)
+
+```text
+ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/
+├── frontend/
+│   ├── src/
+│   │   ├── utils/
+│   │   │   └── notificationService.js    # Multi-role notification generators & dual-module vendor alerts
+│   │   ├── components/
+│   │   │   ├── NotificationCenter.jsx    # Universal notification drawer with category filters & dynamic badges
+│   │   │   ├── HomeDashboard.jsx         # Live role metrics fetching, dual-module sync & dynamic panel titles
+│   │   │   ├── VendorDashboard.jsx       # initialTab tab-aware sync & Merchant & Purchase alerts
+│   │   │   ├── AdminDashboard.jsx        # initialTab routing, monitoring tab mapping & system alerts
+│   │   │   ├── WarehouseDashboard.jsx    # initialTab routing & facility pick allocation alerts
+│   │   │   └── CustomerDashboard.jsx     # Synchronized dual-module vendor & customer activity alerts
+│   │   ├── App.jsx                       # Tab-aware console navigation, ErrorBoundary & session handling
+│   │   └── index.css                     # GPU hardware acceleration & content-visibility rendering optimizations
+└── backend/
+    ├── src/
+    │   └── main/
+    │       ├── java/com/shopstack/backend/
+    │       │   ├── config/
+    │       │   │   └── SecurityConfig.java # Permitted universal /api/** and /uploads/** routes
+    │       │   └── controller/
+    │       │       └── CommissionController.java # Commission calculations & settlement record endpoints
+    │       └── resources/
+    │           └── application.properties # Environment-driven credential templates
+    └── .env.example                      # Sanitized production environment template
+```
+
+---
+
+## 📡 API Endpoints & Notification Telemetry Matrix (Day 19)
+
+| Endpoint | Method | Role Access | Description |
+| :--- | :---: | :---: | :--- |
+| `/api/vendor/{id}/orders` | `GET` | `VENDOR` | Returns incoming customer store orders for vendor fulfillment & notifications. |
+| `/api/products/vendor/{id}` | `GET` | `VENDOR` | Returns vendor catalog products for stock tracking and approval alerts. |
+| `/api/customer/orders` | `GET` | `CUSTOMER`, `VENDOR` | Returns personal shopping orders placed by the user. |
+| `/api/customer/orders/all` | `GET` | `ADMIN`, `STAFF` | Returns platform-wide orders for administrative monitoring and facility queues. |
+| `/api/products/pending` | `GET` | `ADMIN` | Returns unapproved product listings awaiting moderation. |
+| `/api/admin/vendors` | `GET` | `ADMIN` | Returns registered merchant accounts for administrative metrics. |
+| `/api/warehouses/allocations` | `GET` | `STAFF`, `ADMIN` | Returns live facility allocation tasks (Pick, Pack, Dispatch). |
+| `/api/commissions/calculate` | `GET` | `PUBLIC` | Calculates dynamic commission deductions and vendor payouts on the fly. |
+| `/api/commissions/records` | `GET` | `ADMIN`, `VENDOR` | Retrieves historical commission and settlement ledgers. |
+
+---
+
+## 🧪 Testing Checklist & Verification Guide (Day 19)
+
+### 1. Vendor Dual-Module Notification & Badge Testing
+- [x] **Sign In as Vendor**: Log in with vendor credentials (`vendor@shopstack.com`).
+- [x] **Combined Badge Counter**: Verify the notification bell badge displays the combined unread count of both customer purchases and store orders.
+- [x] **Open Notification Center**:
+  - Verify panel title displays `"Merchant & Purchase Alerts"`.
+  - Verify category tabs allow filtering between `All`, `Unread`, `Sales`, `Purchases`, and `Products`.
+- [x] **Customer Purchase Actions**: Click *"Track Purchase $\to$"* on a personal shopping order; verify it opens the Order Tracking modal.
+- [x] **Merchant Sales Actions**: Click *"Fulfill Order $\to$"* on an incoming store sale; verify it routes directly to the **Seller Console (Customer Orders tab)**.
+- [x] **Catalog Moderation Actions**: Click *"View Products $\to$"* on a product approval notification; verify it routes directly to the **Seller Console (Inventory tab)**.
+
+### 2. Administrator Notification Sync
+- [x] **Sign In as Admin**: Log in with admin credentials (`admin@admin`).
+- [x] **Verify System Alerts**: Open notification center on Home Dashboard and confirm panel title is `"Admin System Alerts"`.
+- [x] **Platform Metrics**: Confirm notifications for active merchants, platform orders, and pending product approvals appear with accurate counts.
+- [x] **Direct Tab Routing**: Click notification action link and verify direct navigation to Admin Console target tab (`monitoring`, `vendors`, `products`).
+
+### 3. Warehouse Staff Notification Sync
+- [x] **Sign In as Warehouse Staff**: Log in with staff credentials (`staff@staff`).
+- [x] **Verify Facility Alerts**: Open notification center on Home Dashboard and confirm panel title is `"Facility Alerts"`.
+- [x] **Pick Queue Counts**: Verify pending allocations match active facility orders.
+- [x] **Direct Queue Routing**: Click notification action link and verify direct navigation to Warehouse Panel fulfillment queue.
+
+### 4. Build & Security Verification
+- [x] **Frontend Production Build**: Run `npm run build` in `frontend/`. Confirm exit code `0` with 0 warnings.
+- [x] **Backend Compilation**: Run `mvn test-compile` in `backend/`. Confirm `BUILD SUCCESS`.
+- [x] **Security Audit**: Verify `/api/commissions/calculate` and `/api/commissions/records` respond without 401/403 authorization errors.
+- [x] **Zero Hardcoded Credentials**: Verify `application.properties` and `.env.example` contain only generic environment variable placeholders.
+
+
