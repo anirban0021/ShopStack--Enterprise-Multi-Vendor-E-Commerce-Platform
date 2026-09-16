@@ -153,10 +153,7 @@ export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToP
     fetchAnalytics();
     fetchProducts();
     fetchVendorOrders();
-    fetchSettlements();
-    fetchVendorCoupons();
-    fetchReturns();
-  }, []);
+  }, [user?.id]);
 
   const showFlash = (type, text) => {
     let msg = text;
@@ -855,7 +852,7 @@ export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToP
                           <td style={{ fontSize: '20px', textAlign: 'center' }}>
                             <div style={{ width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', overflow: 'hidden', margin: '0 auto', background: 'var(--bg-input)' }}>
                               {prod.imageUrl && formatImageUrl(prod.imageUrl).length > 4 ? (
-                                <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                               ) : (
                                 <ProductIcon name={prod.name} category={prod.category} size={18} />
                               )}

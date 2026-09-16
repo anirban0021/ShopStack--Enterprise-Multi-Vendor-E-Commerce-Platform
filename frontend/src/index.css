@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
-
 /* Unified Modern-Dark Theme Design System for ShopStack */
 :root {
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
@@ -160,6 +158,36 @@ img, picture, video, canvas, svg {
   display: block;
   max-width: 100%;
   height: auto;
+}
+
+img {
+  content-visibility: auto;
+  image-rendering: auto;
+}
+
+.product-image-container {
+  background: var(--bg-input, #0b0f19);
+  position: relative;
+  overflow: hidden;
+}
+
+.product-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 260px 380px;
+  transform: translateZ(0);
+}
+
+.analytics-card {
+  transform: translateZ(0);
+}
+
+.modal-overlay,
+.dialog-content,
+.toast-notification,
+.mobile-bottom-nav,
+.navbar {
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 /* Animations */

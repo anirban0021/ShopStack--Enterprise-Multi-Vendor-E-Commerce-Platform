@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { 
   Search, User, ChevronDown, ShoppingCart, Heart, MapPin, 
@@ -309,13 +309,12 @@ export default function HomeDashboard({
 
   useEffect(() => {
     fetchProducts();
-    fetchOrders();
-    if (user && user.role === 'ADMINISTRATOR') {
+    if (user && (user.role === 'ADMINISTRATOR' || user.role === 'ADMIN')) {
       fetchPendingProductsCount();
-      const interval = setInterval(fetchPendingProductsCount, 10000);
+      const interval = setInterval(fetchPendingProductsCount, 30000);
       return () => clearInterval(interval);
     }
-  }, [user]);
+  }, [user?.id]);
 
   const fetchProducts = async () => {
     try {
@@ -911,21 +910,25 @@ export default function HomeDashboard({
   };
 
   // Filters logic
-  const categories = ['All', ...new Set(products.map(p => p.category))];
+  const categories = useMemo(() => ['All', ...new Set(products.map(p => p.category))], [products]);
   
-  const filteredProducts = products.filter(prod => {
-    const matchesSearch = prod.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          prod.category.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = categoryFilter === 'All' || prod.category === categoryFilter;
-    const disc = Number(prod.discountPercentage) || 0;
-    const effectiveP = prod.finalPrice != null ? prod.finalPrice : (disc > 0 ? Math.round(prod.price * (1 - disc / 100) * 100) / 100 : prod.price);
-    const matchesPrice = !maxPriceFilter || effectiveP <= parseFloat(maxPriceFilter);
-    
-    const ratingScore = prod.averageRating !== null && prod.averageRating !== undefined ? prod.averageRating : 0.0;
-    const matchesRating = ratingScore >= minRatingFilter;
-    
-    return matchesSearch && matchesCategory && matchesPrice && matchesRating;
-  });
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    const maxP = maxPriceFilter ? parseFloat(maxPriceFilter) : null;
+    return products.filter(prod => {
+      const matchesSearch = !q || (prod.name && prod.name.toLowerCase().includes(q)) || 
+                            (prod.category && prod.category.toLowerCase().includes(q));
+      const matchesCategory = categoryFilter === 'All' || prod.category === categoryFilter;
+      const disc = Number(prod.discountPercentage) || 0;
+      const effectiveP = prod.finalPrice != null ? prod.finalPrice : (disc > 0 ? Math.round(prod.price * (1 - disc / 100) * 100) / 100 : prod.price);
+      const matchesPrice = maxP === null || effectiveP <= maxP;
+      
+      const ratingScore = prod.averageRating !== null && prod.averageRating !== undefined ? prod.averageRating : 0.0;
+      const matchesRating = ratingScore >= minRatingFilter;
+      
+      return matchesSearch && matchesCategory && matchesPrice && matchesRating;
+    });
+  }, [products, searchQuery, categoryFilter, maxPriceFilter, minRatingFilter]);
 
   return (
     <div className="dashboard-container">

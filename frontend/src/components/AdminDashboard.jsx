@@ -759,16 +759,8 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
   useEffect(() => {
     fetchDashboardSummary();
     fetchPendingProducts();
-    fetchReturnRequests();
-    fetchMonitoring();
-    fetchTransactions();
-    fetchSettlements();
     fetchVendorsList();
-    fetchSystemStatus();
-    fetchReportData(reportType);
-    fetchCoupons();
-    fetchCouponAnalytics();
-    fetchAdminReviews();
+    fetchReturnRequests();
   }, []);
 
   // Close notifications dropdown when clicking outside
@@ -2201,7 +2193,7 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
                             <td style={{ fontSize: '20px' }}>
                               <div style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px', overflow: 'hidden' }}>
                                 {prod.imageUrl && formatImageUrl(prod.imageUrl).length > 4 ? (
-                                  <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
                                   <ProductIcon name={prod.name} category={prod.category} size={16} />
                                 )}

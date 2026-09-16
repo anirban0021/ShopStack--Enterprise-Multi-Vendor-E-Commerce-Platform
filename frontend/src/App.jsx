@@ -378,14 +378,14 @@ function App() {
 
   // Sync wishlist and orders on user login or switch
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser?.id) {
       fetchWishlist();
       fetchOrders();
     } else {
       setWishlist([]);
       setOrders([]);
     }
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
   // Cart open state (coordinated across navigation)
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -401,7 +401,7 @@ function App() {
     } else {
       setPendingAdminCount(0);
     }
-  }, [currentUser]);
+  }, [currentUser?.id, currentUser?.role]);
 
   const handleOpenCart = () => {
     if (view !== 'home') {

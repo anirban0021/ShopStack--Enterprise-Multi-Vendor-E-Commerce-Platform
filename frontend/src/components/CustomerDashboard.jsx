@@ -2357,7 +2357,7 @@ export default function CustomerDashboard({
                       <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: '180px' }}>
                         <div style={{ width: '44px', height: '44px', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--border-light)' }}>
                           {prod.imageUrl && formatImageUrl(prod.imageUrl).length > 4 ? (
-                            <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={formatImageUrl(prod.imageUrl)} alt={prod.name} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
                             <ProductIcon name={prod.name} category={prod.category} size={20} />
                           )}
@@ -2483,7 +2483,7 @@ export default function CustomerDashboard({
                             {/* Product Image */}
                             <div style={{ width: '48px', height: '48px', background: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid var(--border-light)' }}>
                               {item.imageUrl && formatImageUrl(item.imageUrl).length > 4 ? (
-                                <img src={formatImageUrl(item.imageUrl)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: isOutOfStock ? 'grayscale(0.7)' : 'none' }} />
+                                <img src={formatImageUrl(item.imageUrl)} alt={item.name} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: isOutOfStock ? 'grayscale(0.7)' : 'none' }} />
                               ) : (
                                 <ProductIcon name={item.name} category={item.category} size={20} />
                               )}
