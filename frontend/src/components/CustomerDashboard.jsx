@@ -9,8 +9,16 @@ import {
   UploadCloud, Image, Camera, Eye, Maximize2
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
+import NotificationCenter from './NotificationCenter';
 import { extractErrorMessage } from '../utils/errorHandler';
 import { formatImageUrl } from '../utils/imageHelper';
+import { 
+  generateCustomerNotifications, 
+  markNotifAsRead, 
+  markAllNotifsAsRead, 
+  clearAllNotifs, 
+  dismissNotif 
+} from '../utils/notificationService';
 
 export default function CustomerDashboard({ 
   user, orders = [], setOrders, cart = [], setCart, wishlist = [], setWishlist, 
@@ -71,6 +79,51 @@ export default function CustomerDashboard({
 
   const [isEditing, setIsEditing] = useState(false);
   const [flash, setFlash] = useState({ type: '', title: '', text: '' });
+
+  // Notifications State for Customer Dashboard
+  const [notificationList, setNotificationList] = useState([]);
+
+  const refreshNotifications = () => {
+    const list = generateCustomerNotifications({
+      user: profile.id ? profile : user,
+      orders,
+      wishlist,
+      onOpenOrders: (order) => {
+        setActiveTab('orders');
+      },
+      onOpenCart: () => {
+        if (onGoToHome) onGoToHome();
+      },
+      onCopyCoupon: (code) => {
+        showToast('success', 'Coupon Copied', `Code ${code} copied to clipboard!`);
+      }
+    });
+    setNotificationList(list);
+  };
+
+  useEffect(() => {
+    refreshNotifications();
+  }, [user, profile, orders, wishlist]);
+
+  const handleMarkNotifAsRead = (id) => {
+    markNotifAsRead(id, profile?.id || user?.id);
+    refreshNotifications();
+  };
+
+  const handleMarkAllNotifsAsRead = () => {
+    markAllNotifsAsRead(notificationList.map(n => n.id), profile?.id || user?.id);
+    refreshNotifications();
+  };
+
+  const handleClearAllNotifs = () => {
+    clearAllNotifs(profile?.id || user?.id);
+    refreshNotifications();
+  };
+
+  const handleDismissNotif = (id) => {
+    dismissNotif(id, profile?.id || user?.id);
+    refreshNotifications();
+  };
 
   const showToast = (type, title, text) => {
     let msg = text;
@@ -960,6 +1013,19 @@ export default function CustomerDashboard({
               <span className="show-on-mobile">Store</span>
             </button>
           )}
+
+          {/* Customer Notifications Center */}
+          <NotificationCenter
+            notifications={notificationList}
+            onMarkAsRead={handleMarkNotifAsRead}
+            onMarkAllAsRead={handleMarkAllNotifsAsRead}
+            onClearAll={handleClearAllNotifs}
+            onDismiss={handleDismissNotif}
+            role={profile.role || user?.role || 'CUSTOMER'}
+            panelTitle="Activity & Orders"
+            iconSize={16}
+            align="right"
+          />
 
           <div 
             className="nav-user-menu"

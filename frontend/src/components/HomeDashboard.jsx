@@ -8,8 +8,16 @@ import {
   ExternalLink, Maximize2, Zap, Eye, Camera, UploadCloud, Image
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
+import NotificationCenter from './NotificationCenter';
 import { extractErrorMessage } from '../utils/errorHandler';
 import { formatImageUrl } from '../utils/imageHelper';
+import { 
+  generateCustomerNotifications, 
+  markNotifAsRead, 
+  markAllNotifsAsRead, 
+  clearAllNotifs, 
+  dismissNotif 
+} from '../utils/notificationService';
 
 export default function HomeDashboard({ 
   user, cart, setCart, orders, setOrders, onLogout, 
@@ -23,21 +31,14 @@ export default function HomeDashboard({
   const [showDropdown, setShowDropdown] = useState(false);
   const userMenuRef = useRef(null);
 
-  // Notifications dropdown state
-  const [showNotifications, setShowNotifications] = useState(false);
-  const notifDropdownRef = useRef(null);
-
-  // Close profile and notification dropdowns when clicking or tapping outside
+  // Close profile dropdown when clicking or tapping outside
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
         setShowDropdown(false);
       }
-      if (notifDropdownRef.current && !notifDropdownRef.current.contains(e.target)) {
-        setShowNotifications(false);
-      }
     };
-    if (showDropdown || showNotifications) {
+    if (showDropdown) {
       document.addEventListener('mousedown', handleOutsideClick);
       document.addEventListener('touchstart', handleOutsideClick);
     }
@@ -45,7 +46,7 @@ export default function HomeDashboard({
       document.removeEventListener('mousedown', handleOutsideClick);
       document.removeEventListener('touchstart', handleOutsideClick);
     };
-  }, [showDropdown, showNotifications]);
+  }, [showDropdown]);
 
   const [products, setProducts] = useState([]);
   const [showCartModal, setShowCartModal] = useState(isCartOpen || false);
@@ -222,6 +223,52 @@ export default function HomeDashboard({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showLightbox, selectedProduct]);
   
+  // Dynamic Notifications State
+  const [notificationList, setNotificationList] = useState([]);
+
+  const refreshNotifications = () => {
+    const list = generateCustomerNotifications({
+      user,
+      orders,
+      wishlist,
+      products,
+      onOpenOrders: (order) => {
+        setShowOrdersModal(true);
+      },
+      onOpenCart: () => {
+        setShowCartModal(true);
+      },
+      onCopyCoupon: (code) => {
+        showFlash('success', `Coupon code "${code}" copied to clipboard! Apply at checkout.`);
+      }
+    });
+    setNotificationList(list);
+  };
+
+  useEffect(() => {
+    refreshNotifications();
+  }, [user, orders, wishlist, products]);
+
+  const handleMarkNotifAsRead = (id) => {
+    markNotifAsRead(id, user?.id);
+    refreshNotifications();
+  };
+
+  const handleMarkAllNotifsAsRead = () => {
+    markAllNotifsAsRead(notificationList.map(n => n.id), user?.id);
+    refreshNotifications();
+  };
+
+  const handleClearAllNotifs = () => {
+    clearAllNotifs(user?.id);
+    refreshNotifications();
+  };
+
+  const handleDismissNotif = (id) => {
+    dismissNotif(id, user?.id);
+    refreshNotifications();
+  };
+
   // Toast notifications
   const [flash, setFlash] = useState({ type: '', text: '' });
 
@@ -898,147 +945,34 @@ export default function HomeDashboard({
         </div>
 
         {/* Mobile Notification Button (Visible on mobile <= 768px) */}
-        <div className="notification-bell-container show-on-mobile" ref={notifDropdownRef}>
-          <button 
-            type="button"
-            onClick={() => setShowNotifications(!showNotifications)} 
-            className="btn-icon-nav" 
-            style={{ position: 'relative' }}
-            title="Notifications"
-            aria-label="View notifications"
-          >
-            <Bell size={17} />
-            {(pendingProductsCount > 0 || (orders && orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length > 0)) && (
-              <span className="notification-badge">
-                {(user.role === 'ADMINISTRATOR' || user.role === 'ADMIN') && pendingProductsCount > 0 
-                  ? pendingProductsCount 
-                  : (orders ? orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length : 0)}
-              </span>
-            )}
-          </button>
-          
-          {showNotifications && (
-            <div className="notifications-dropdown" style={{ right: 0, left: 'auto', width: 'min(320px, calc(100vw - 24px))' }}>
-              <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-light)', fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Notifications</span>
-                <span className="badge badge-customer" style={{ fontSize: '9px' }}>Live</span>
-              </div>
-              <div style={{ overflowY: 'auto', flex: 1, maxHeight: '280px' }}>
-                {(user.role === 'ADMINISTRATOR' || user.role === 'ADMIN') && pendingProductsCount > 0 && (
-                  <div 
-                    onClick={() => {
-                      setShowNotifications(false);
-                      onGoToAdmin();
-                    }}
-                    className="dropdown-item-notification"
-                    style={{ background: 'rgba(239, 68, 68, 0.08)', cursor: 'pointer' }}
-                  >
-                    <ShieldAlert size={17} style={{ color: 'var(--accent-rose)', flexShrink: 0 }} />
-                    <div>
-                      <strong style={{ fontSize: '12.5px', color: 'var(--accent-rose)' }}>{pendingProductsCount} Product(s) Pending Review</strong>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Tap to review & approve</div>
-                    </div>
-                  </div>
-                )}
-
-                {orders && orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').map(order => (
-                  <div 
-                    key={order.id}
-                    onClick={() => {
-                      setShowNotifications(false);
-                      setShowOrdersModal(true);
-                    }}
-                    className="dropdown-item-notification"
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <Package size={17} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
-                    <div>
-                      <strong style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>Order #{order.id} - {order.orderStatus}</strong>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{order.totalAmount?.toLocaleString('en-IN')} • Tap to view tracking</div>
-                    </div>
-                  </div>
-                ))}
-
-                {(!pendingProductsCount || pendingProductsCount === 0) && (!orders || orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length === 0) && (
-                  <div style={{ padding: '20px 16px', textAlign: 'center', fontSize: '12.5px', color: 'var(--text-muted)' }}>
-                    No new notifications
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+        <div className="show-on-mobile" style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <NotificationCenter
+            notifications={notificationList}
+            onMarkAsRead={handleMarkNotifAsRead}
+            onMarkAllAsRead={handleMarkAllNotifsAsRead}
+            onClearAll={handleClearAllNotifs}
+            onDismiss={handleDismissNotif}
+            role={user?.role || 'CUSTOMER'}
+            panelTitle="Notifications"
+            iconSize={17}
+            align="right"
+          />
         </div>
 
         <div className="nav-right nav-right-home">
           {/* Notification Bell on Desktop */}
-          <div className="notification-bell-container" ref={notifDropdownRef}>
-            <button 
-              type="button"
-              onClick={() => setShowNotifications(!showNotifications)} 
-              className="btn-icon-nav" 
-              style={{ position: 'relative' }}
-              title="Notifications"
-            >
-              <Bell size={16} />
-              {(pendingProductsCount > 0 || (orders && orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length > 0)) && (
-                <span className="notification-badge">
-                  {(user.role === 'ADMINISTRATOR' || user.role === 'ADMIN') && pendingProductsCount > 0 
-                    ? pendingProductsCount 
-                    : (orders ? orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length : 0)}
-                </span>
-              )}
-            </button>
-            
-            {showNotifications && (
-              <div className="notifications-dropdown" style={{ right: 0, left: 'auto', width: '320px' }}>
-                <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-light)', fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Notifications</span>
-                  <span className="badge badge-customer" style={{ fontSize: '9px' }}>Live</span>
-                </div>
-                <div style={{ overflowY: 'auto', flex: 1, maxHeight: '280px' }}>
-                  {(user.role === 'ADMINISTRATOR' || user.role === 'ADMIN') && pendingProductsCount > 0 && (
-                    <div 
-                      onClick={() => {
-                        setShowNotifications(false);
-                        onGoToAdmin();
-                      }}
-                      className="dropdown-item-notification"
-                      style={{ background: 'rgba(239, 68, 68, 0.08)', cursor: 'pointer' }}
-                    >
-                      <ShieldAlert size={17} style={{ color: 'var(--accent-rose)', flexShrink: 0 }} />
-                      <div>
-                        <strong style={{ fontSize: '12.5px', color: 'var(--accent-rose)' }}>{pendingProductsCount} Product(s) Pending Review</strong>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Tap to review & approve</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {orders && orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').map(order => (
-                    <div 
-                      key={order.id}
-                      onClick={() => {
-                        setShowNotifications(false);
-                        setShowOrdersModal(true);
-                      }}
-                      className="dropdown-item-notification"
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <Package size={17} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
-                      <div>
-                        <strong style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>Order #{order.id} - {order.orderStatus}</strong>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{order.totalAmount?.toLocaleString('en-IN')} • Tap to view tracking</div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {(!pendingProductsCount || pendingProductsCount === 0) && (!orders || orders.filter(o => o.orderStatus === 'PROCESSING' || o.orderStatus === 'PLACED' || o.orderStatus === 'OUT_FOR_DELIVERY').length === 0) && (
-                    <div style={{ padding: '20px 16px', textAlign: 'center', fontSize: '12.5px', color: 'var(--text-muted)' }}>
-                      No new notifications
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+          <div className="hide-on-mobile" style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <NotificationCenter
+              notifications={notificationList}
+              onMarkAsRead={handleMarkNotifAsRead}
+              onMarkAllAsRead={handleMarkAllNotifsAsRead}
+              onClearAll={handleClearAllNotifs}
+              onDismiss={handleDismissNotif}
+              role={user?.role || 'CUSTOMER'}
+              panelTitle="Notifications & Offers"
+              iconSize={16}
+              align="right"
+            />
           </div>
 
           {/* Admin link */}

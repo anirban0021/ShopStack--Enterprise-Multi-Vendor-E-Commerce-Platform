@@ -10,8 +10,16 @@ import {
   Star, MessageSquare
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
+import NotificationCenter from './NotificationCenter';
 import { extractErrorMessage } from '../utils/errorHandler';
 import { formatImageUrl } from '../utils/imageHelper';
+import { 
+  generateAdminNotifications, 
+  markNotifAsRead, 
+  markAllNotifsAsRead, 
+  clearAllNotifs, 
+  dismissNotif 
+} from '../utils/notificationService';
 
 export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout }) {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'vendors' | 'products' | 'returns' | 'monitoring' | 'transactions' | 'settlements' | 'system' | 'reports'
@@ -19,6 +27,46 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const userMenuRef = useRef(null);
+
+  // Dynamic Admin Notifications State
+  const [notificationList, setNotificationList] = useState([]);
+
+  const refreshNotifications = () => {
+    const list = generateAdminNotifications({
+      user,
+      pendingProductsCount: pendingProducts?.length || 0,
+      ordersCount: dashboardSummary?.totalOrders || 0,
+      vendorsCount: vendorsList?.length || 0,
+      onGoToTab: (tab) => {
+        setActiveTab(tab);
+      }
+    });
+    setNotificationList(list);
+  };
+
+  useEffect(() => {
+    refreshNotifications();
+  }, [user, pendingProducts, dashboardSummary, vendorsList]);
+
+  const handleMarkNotifAsRead = (id) => {
+    markNotifAsRead(id, user?.id);
+    refreshNotifications();
+  };
+
+  const handleMarkAllNotifsAsRead = () => {
+    markAllNotifsAsRead(notificationList.map(n => n.id), user?.id);
+    refreshNotifications();
+  };
+
+  const handleClearAllNotifs = () => {
+    clearAllNotifs(user?.id);
+    refreshNotifications();
+  };
+
+  const handleDismissNotif = (id) => {
+    dismissNotif(id, user?.id);
+    refreshNotifications();
+  };
 
   // Close user dropdown when clicking outside
   useEffect(() => {
@@ -1107,6 +1155,19 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
             <span className="hide-on-mobile">Browse Catalog</span>
             <span className="show-on-mobile">Catalog</span>
           </button>
+
+          {/* Admin Notifications Center */}
+          <NotificationCenter
+            notifications={notificationList}
+            onMarkAsRead={handleMarkNotifAsRead}
+            onMarkAllAsRead={handleMarkAllNotifsAsRead}
+            onClearAll={handleClearAllNotifs}
+            onDismiss={handleDismissNotif}
+            role="ADMINISTRATOR"
+            panelTitle="Admin System Alerts"
+            iconSize={16}
+            align="right"
+          />
 
           <div 
             className="nav-user-menu"

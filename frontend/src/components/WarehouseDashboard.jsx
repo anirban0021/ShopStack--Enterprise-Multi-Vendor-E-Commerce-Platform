@@ -8,8 +8,16 @@ import {
   Sun, Moon, ArrowLeft, ChevronDown, User, LogOut
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
+import NotificationCenter from './NotificationCenter';
 import { extractErrorMessage } from '../utils/errorHandler';
 import { formatImageUrl } from '../utils/imageHelper';
+import { 
+  generateWarehouseNotifications, 
+  markNotifAsRead, 
+  markAllNotifsAsRead, 
+  clearAllNotifs, 
+  dismissNotif 
+} from '../utils/notificationService';
 
 export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout }) {
   const [warehouses, setWarehouses] = useState([]);
@@ -108,6 +116,45 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
       !user.warehouseId || String(a.warehouseId) === String(user.warehouseId) || (a.warehouse && String(a.warehouse.id) === String(user.warehouseId))
     )
   );
+
+  // Dynamic Warehouse Notifications State
+  const [notificationList, setNotificationList] = useState([]);
+
+  const refreshNotifications = () => {
+    const list = generateWarehouseNotifications({
+      user,
+      pendingAllocationsCount: staffPendingAllocations?.length || 0,
+      onGoToQueue: (tab, subTab) => {
+        setActiveTab(tab);
+        if (subTab) setFulfillmentSubTab(subTab);
+      }
+    });
+    setNotificationList(list);
+  };
+
+  useEffect(() => {
+    refreshNotifications();
+  }, [user, staffPendingAllocations]);
+
+  const handleMarkNotifAsRead = (id) => {
+    markNotifAsRead(id, user?.id);
+    refreshNotifications();
+  };
+
+  const handleMarkAllNotifsAsRead = () => {
+    markAllNotifsAsRead(notificationList.map(n => n.id), user?.id);
+    refreshNotifications();
+  };
+
+  const handleClearAllNotifs = () => {
+    clearAllNotifs(user?.id);
+    refreshNotifications();
+  };
+
+  const handleDismissNotif = (id) => {
+    dismissNotif(id, user?.id);
+    refreshNotifications();
+  };
 
   const showFlash = (type, text) => {
     let msg = text;
@@ -433,6 +480,19 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
             <span className="hide-on-mobile">Browse Store</span>
             <span className="show-on-mobile">Store</span>
           </button>
+
+          {/* Warehouse Notifications Center */}
+          <NotificationCenter
+            notifications={notificationList}
+            onMarkAsRead={handleMarkNotifAsRead}
+            onMarkAllAsRead={handleMarkAllNotifsAsRead}
+            onClearAll={handleClearAllNotifs}
+            onDismiss={handleDismissNotif}
+            role="STAFF"
+            panelTitle="Facility Alerts"
+            iconSize={16}
+            align="right"
+          />
 
           <div 
             className="nav-user-menu"

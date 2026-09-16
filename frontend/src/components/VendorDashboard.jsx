@@ -7,8 +7,16 @@ import {
   Sun, Moon, ArrowLeft, ChevronDown, User, LogOut
 } from 'lucide-react';
 import ProductIcon from './ProductIcon';
+import NotificationCenter from './NotificationCenter';
 import { extractErrorMessage } from '../utils/errorHandler';
 import { formatImageUrl } from '../utils/imageHelper';
+import { 
+  generateVendorNotifications, 
+  markNotifAsRead, 
+  markAllNotifsAsRead, 
+  clearAllNotifs, 
+  dismissNotif 
+} from '../utils/notificationService';
 
 const getWordCount = (text) => {
   if (!text) return 0;
@@ -50,6 +58,46 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
   const [vendorOrders, setVendorOrders] = useState([]);
   const [showProductModal, setShowProductModal] = useState(false);
   const [modalMode, setModalMode] = useState('add'); // 'add' or 'edit'
+
+  // Dynamic Vendor Notifications State
+  const [notificationList, setNotificationList] = useState([]);
+
+  const refreshNotifications = () => {
+    const list = generateVendorNotifications({
+      user,
+      products,
+      orders: vendorOrders,
+      earnings: stats?.totalRevenue || 0,
+      onGoToTab: (tab) => {
+        setActiveTab(tab);
+      }
+    });
+    setNotificationList(list);
+  };
+
+  useEffect(() => {
+    refreshNotifications();
+  }, [user, products, vendorOrders, stats]);
+
+  const handleMarkNotifAsRead = (id) => {
+    markNotifAsRead(id, user?.id);
+    refreshNotifications();
+  };
+
+  const handleMarkAllNotifsAsRead = () => {
+    markAllNotifsAsRead(notificationList.map(n => n.id), user?.id);
+    refreshNotifications();
+  };
+
+  const handleClearAllNotifs = () => {
+    clearAllNotifs(user?.id);
+    refreshNotifications();
+  };
+
+  const handleDismissNotif = (id) => {
+    dismissNotif(id, user?.id);
+    refreshNotifications();
+  };
   
   // Settlements / Payouts state
   const [settlements, setSettlements] = useState([]);
@@ -519,6 +567,19 @@ export default function VendorDashboard({ user, onGoToHome, theme, onToggleTheme
             <span className="hide-on-mobile">Browse Store</span>
             <span className="show-on-mobile">Store</span>
           </button>
+
+          {/* Vendor Notifications Center */}
+          <NotificationCenter
+            notifications={notificationList}
+            onMarkAsRead={handleMarkNotifAsRead}
+            onMarkAllAsRead={handleMarkAllNotifsAsRead}
+            onClearAll={handleClearAllNotifs}
+            onDismiss={handleDismissNotif}
+            role="VENDOR"
+            panelTitle="Merchant Alerts"
+            iconSize={16}
+            align="right"
+          />
 
           <div 
             className="nav-user-menu"
