@@ -22,12 +22,17 @@ import {
 } from '../utils/notificationService';
 
 export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout, initialTab = 'overview' }) {
-  const [activeTab, setActiveTab] = useState(initialTab === 'orders' ? 'monitoring' : initialTab); // 'overview' | 'vendors' | 'products' | 'returns' | 'monitoring' | 'transactions' | 'settlements' | 'system' | 'reports'
+  const getSanitizedTab = (tab) => {
+    if (typeof tab === 'string' && tab) {
+      return tab === 'orders' ? 'monitoring' : tab;
+    }
+    return 'overview';
+  };
+
+  const [activeTab, setActiveTab] = useState(getSanitizedTab(initialTab)); // 'overview' | 'vendors' | 'products' | 'returns' | 'monitoring' | 'transactions' | 'settlements' | 'system' | 'reports'
 
   useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab === 'orders' ? 'monitoring' : initialTab);
-    }
+    setActiveTab(getSanitizedTab(initialTab));
   }, [initialTab]);
   const [pendingProducts, setPendingProducts] = useState([]);
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });

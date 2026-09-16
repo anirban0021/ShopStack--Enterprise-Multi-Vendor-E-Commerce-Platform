@@ -49,11 +49,13 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
   }, [showUserDropdown]);
 
   // Tabs: 'analytics' | 'fulfillment' | 'warehouses' | 'inventory' | 'returns'
-  const [activeTab, setActiveTab] = useState(initialTab || 'analytics');
+  const getSanitizedTab = (tab) => {
+    return (typeof tab === 'string' && tab) ? tab : 'analytics';
+  };
+
+  const [activeTab, setActiveTab] = useState(getSanitizedTab(initialTab));
   useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab);
-    }
+    setActiveTab(getSanitizedTab(initialTab));
   }, [initialTab]);
   // Fulfillment Pipeline Sub-tabs: 'allocate' | 'pick' | 'pack' | 'ship'
   const [fulfillmentSubTab, setFulfillmentSubTab] = useState('allocate');

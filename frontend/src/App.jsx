@@ -432,22 +432,22 @@ function App() {
               onLogout={handleLogout} 
               onGoToProfile={(tab) => {
                 setIsCartOpen(false);
-                setProfileTab(tab || 'profile');
+                setProfileTab(typeof tab === 'string' && tab ? tab : 'profile');
                 navigateTo('profile');
               }} 
               onGoToVendor={(tab) => {
                 setIsCartOpen(false);
-                if (tab) setVendorTab(tab);
+                setVendorTab(typeof tab === 'string' && tab ? tab : 'analytics');
                 navigateTo('vendor-dashboard');
               }}
               onGoToAdmin={(tab) => {
                 setIsCartOpen(false);
-                if (tab) setAdminTab(tab);
+                setAdminTab(typeof tab === 'string' && tab ? tab : 'overview');
                 navigateTo('admin-dashboard');
               }}
               onGoToWarehouse={(tab) => {
                 setIsCartOpen(false);
-                if (tab) setWarehouseTab(tab);
+                setWarehouseTab(typeof tab === 'string' && tab ? tab : 'analytics');
                 navigateTo('warehouse-dashboard');
               }}
               theme={theme}
@@ -472,15 +472,15 @@ function App() {
               onLogout={handleLogout} 
               onGoToHome={() => navigateTo('home')} 
               onGoToAdmin={(tab) => {
-                if (tab) setAdminTab(tab);
+                setAdminTab(typeof tab === 'string' && tab ? tab : 'overview');
                 navigateTo('admin-dashboard');
               }}
               onGoToWarehouse={(tab) => {
-                if (tab) setWarehouseTab(tab);
+                setWarehouseTab(typeof tab === 'string' && tab ? tab : 'analytics');
                 navigateTo('warehouse-dashboard');
               }}
               onGoToVendor={(tab) => {
-                if (tab) setVendorTab(tab);
+                setVendorTab(typeof tab === 'string' && tab ? tab : 'analytics');
                 navigateTo('vendor-dashboard');
               }}
               theme={theme}

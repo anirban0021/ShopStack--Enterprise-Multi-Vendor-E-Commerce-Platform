@@ -24,14 +24,19 @@ const getWordCount = (text) => {
 };
 
 export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout, initialTab = 'analytics' }) {
-  const [activeTab, setActiveTab] = useState(initialTab === 'products' ? 'inventory' : initialTab);
+  const getSanitizedTab = (tab) => {
+    if (typeof tab === 'string' && tab) {
+      return tab === 'products' ? 'inventory' : tab;
+    }
+    return 'analytics';
+  };
+
+  const [activeTab, setActiveTab] = useState(getSanitizedTab(initialTab));
   const [showDropdown, setShowDropdown] = useState(false);
   const userMenuRef = useRef(null);
 
   useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab === 'products' ? 'inventory' : initialTab);
-    }
+    setActiveTab(getSanitizedTab(initialTab));
   }, [initialTab]);
 
   // Close dropdown when clicking outside
