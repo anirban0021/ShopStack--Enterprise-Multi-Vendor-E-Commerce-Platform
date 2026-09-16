@@ -134,9 +134,6 @@ function App() {
       try {
         const u = JSON.parse(savedUser);
         if (u && (u.id || u.email)) {
-          if (u.role === 'VENDOR') return 'vendor-dashboard';
-          if (u.role === 'ADMINISTRATOR' || u.role === 'ADMIN') return 'admin-dashboard';
-          if (u.role === 'WAREHOUSE_STAFF' || u.role === 'STAFF') return 'warehouse-dashboard';
           return 'home';
         }
       } catch (e) {
@@ -254,16 +251,7 @@ function App() {
 
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);
-    const role = user?.role;
-    if (role === 'VENDOR') {
-      navigateTo('vendor-dashboard');
-    } else if (role === 'ADMINISTRATOR' || role === 'ADMIN') {
-      navigateTo('admin-dashboard');
-    } else if (role === 'WAREHOUSE_STAFF' || role === 'STAFF') {
-      navigateTo('warehouse-dashboard');
-    } else {
-      navigateTo('home');
-    }
+    navigateTo('home');
   };
 
   // Logout Confirmation Modal state
