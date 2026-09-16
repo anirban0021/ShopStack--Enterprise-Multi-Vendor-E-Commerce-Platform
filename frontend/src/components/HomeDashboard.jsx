@@ -353,22 +353,22 @@ export default function HomeDashboard({
   ]);
 
   const handleMarkNotifAsRead = (id) => {
-    markNotifAsRead(id, user?.id);
+    markNotifAsRead(id, user?.id || user?.email);
     refreshNotifications();
   };
 
   const handleMarkAllNotifsAsRead = () => {
-    markAllNotifsAsRead(notificationList.map(n => n.id), user?.id);
+    markAllNotifsAsRead(notificationList.map(n => n.id), user?.id || user?.email);
     refreshNotifications();
   };
 
   const handleClearAllNotifs = () => {
-    clearAllNotifs(user?.id);
+    clearAllNotifs(user?.id || user?.email, notificationList.map(n => n.id));
     refreshNotifications();
   };
 
   const handleDismissNotif = (id) => {
-    dismissNotif(id, user?.id);
+    dismissNotif(id, user?.id || user?.email);
     refreshNotifications();
   };
 

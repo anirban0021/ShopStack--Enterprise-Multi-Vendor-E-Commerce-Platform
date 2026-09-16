@@ -7,10 +7,26 @@
 const NOTIF_STORAGE_KEY_PREFIX = 'shopstack_read_notifs_';
 const NOTIF_DISMISSED_KEY_PREFIX = 'shopstack_dismissed_notifs_';
 
+export function resolveUserId(userOrId) {
+  if (!userOrId) return 'guest';
+  if (typeof userOrId === 'object') {
+    return userOrId.id || userOrId.email || 'guest';
+  }
+  return String(userOrId);
+}
+
 export function getReadNotifIds(userId = 'guest') {
   try {
-    const raw = sessionStorage.getItem(`${NOTIF_STORAGE_KEY_PREFIX}${userId}`);
-    return raw ? JSON.parse(raw) : [];
+    const uid = resolveUserId(userId);
+    const raw = localStorage.getItem(`${NOTIF_STORAGE_KEY_PREFIX}${uid}`);
+    if (raw) return JSON.parse(raw);
+    const rawSession = sessionStorage.getItem(`${NOTIF_STORAGE_KEY_PREFIX}${uid}`);
+    if (rawSession) {
+      const parsed = JSON.parse(rawSession);
+      localStorage.setItem(`${NOTIF_STORAGE_KEY_PREFIX}${uid}`, rawSession);
+      return parsed;
+    }
+    return [];
   } catch (e) {
     return [];
   }
@@ -18,26 +34,36 @@ export function getReadNotifIds(userId = 'guest') {
 
 export function markNotifAsRead(notifId, userId = 'guest') {
   try {
-    const ids = getReadNotifIds(userId);
+    const uid = resolveUserId(userId);
+    const ids = getReadNotifIds(uid);
     if (!ids.includes(notifId)) {
       ids.push(notifId);
-      sessionStorage.setItem(`${NOTIF_STORAGE_KEY_PREFIX}${userId}`, JSON.stringify(ids));
+      localStorage.setItem(`${NOTIF_STORAGE_KEY_PREFIX}${uid}`, JSON.stringify(ids));
     }
   } catch (e) {}
 }
 
 export function markAllNotifsAsRead(notifIds = [], userId = 'guest') {
   try {
-    const ids = getReadNotifIds(userId);
+    const uid = resolveUserId(userId);
+    const ids = getReadNotifIds(uid);
     const combined = [...new Set([...ids, ...notifIds])];
-    sessionStorage.setItem(`${NOTIF_STORAGE_KEY_PREFIX}${userId}`, JSON.stringify(combined));
+    localStorage.setItem(`${NOTIF_STORAGE_KEY_PREFIX}${uid}`, JSON.stringify(combined));
   } catch (e) {}
 }
 
 export function getDismissedNotifIds(userId = 'guest') {
   try {
-    const raw = sessionStorage.getItem(`${NOTIF_DISMISSED_KEY_PREFIX}${userId}`);
-    return raw ? JSON.parse(raw) : [];
+    const uid = resolveUserId(userId);
+    const raw = localStorage.getItem(`${NOTIF_DISMISSED_KEY_PREFIX}${uid}`);
+    if (raw) return JSON.parse(raw);
+    const rawSession = sessionStorage.getItem(`${NOTIF_DISMISSED_KEY_PREFIX}${uid}`);
+    if (rawSession) {
+      const parsed = JSON.parse(rawSession);
+      localStorage.setItem(`${NOTIF_DISMISSED_KEY_PREFIX}${uid}`, rawSession);
+      return parsed;
+    }
+    return [];
   } catch (e) {
     return [];
   }
@@ -45,17 +71,26 @@ export function getDismissedNotifIds(userId = 'guest') {
 
 export function dismissNotif(notifId, userId = 'guest') {
   try {
-    const ids = getDismissedNotifIds(userId);
+    const uid = resolveUserId(userId);
+    const ids = getDismissedNotifIds(uid);
     if (!ids.includes(notifId)) {
       ids.push(notifId);
-      sessionStorage.setItem(`${NOTIF_DISMISSED_KEY_PREFIX}${userId}`, JSON.stringify(ids));
+      localStorage.setItem(`${NOTIF_DISMISSED_KEY_PREFIX}${uid}`, JSON.stringify(ids));
     }
   } catch (e) {}
 }
 
-export function clearAllNotifs(userId = 'guest') {
+export function clearAllNotifs(userId = 'guest', notifIds = []) {
   try {
-    sessionStorage.setItem(`${NOTIF_DISMISSED_KEY_PREFIX}${userId}`, JSON.stringify(['__all__']));
+    const uid = resolveUserId(userId);
+    const ids = getDismissedNotifIds(uid);
+    let combined;
+    if (Array.isArray(notifIds) && notifIds.length > 0) {
+      combined = [...new Set([...ids, ...notifIds])];
+    } else {
+      combined = [...new Set([...ids, '__all__'])];
+    }
+    localStorage.setItem(`${NOTIF_DISMISSED_KEY_PREFIX}${uid}`, JSON.stringify(combined));
   } catch (e) {}
 }
 
@@ -67,7 +102,7 @@ export function generateCustomerNotifications({
   orders = [],
   onOpenOrders
 }) {
-  const userId = user?.id || 'guest';
+  const userId = resolveUserId(user);
   const readIds = getReadNotifIds(userId);
   const dismissedIds = getDismissedNotifIds(userId);
   if (dismissedIds.includes('__all__')) return [];
@@ -176,7 +211,7 @@ export function generateVendorNotifications({
   onGoToTab,
   onOpenPurchaseOrder
 }) {
-  const userId = user?.id || 'vendor';
+  const userId = resolveUserId(user || 'vendor');
   const readIds = getReadNotifIds(userId);
   const dismissedIds = getDismissedNotifIds(userId);
   if (dismissedIds.includes('__all__')) return [];
@@ -339,7 +374,7 @@ export function generateAdminNotifications({
   vendorsCount = 0,
   onGoToTab
 }) {
-  const userId = user?.id || 'admin';
+  const userId = resolveUserId(user || 'admin');
   const readIds = getReadNotifIds(userId);
   const dismissedIds = getDismissedNotifIds(userId);
   if (dismissedIds.includes('__all__')) return [];
@@ -410,7 +445,7 @@ export function generateWarehouseNotifications({
   pendingAllocationsCount = 0,
   onGoToQueue
 }) {
-  const userId = user?.id || 'staff';
+  const userId = resolveUserId(user || 'staff');
   const readIds = getReadNotifIds(userId);
   const dismissedIds = getDismissedNotifIds(userId);
   if (dismissedIds.includes('__all__')) return [];

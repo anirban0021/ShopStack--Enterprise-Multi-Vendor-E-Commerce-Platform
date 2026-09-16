@@ -206,22 +206,22 @@ export default function CustomerDashboard({
   ]);
 
   const handleMarkNotifAsRead = (id) => {
-    markNotifAsRead(id, profile?.id || user?.id);
+    markNotifAsRead(id, profile?.id || user?.id || profile?.email || user?.email);
     refreshNotifications();
   };
 
   const handleMarkAllNotifsAsRead = () => {
-    markAllNotifsAsRead(notificationList.map(n => n.id), profile?.id || user?.id);
+    markAllNotifsAsRead(notificationList.map(n => n.id), profile?.id || user?.id || profile?.email || user?.email);
     refreshNotifications();
   };
 
   const handleClearAllNotifs = () => {
-    clearAllNotifs(profile?.id || user?.id);
+    clearAllNotifs(profile?.id || user?.id || profile?.email || user?.email, notificationList.map(n => n.id));
     refreshNotifications();
   };
 
   const handleDismissNotif = (id) => {
-    dismissNotif(id, profile?.id || user?.id);
+    dismissNotif(id, profile?.id || user?.id || profile?.email || user?.email);
     refreshNotifications();
   };
 
