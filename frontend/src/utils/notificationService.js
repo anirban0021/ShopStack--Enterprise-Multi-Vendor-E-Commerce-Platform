@@ -390,7 +390,7 @@ export function generateAdminNotifications({
       badge: 'ORDERS',
       badgeType: 'success',
       actionLabel: 'View Orders',
-      onAction: () => onGoToTab && onGoToTab('orders')
+      onAction: () => onGoToTab && onGoToTab('monitoring')
     });
   }
 

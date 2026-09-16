@@ -112,7 +112,19 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
       ordersCount: dashboardSummary?.totalOrders || 0,
       vendorsCount: vendorsList?.length || 0,
       onGoToTab: (tab) => {
-        setActiveTab(tab);
+        const targetTab = (tab === 'orders' || tab === 'monitoring') ? 'monitoring' : tab;
+        setActiveTab(targetTab);
+        if (targetTab === 'monitoring') fetchMonitoring();
+        else if (targetTab === 'vendors') fetchVendors();
+        else if (targetTab === 'products') fetchPendingProducts();
+        else if (targetTab === 'reviews') fetchAdminReviews();
+        else if (targetTab === 'returns') fetchReturnRequests();
+        else if (targetTab === 'warehouses') fetchWarehousesAndAllocations();
+        else if (targetTab === 'transactions') fetchTransactions();
+        else if (targetTab === 'settlements') fetchSettlements();
+        else if (targetTab === 'coupons') { fetchCoupons(); fetchCouponAnalytics(); }
+        else if (targetTab === 'system') fetchSystemStatus();
+        else if (targetTab === 'reports') fetchReportData(reportType);
       }
     });
     setNotificationList(list);
@@ -1360,10 +1372,10 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
         <button
           type="button"
           onClick={() => { setActiveTab('monitoring'); fetchMonitoring(); }}
-          className={`sidebar-item ${activeTab === 'monitoring' ? 'sidebar-item-active' : ''}`}
-          style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: activeTab === 'monitoring' ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
+          className={`sidebar-item ${(activeTab === 'monitoring' || activeTab === 'orders') ? 'sidebar-item-active' : ''}`}
+          style={{ padding: '12px 18px', borderRadius: '8px 8px 0 0', borderBottom: (activeTab === 'monitoring' || activeTab === 'orders') ? '2px solid var(--accent-teal)' : 'none', background: 'transparent' }}
         >
-          <Activity size={17} style={{ color: activeTab === 'monitoring' ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
+          <Activity size={17} style={{ color: (activeTab === 'monitoring' || activeTab === 'orders') ? 'var(--accent-teal)' : 'var(--text-muted)' }} />
           <span>Order Monitoring</span>
           {monitoringMetrics.failedCount > 0 && (
             <span className="badge badge-rejected" style={{ fontSize: '10px', padding: '1px 5px' }}>
@@ -3745,7 +3757,7 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
           )}
 
           {/* TAB 3: PAYMENT STATUS MONITORING */}
-          {activeTab === 'monitoring' && (
+          {(activeTab === 'monitoring' || activeTab === 'orders') && (
             <div>
               <div className="flex-between" style={{ marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
