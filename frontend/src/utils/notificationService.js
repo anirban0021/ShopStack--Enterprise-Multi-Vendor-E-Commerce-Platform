@@ -193,7 +193,7 @@ export function generateVendorNotifications({
       if (status === 'PLACED' || status === 'PROCESSING' || status === 'CONFIRMED') {
         list.push({
           id: `vend_purchase_conf_${orderId}`,
-          category: 'orders',
+          category: 'purchases',
           iconType: 'order_confirmed',
           title: `My Purchase #${orderId} Confirmed`,
           message: `Payment of ₹${amount} received. Seller is preparing your order.`,
@@ -206,7 +206,7 @@ export function generateVendorNotifications({
       } else if (status === 'SHIPPED') {
         list.push({
           id: `vend_purchase_ship_${orderId}`,
-          category: 'orders',
+          category: 'purchases',
           iconType: 'order_shipped',
           title: `My Purchase #${orderId} Dispatched`,
           message: `Your package is in transit with ${pOrder.deliveryPartner || 'ShopStack Express'}.`,
@@ -219,7 +219,7 @@ export function generateVendorNotifications({
       } else if (status === 'OUT_FOR_DELIVERY') {
         list.push({
           id: `vend_purchase_ofd_${orderId}`,
-          category: 'orders',
+          category: 'purchases',
           iconType: 'order_shipped',
           title: `My Purchase #${orderId} Out for Delivery`,
           message: `Courier driver is delivering your purchase today.`,
@@ -232,7 +232,7 @@ export function generateVendorNotifications({
       } else if (status === 'DELIVERED') {
         list.push({
           id: `vend_purchase_del_${orderId}`,
-          category: 'orders',
+          category: 'purchases',
           iconType: 'order_delivered',
           title: `My Purchase #${orderId} Delivered`,
           message: `Your ordered item was successfully delivered.`,
@@ -253,7 +253,7 @@ export function generateVendorNotifications({
       const amount = Number(order.totalAmount || 0).toLocaleString('en-IN');
       list.push({
         id: `vend_order_new_${orderId}`,
-        category: 'orders',
+        category: 'sales',
         iconType: 'order_placed',
         title: `Store Order #${orderId} Received`,
         message: `Customer purchased items worth ₹${amount}. Ready for packing & fulfillment.`,
@@ -308,7 +308,7 @@ export function generateVendorNotifications({
       const p = lowStockProducts[0];
       list.push({
         id: `vend_stock_low_${p.id || 3}`,
-        category: 'stock',
+        category: 'products',
         iconType: 'low_stock',
         title: `Low Stock: ${p.name || 'Product'}`,
         message: `Only ${p.stock} units remaining in stock. Restock soon to prevent stockout.`,

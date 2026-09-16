@@ -189,6 +189,9 @@ function App() {
 
   // Active Profile Tab state
   const [profileTab, setProfileTab] = useState('profile');
+  const [vendorTab, setVendorTab] = useState('analytics');
+  const [adminTab, setAdminTab] = useState('overview');
+  const [warehouseTab, setWarehouseTab] = useState('analytics');
 
   // Global Theme state
   const [theme, setTheme] = useState(() => {
@@ -432,16 +435,19 @@ function App() {
                 setProfileTab(tab || 'profile');
                 navigateTo('profile');
               }} 
-              onGoToVendor={() => {
+              onGoToVendor={(tab) => {
                 setIsCartOpen(false);
+                if (tab) setVendorTab(tab);
                 navigateTo('vendor-dashboard');
               }}
-              onGoToAdmin={() => {
+              onGoToAdmin={(tab) => {
                 setIsCartOpen(false);
+                if (tab) setAdminTab(tab);
                 navigateTo('admin-dashboard');
               }}
-              onGoToWarehouse={() => {
+              onGoToWarehouse={(tab) => {
                 setIsCartOpen(false);
+                if (tab) setWarehouseTab(tab);
                 navigateTo('warehouse-dashboard');
               }}
               theme={theme}
@@ -465,8 +471,18 @@ function App() {
               onUpdateUser={handleUpdateUser}
               onLogout={handleLogout} 
               onGoToHome={() => navigateTo('home')} 
-              onGoToAdmin={() => navigateTo('admin-dashboard')}
-              onGoToWarehouse={() => navigateTo('warehouse-dashboard')}
+              onGoToAdmin={(tab) => {
+                if (tab) setAdminTab(tab);
+                navigateTo('admin-dashboard');
+              }}
+              onGoToWarehouse={(tab) => {
+                if (tab) setWarehouseTab(tab);
+                navigateTo('warehouse-dashboard');
+              }}
+              onGoToVendor={(tab) => {
+                if (tab) setVendorTab(tab);
+                navigateTo('vendor-dashboard');
+              }}
               theme={theme}
               onToggleTheme={handleToggleTheme}
               initialTab={profileTab}
@@ -484,6 +500,7 @@ function App() {
               theme={theme}
               onToggleTheme={handleToggleTheme}
               onLogout={handleLogout}
+              initialTab={vendorTab}
             />
           ) : view === 'admin-dashboard' && currentUser ? (
             <AdminDashboard 
@@ -497,6 +514,7 @@ function App() {
               theme={theme}
               onToggleTheme={handleToggleTheme}
               onLogout={handleLogout}
+              initialTab={adminTab}
             />
           ) : view === 'warehouse-dashboard' && currentUser ? (
             <WarehouseDashboard 
@@ -510,6 +528,7 @@ function App() {
               theme={theme}
               onToggleTheme={handleToggleTheme}
               onLogout={handleLogout}
+              initialTab={warehouseTab}
             />
           ) : view === 'register' ? (
             <Register 

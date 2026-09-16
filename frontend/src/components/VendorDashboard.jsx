@@ -23,10 +23,16 @@ const getWordCount = (text) => {
   return text.trim().split(/\s+/).filter(Boolean).length;
 };
 
-export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout }) {
-  const [activeTab, setActiveTab] = useState('analytics');
+export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout, initialTab = 'analytics' }) {
+  const [activeTab, setActiveTab] = useState(initialTab === 'products' ? 'inventory' : initialTab);
   const [showDropdown, setShowDropdown] = useState(false);
   const userMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab === 'products' ? 'inventory' : initialTab);
+    }
+  }, [initialTab]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -577,7 +583,7 @@ export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToP
             onClearAll={handleClearAllNotifs}
             onDismiss={handleDismissNotif}
             role="VENDOR"
-            panelTitle="Merchant Alerts"
+            panelTitle="Merchant & Purchase Alerts"
             iconSize={16}
             align="right"
           />

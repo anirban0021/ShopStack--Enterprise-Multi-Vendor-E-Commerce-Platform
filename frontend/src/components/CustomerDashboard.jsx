@@ -16,6 +16,7 @@ import {
   generateCustomerNotifications, 
   generateAdminNotifications,
   generateWarehouseNotifications,
+  generateVendorNotifications,
   markNotifAsRead, 
   markAllNotifsAsRead, 
   clearAllNotifs, 
@@ -24,7 +25,7 @@ import {
 
 export default function CustomerDashboard({ 
   user, orders = [], setOrders, cart = [], setCart, wishlist = [], setWishlist, 
-  toggleWishlist, addToCart, fetchOrders, fetchWishlist, onUpdateUser, onLogout, onGoToHome, onGoToAdmin, onGoToWarehouse, theme, onToggleTheme,
+  toggleWishlist, addToCart, fetchOrders, fetchWishlist, onUpdateUser, onLogout, onGoToHome, onGoToAdmin, onGoToWarehouse, onGoToVendor, theme, onToggleTheme,
   initialTab = 'profile'
 }) {
   const [profile, setProfile] = useState({
@@ -39,6 +40,7 @@ export default function CustomerDashboard({
 
   const isAdmin = profile.role === 'ADMINISTRATOR' || profile.role === 'ADMIN' || user?.role === 'ADMINISTRATOR' || user?.role === 'ADMIN';
   const isStaff = profile.role === 'WAREHOUSE_STAFF' || user?.role === 'WAREHOUSE_STAFF';
+  const isVendor = profile.role === 'VENDOR' || profile.role === 'SELLER' || user?.role === 'VENDOR' || user?.role === 'SELLER';
   const isPrivileged = isAdmin || isStaff;
 
   const [activeTab, setActiveTab] = useState(isPrivileged ? 'profile' : initialTab);
@@ -82,31 +84,101 @@ export default function CustomerDashboard({
   const [isEditing, setIsEditing] = useState(false);
   const [flash, setFlash] = useState({ type: '', title: '', text: '' });
 
+  // Role-specific metrics for notification engine
+  const [pendingProductsCount, setPendingProductsCount] = useState(0);
+  const [adminPlatformOrdersCount, setAdminPlatformOrdersCount] = useState(0);
+  const [adminVendorsCount, setAdminVendorsCount] = useState(0);
+  const [warehouseAllocationsCount, setWarehouseAllocationsCount] = useState(0);
+  const [vendorOrders, setVendorOrders] = useState([]);
+  const [vendorProducts, setVendorProducts] = useState([]);
+
+  const activeUserId = profile?.id || user?.id;
+
+  const fetchRoleNotificationData = async () => {
+    if (!activeUserId) return;
+    try {
+      if (isAdmin) {
+        const [pendingRes, ordersRes, vendorsRes] = await Promise.allSettled([
+          axios.get('http://localhost:8080/api/products/pending'),
+          axios.get('http://localhost:8080/api/customer/orders/all'),
+          axios.get('http://localhost:8080/api/admin/vendors')
+        ]);
+        if (pendingRes.status === 'fulfilled' && Array.isArray(pendingRes.value.data)) {
+          setPendingProductsCount(pendingRes.value.data.length);
+        }
+        if (ordersRes.status === 'fulfilled' && Array.isArray(ordersRes.value.data)) {
+          setAdminPlatformOrdersCount(ordersRes.value.data.length);
+        }
+        if (vendorsRes.status === 'fulfilled' && Array.isArray(vendorsRes.value.data)) {
+          setAdminVendorsCount(vendorsRes.value.data.length);
+        }
+      } else if (isStaff) {
+        const res = await axios.get('http://localhost:8080/api/warehouses/allocations');
+        if (Array.isArray(res.data)) {
+          const pending = res.data.filter(a => a.status === 'ALLOCATED' || a.status === 'PICKING' || a.status === 'PACKING');
+          setWarehouseAllocationsCount(pending.length);
+        }
+      } else if (isVendor) {
+        const [ordersRes, prodsRes] = await Promise.allSettled([
+          axios.get(`http://localhost:8080/api/vendor/${activeUserId}/orders`),
+          axios.get(`http://localhost:8080/api/products/vendor/${activeUserId}`)
+        ]);
+        if (ordersRes.status === 'fulfilled' && Array.isArray(ordersRes.value.data)) {
+          setVendorOrders(ordersRes.value.data);
+        }
+        if (prodsRes.status === 'fulfilled' && Array.isArray(prodsRes.value.data)) {
+          setVendorProducts(prodsRes.value.data);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch role notification data in CustomerDashboard", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRoleNotificationData();
+  }, [activeUserId, isAdmin, isStaff, isVendor]);
+
   // Notifications State for Customer Dashboard
   const [notificationList, setNotificationList] = useState([]);
 
   const refreshNotifications = () => {
     let list = [];
+    const targetUser = profile.id ? profile : user;
     if (isAdmin) {
       list = generateAdminNotifications({
-        user: profile.id ? profile : user,
-        pendingProductsCount: 0,
-        ordersCount: orders?.length || 0,
-        onGoToTab: () => {
-          if (onGoToAdmin) onGoToAdmin();
+        user: targetUser,
+        pendingProductsCount,
+        ordersCount: adminPlatformOrdersCount || orders?.length || 0,
+        vendorsCount: adminVendorsCount,
+        onGoToTab: (tab) => {
+          if (onGoToAdmin) onGoToAdmin(tab);
         }
       });
     } else if (isStaff) {
       list = generateWarehouseNotifications({
-        user: profile.id ? profile : user,
-        pendingAllocationsCount: 0,
-        onGoToQueue: () => {
-          if (onGoToWarehouse) onGoToWarehouse();
+        user: targetUser,
+        pendingAllocationsCount: warehouseAllocationsCount,
+        onGoToQueue: (tab, subTab) => {
+          if (onGoToWarehouse) onGoToWarehouse(tab, subTab);
+        }
+      });
+    } else if (isVendor) {
+      list = generateVendorNotifications({
+        user: targetUser,
+        products: vendorProducts,
+        orders: vendorOrders,
+        purchaseOrders: orders, // Vendor personal shopping orders
+        onGoToTab: (tab) => {
+          if (onGoToVendor) onGoToVendor(tab);
+        },
+        onOpenPurchaseOrder: () => {
+          setActiveTab('orders');
         }
       });
     } else {
       list = generateCustomerNotifications({
-        user: profile.id ? profile : user,
+        user: targetUser,
         orders,
         onOpenOrders: () => {
           setActiveTab('orders');
@@ -118,7 +190,20 @@ export default function CustomerDashboard({
 
   useEffect(() => {
     refreshNotifications();
-  }, [user, profile, orders, isAdmin, isStaff]);
+  }, [
+    user, 
+    profile, 
+    orders, 
+    pendingProductsCount, 
+    adminPlatformOrdersCount, 
+    adminVendorsCount, 
+    warehouseAllocationsCount, 
+    vendorOrders, 
+    vendorProducts, 
+    isAdmin, 
+    isStaff, 
+    isVendor
+  ]);
 
   const handleMarkNotifAsRead = (id) => {
     markNotifAsRead(id, profile?.id || user?.id);
@@ -1037,7 +1122,7 @@ export default function CustomerDashboard({
             onClearAll={handleClearAllNotifs}
             onDismiss={handleDismissNotif}
             role={profile.role || user?.role || 'CUSTOMER'}
-            panelTitle="Activity & Orders"
+            panelTitle={isAdmin ? "Admin System Alerts" : isStaff ? "Facility Alerts" : isVendor ? "Merchant & Purchase Alerts" : "Activity & Orders"}
             iconSize={16}
             align="right"
           />

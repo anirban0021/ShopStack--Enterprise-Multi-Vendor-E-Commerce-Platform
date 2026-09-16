@@ -21,8 +21,14 @@ import {
   dismissNotif 
 } from '../utils/notificationService';
 
-export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout }) {
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'vendors' | 'products' | 'returns' | 'monitoring' | 'transactions' | 'settlements' | 'system' | 'reports'
+export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout, initialTab = 'overview' }) {
+  const [activeTab, setActiveTab] = useState(initialTab === 'orders' ? 'monitoring' : initialTab); // 'overview' | 'vendors' | 'products' | 'returns' | 'monitoring' | 'transactions' | 'settlements' | 'system' | 'reports'
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab === 'orders' ? 'monitoring' : initialTab);
+    }
+  }, [initialTab]);
   const [pendingProducts, setPendingProducts] = useState([]);
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
   const [showUserDropdown, setShowUserDropdown] = useState(false);

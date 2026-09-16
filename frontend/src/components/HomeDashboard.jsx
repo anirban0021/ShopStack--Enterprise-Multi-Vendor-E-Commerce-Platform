@@ -15,6 +15,7 @@ import {
   generateCustomerNotifications, 
   generateAdminNotifications,
   generateWarehouseNotifications,
+  generateVendorNotifications,
   markNotifAsRead, 
   markAllNotifsAsRead, 
   clearAllNotifs, 
@@ -29,6 +30,7 @@ export default function HomeDashboard({
 }) {
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'ADMINISTRATOR' || user?.email?.endsWith('@admin');
   const isStaff = user?.role === 'WAREHOUSE_STAFF' || user?.role === 'STAFF' || user?.email?.endsWith('@staff');
+  const isVendor = user?.role === 'VENDOR' || user?.role === 'SELLER';
   const isStaffOrAdmin = isAdmin || isStaff;
   const [showDropdown, setShowDropdown] = useState(false);
   const userMenuRef = useRef(null);
@@ -237,15 +239,52 @@ export default function HomeDashboard({
     setTimeout(() => setFlash({ type: '', text: '' }), 3500);
   };
 
-  // Pending products count for Admin notification bell
+  // Role-specific metrics for notification engine
   const [pendingProductsCount, setPendingProductsCount] = useState(0);
+  const [adminPlatformOrdersCount, setAdminPlatformOrdersCount] = useState(0);
+  const [adminVendorsCount, setAdminVendorsCount] = useState(0);
+  const [warehouseAllocationsCount, setWarehouseAllocationsCount] = useState(0);
+  const [vendorOrders, setVendorOrders] = useState([]);
+  const [vendorProducts, setVendorProducts] = useState([]);
 
-  const fetchPendingProductsCount = async () => {
+  const fetchRoleNotificationData = async () => {
+    if (!user) return;
     try {
-      const res = await axios.get('http://localhost:8080/api/products/pending');
-      setPendingProductsCount(res.data.length);
+      if (isAdmin) {
+        const [pendingRes, ordersRes, vendorsRes] = await Promise.allSettled([
+          axios.get('http://localhost:8080/api/products/pending'),
+          axios.get('http://localhost:8080/api/customer/orders/all'),
+          axios.get('http://localhost:8080/api/admin/vendors')
+        ]);
+        if (pendingRes.status === 'fulfilled' && Array.isArray(pendingRes.value.data)) {
+          setPendingProductsCount(pendingRes.value.data.length);
+        }
+        if (ordersRes.status === 'fulfilled' && Array.isArray(ordersRes.value.data)) {
+          setAdminPlatformOrdersCount(ordersRes.value.data.length);
+        }
+        if (vendorsRes.status === 'fulfilled' && Array.isArray(vendorsRes.value.data)) {
+          setAdminVendorsCount(vendorsRes.value.data.length);
+        }
+      } else if (isStaff) {
+        const res = await axios.get('http://localhost:8080/api/warehouses/allocations');
+        if (Array.isArray(res.data)) {
+          const pending = res.data.filter(a => a.status === 'ALLOCATED' || a.status === 'PICKING' || a.status === 'PACKING');
+          setWarehouseAllocationsCount(pending.length);
+        }
+      } else if (isVendor && user.id) {
+        const [ordersRes, prodsRes] = await Promise.allSettled([
+          axios.get(`http://localhost:8080/api/vendor/${user.id}/orders`),
+          axios.get(`http://localhost:8080/api/products/vendor/${user.id}`)
+        ]);
+        if (ordersRes.status === 'fulfilled' && Array.isArray(ordersRes.value.data)) {
+          setVendorOrders(ordersRes.value.data);
+        }
+        if (prodsRes.status === 'fulfilled' && Array.isArray(prodsRes.value.data)) {
+          setVendorProducts(prodsRes.value.data);
+        }
+      }
     } catch (err) {
-      console.error("Failed to load pending products count", err);
+      console.error("Failed to fetch role notification data", err);
     }
   };
 
@@ -258,17 +297,31 @@ export default function HomeDashboard({
       list = generateAdminNotifications({
         user,
         pendingProductsCount,
-        ordersCount: orders?.length || 0,
-        onGoToTab: () => {
-          if (onGoToAdmin) onGoToAdmin();
+        ordersCount: adminPlatformOrdersCount,
+        vendorsCount: adminVendorsCount,
+        onGoToTab: (tab) => {
+          if (onGoToAdmin) onGoToAdmin(tab);
         }
       });
     } else if (isStaff) {
       list = generateWarehouseNotifications({
         user,
-        pendingAllocationsCount: 0,
-        onGoToQueue: () => {
-          if (onGoToWarehouse) onGoToWarehouse();
+        pendingAllocationsCount: warehouseAllocationsCount,
+        onGoToQueue: (tab, subTab) => {
+          if (onGoToWarehouse) onGoToWarehouse(tab, subTab);
+        }
+      });
+    } else if (isVendor) {
+      list = generateVendorNotifications({
+        user,
+        products: vendorProducts,
+        orders: vendorOrders,
+        purchaseOrders: orders, // Personal customer orders placed by vendor
+        onGoToTab: (tab) => {
+          if (onGoToVendor) onGoToVendor(tab);
+        },
+        onOpenPurchaseOrder: () => {
+          setShowOrdersModal(true);
         }
       });
     } else {
@@ -285,7 +338,19 @@ export default function HomeDashboard({
 
   useEffect(() => {
     refreshNotifications();
-  }, [user, orders, pendingProductsCount, isAdmin, isStaff]);
+  }, [
+    user, 
+    orders, 
+    pendingProductsCount, 
+    adminPlatformOrdersCount, 
+    adminVendorsCount, 
+    warehouseAllocationsCount, 
+    vendorOrders, 
+    vendorProducts, 
+    isAdmin, 
+    isStaff, 
+    isVendor
+  ]);
 
   const handleMarkNotifAsRead = (id) => {
     markNotifAsRead(id, user?.id);
@@ -309,12 +374,12 @@ export default function HomeDashboard({
 
   useEffect(() => {
     fetchProducts();
-    if (user && (user.role === 'ADMINISTRATOR' || user.role === 'ADMIN')) {
-      fetchPendingProductsCount();
-      const interval = setInterval(fetchPendingProductsCount, 30000);
+    if (user) {
+      fetchRoleNotificationData();
+      const interval = setInterval(fetchRoleNotificationData, 30000);
       return () => clearInterval(interval);
     }
-  }, [user?.id]);
+  }, [user?.id, isAdmin, isStaff, isVendor]);
 
   const fetchProducts = async () => {
     try {
@@ -970,7 +1035,7 @@ export default function HomeDashboard({
             onClearAll={handleClearAllNotifs}
             onDismiss={handleDismissNotif}
             role={user?.role || 'CUSTOMER'}
-            panelTitle="Notifications"
+            panelTitle={isAdmin ? "Admin System Alerts" : isStaff ? "Facility Alerts" : isVendor ? "Merchant & Purchase Alerts" : "Notifications & Offers"}
             iconSize={17}
             align="right"
           />
@@ -986,7 +1051,7 @@ export default function HomeDashboard({
               onClearAll={handleClearAllNotifs}
               onDismiss={handleDismissNotif}
               role={user?.role || 'CUSTOMER'}
-              panelTitle="Notifications & Offers"
+              panelTitle={isAdmin ? "Admin System Alerts" : isStaff ? "Facility Alerts" : isVendor ? "Merchant & Purchase Alerts" : "Notifications & Offers"}
               iconSize={16}
               align="right"
             />

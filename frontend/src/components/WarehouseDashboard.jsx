@@ -19,7 +19,7 @@ import {
   dismissNotif 
 } from '../utils/notificationService';
 
-export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout }) {
+export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout, initialTab = 'analytics' }) {
   const [warehouses, setWarehouses] = useState([]);
   const [inventories, setInventories] = useState([]);
   const [allocations, setAllocations] = useState([]);
@@ -49,7 +49,12 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
   }, [showUserDropdown]);
 
   // Tabs: 'analytics' | 'fulfillment' | 'warehouses' | 'inventory' | 'returns'
-  const [activeTab, setActiveTab] = useState('analytics');
+  const [activeTab, setActiveTab] = useState(initialTab || 'analytics');
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   // Fulfillment Pipeline Sub-tabs: 'allocate' | 'pick' | 'pack' | 'ship'
   const [fulfillmentSubTab, setFulfillmentSubTab] = useState('allocate');
   
