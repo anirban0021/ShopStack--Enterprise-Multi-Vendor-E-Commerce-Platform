@@ -1814,10 +1814,12 @@ flowchart TD
 * **The Problem**:
   - Vendors received no in-app notifications when Admin added new coupon campaigns to accept or reject.
   - Customers received no notifications when vendors accepted campaigns and active promotional discounts became available.
+  - Clicking notification action links (e.g., `"Manage Campaign →"`) triggered a React runtime error (`"Cannot access 'coupons' before initialization"` / Temporal Dead Zone violation) when switching from Home to Vendor Dashboard.
 * **The Fix**:
   - **Vendor Campaign Notification Flow**: Updated `notificationService.js` and `VendorDashboard.jsx` to load vendor campaigns on mount and emit actionable alerts (`"New Coupon Campaign: SAVE25"`, `badge: "ACTION REQUIRED"`, direct navigation to `'coupons'` tab). Accepted campaigns display confirmation status (`"Campaign Active: SAVE25"`, `badge: "ACCEPTED"`).
   - **Customer Offer Notification Flow**: Updated `generateCustomerNotifications` in `notificationService.js` to ingest active coupons and display promotional cards with 1-click **Copy Code** pills, discount percentage badges, validity dates, and **"Shop Now"** quick-apply shortcuts.
   - **Mount-Time Fetching**: Added eager coupon loading on component mount across `CustomerDashboard.jsx` and `HomeDashboard.jsx`.
+  - **State Initialization & Deep-Link Navigation Resilience**: Reordered `coupons` state declaration above `refreshNotifications` in `VendorDashboard.jsx`, eliminating TDZ crashes during deep-link navigation and ensuring instant tab activation to `Promotions & Coupons`.
 
 ### 5. Automated Test Suite Verification
 * Executed full unit and integration test suites (`CouponValidationTest.java`, `CommissionCalculationTests.java`, and `BackendApplicationTests.java`).

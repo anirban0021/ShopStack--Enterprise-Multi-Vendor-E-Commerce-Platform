@@ -70,6 +70,10 @@ export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToP
   const [showProductModal, setShowProductModal] = useState(false);
   const [modalMode, setModalMode] = useState('add'); // 'add' or 'edit'
 
+  // Coupons states
+  const [coupons, setCoupons] = useState([]);
+  const [isLoadingCoupons, setIsLoadingCoupons] = useState(false);
+
   // Dynamic Vendor Notifications State
   const [notificationList, setNotificationList] = useState([]);
 
@@ -151,10 +155,6 @@ export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToP
 
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [flashMessage, setFlashMessage] = useState({ type: '', text: '' });
-
-  // Coupons states
-  const [coupons, setCoupons] = useState([]);
-  const [isLoadingCoupons, setIsLoadingCoupons] = useState(false);
 
   // Return Disputes states
   const [vendorReturns, setVendorReturns] = useState([]);
