@@ -112,13 +112,14 @@ export function generateCustomerNotifications({
   // Order Lifecycle Notifications from real customer orders
   if (Array.isArray(orders)) {
     orders.forEach((order, idx) => {
-      const orderId = order.id || `ORD-${idx + 1}`;
-      const status = (order.orderStatus || 'PLACED').toUpperCase();
+      const orderId = order.id || order.orderId || `ORD-${idx + 1}`;
+      const status = (order.orderStatus || order.status || 'PLACED').toUpperCase();
       const amount = Number(order.totalAmount || 0).toLocaleString('en-IN');
       const itemCount = order.items?.length || 1;
+      const uniqueSuffix = `${orderId}_${idx}`;
 
       if (status === 'PLACED' || status === 'PROCESSING' || status === 'CONFIRMED') {
-        const notifId = `cust_order_conf_${orderId}`;
+        const notifId = `cust_order_conf_${uniqueSuffix}`;
         list.push({
           id: notifId,
           category: 'orders',
@@ -132,7 +133,7 @@ export function generateCustomerNotifications({
           onAction: () => onOpenOrders && onOpenOrders(order)
         });
       } else if (status === 'SHIPPED') {
-        const notifId = `cust_order_ship_${orderId}`;
+        const notifId = `cust_order_ship_${uniqueSuffix}`;
         list.push({
           id: notifId,
           category: 'orders',
@@ -146,7 +147,7 @@ export function generateCustomerNotifications({
           onAction: () => onOpenOrders && onOpenOrders(order)
         });
       } else if (status === 'OUT_FOR_DELIVERY') {
-        const notifId = `cust_order_ofd_${orderId}`;
+        const notifId = `cust_order_ofd_${uniqueSuffix}`;
         list.push({
           id: notifId,
           category: 'orders',
@@ -160,7 +161,7 @@ export function generateCustomerNotifications({
           onAction: () => onOpenOrders && onOpenOrders(order)
         });
       } else if (status === 'DELIVERED') {
-        const notifId = `cust_order_del_${orderId}`;
+        const notifId = `cust_order_del_${uniqueSuffix}`;
         list.push({
           id: notifId,
           category: 'orders',
@@ -174,7 +175,7 @@ export function generateCustomerNotifications({
           onAction: () => onOpenOrders && onOpenOrders(order)
         });
       } else if (status === 'CANCELLED') {
-        const notifId = `cust_order_canc_${orderId}`;
+        const notifId = `cust_order_canc_${uniqueSuffix}`;
         list.push({
           id: notifId,
           category: 'orders',
@@ -221,13 +222,14 @@ export function generateVendorNotifications({
   // 1. Personal Purchase Orders (Vendor ordering as a customer)
   if (Array.isArray(purchaseOrders) && purchaseOrders.length > 0) {
     purchaseOrders.forEach((pOrder, idx) => {
-      const orderId = pOrder.id || `ORD-${idx + 1}`;
-      const status = (pOrder.orderStatus || 'PLACED').toUpperCase();
+      const orderId = pOrder.orderId || pOrder.id || `ORD-${idx + 1}`;
+      const status = (pOrder.orderStatus || pOrder.status || 'PLACED').toUpperCase();
       const amount = Number(pOrder.totalAmount || 0).toLocaleString('en-IN');
+      const uniqueSuffix = `${orderId}_${idx}`;
 
       if (status === 'PLACED' || status === 'PROCESSING' || status === 'CONFIRMED') {
         list.push({
-          id: `vend_purchase_conf_${orderId}`,
+          id: `vend_purchase_conf_${uniqueSuffix}`,
           category: 'purchases',
           iconType: 'order_confirmed',
           title: `My Purchase #${orderId} Confirmed`,
@@ -240,7 +242,7 @@ export function generateVendorNotifications({
         });
       } else if (status === 'SHIPPED') {
         list.push({
-          id: `vend_purchase_ship_${orderId}`,
+          id: `vend_purchase_ship_${uniqueSuffix}`,
           category: 'purchases',
           iconType: 'order_shipped',
           title: `My Purchase #${orderId} Dispatched`,
@@ -253,7 +255,7 @@ export function generateVendorNotifications({
         });
       } else if (status === 'OUT_FOR_DELIVERY') {
         list.push({
-          id: `vend_purchase_ofd_${orderId}`,
+          id: `vend_purchase_ofd_${uniqueSuffix}`,
           category: 'purchases',
           iconType: 'order_shipped',
           title: `My Purchase #${orderId} Out for Delivery`,
@@ -266,7 +268,7 @@ export function generateVendorNotifications({
         });
       } else if (status === 'DELIVERED') {
         list.push({
-          id: `vend_purchase_del_${orderId}`,
+          id: `vend_purchase_del_${uniqueSuffix}`,
           category: 'purchases',
           iconType: 'order_delivered',
           title: `My Purchase #${orderId} Delivered`,
@@ -283,15 +285,16 @@ export function generateVendorNotifications({
 
   // 2. Incoming Customer Orders (Sales received by vendor)
   if (Array.isArray(orders) && orders.length > 0) {
-    orders.forEach((order) => {
-      const orderId = order.id || '1042';
-      const amount = Number(order.totalAmount || 0).toLocaleString('en-IN');
+    orders.forEach((order, idx) => {
+      const orderId = order.orderId || order.id || (order.orderItemId ? `ITEM-${order.orderItemId}` : `104${idx + 1}`);
+      const amount = Number(order.totalAmount || order.price || 0).toLocaleString('en-IN');
+      const uniqueSuffix = order.orderItemId ? `item_${order.orderItemId}` : `${orderId}_${idx}`;
       list.push({
-        id: `vend_order_new_${orderId}`,
+        id: `vend_order_new_${uniqueSuffix}`,
         category: 'sales',
         iconType: 'order_placed',
         title: `Store Order #${orderId} Received`,
-        message: `Customer purchased items worth ₹${amount}. Ready for packing & fulfillment.`,
+        message: `${order.productName ? `"${order.productName}" purchased` : 'Customer purchased items'} worth ₹${amount}. Ready for packing & fulfillment.`,
         time: 'Recent',
         badge: 'NEW SALE',
         badgeType: 'warning',
@@ -314,7 +317,7 @@ export function generateVendorNotifications({
         category: 'products',
         iconType: 'product_approved',
         title: `Product Approved: ${p.name || 'Listing'}`,
-        message: `Admin approved your listing. It is live and searchable in store catalog.`,
+        message: `Admin approved your listing "${p.name || 'Product'}". It is live and searchable in store catalog.`,
         time: 'Recent',
         badge: 'APPROVED',
         badgeType: 'success',

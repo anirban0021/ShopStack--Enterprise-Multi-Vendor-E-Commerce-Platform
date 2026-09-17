@@ -80,9 +80,10 @@ export default function NotificationCenter({
 
   // Filter notifications based on active category
   const filteredNotifications = useMemo(() => {
-    if (activeTab === 'all') return notifications;
+    if (!activeTab || activeTab === 'all') return notifications;
     if (activeTab === 'unread') return notifications.filter(n => !n.read);
-    return notifications.filter(n => n.category === activeTab);
+    const targetKey = String(activeTab).toLowerCase();
+    return notifications.filter(n => String(n.category).toLowerCase() === targetKey);
   }, [notifications, activeTab]);
 
   // Copy coupon / promo code to clipboard
@@ -197,12 +198,17 @@ export default function NotificationCenter({
       baseTabs.push({ key: 'unread', label: 'Unread', count: unreadCount });
     }
     
-    // Categorize
-    const cats = [...new Set(notifications.map(n => n.category).filter(Boolean))];
-    cats.forEach(cat => {
-      const label = cat.charAt(0).toUpperCase() + cat.slice(1);
-      const count = notifications.filter(n => n.category === cat).length;
-      baseTabs.push({ key: cat, label, count });
+    // Categorize with deduplication and normalized keys
+    const seenCats = new Set();
+    notifications.forEach(n => {
+      if (!n.category) return;
+      const catKey = String(n.category).toLowerCase();
+      if (!seenCats.has(catKey)) {
+        seenCats.add(catKey);
+        const label = catKey.charAt(0).toUpperCase() + catKey.slice(1);
+        const count = notifications.filter(item => String(item.category).toLowerCase() === catKey).length;
+        baseTabs.push({ key: catKey, label, count });
+      }
     });
     return baseTabs;
   }, [notifications, filterCategories, unreadCount]);
@@ -325,9 +331,9 @@ export default function NotificationCenter({
                 </p>
               </div>
             ) : (
-              filteredNotifications.map(item => (
+              filteredNotifications.map((item, idx) => (
                 <div 
-                  key={item.id}
+                  key={item.id ? `${item.id}_${idx}` : `notif_${idx}`}
                   className={`notif-card ${!item.read ? 'unread' : ''}`}
                   onClick={() => {
                     if (!item.read && onMarkAsRead) {
