@@ -100,7 +100,9 @@ export function clearAllNotifs(userId = 'guest', notifIds = []) {
 export function generateCustomerNotifications({
   user,
   orders = [],
-  onOpenOrders
+  coupons = [],
+  onOpenOrders,
+  onShopNow
 }) {
   const userId = resolveUserId(user);
   const readIds = getReadNotifIds(userId);
@@ -109,7 +111,40 @@ export function generateCustomerNotifications({
 
   const list = [];
 
-  // Order Lifecycle Notifications from real customer orders
+  // 1. Promotional Coupon Notifications from active campaigns
+  if (Array.isArray(coupons) && coupons.length > 0) {
+    coupons.forEach((coupon, idx) => {
+      if (coupon.active === false) return;
+      const code = coupon.code ? coupon.code.toUpperCase().trim() : '';
+      if (!code) return;
+      const discountLabel = coupon.discountType === 'PERCENTAGE' 
+        ? `${coupon.discountValue}% OFF` 
+        : `₹${coupon.discountValue} OFF`;
+      const minOrderText = coupon.minOrderAmount 
+        ? ` on orders above ₹${Number(coupon.minOrderAmount).toLocaleString('en-IN')}` 
+        : '';
+      const expiryText = coupon.expiryDate 
+        ? ` Valid until ${coupon.expiryDate.replace('T', ' ').substring(0, 16)}.` 
+        : '';
+      const uniqueSuffix = coupon.id || code || idx;
+
+      list.push({
+        id: `cust_coupon_${uniqueSuffix}`,
+        category: 'coupons',
+        iconType: 'coupon',
+        title: `Special Offer: ${code} (${discountLabel})`,
+        message: `Use promo code ${code} for ${discountLabel}${minOrderText}.${expiryText} Apply at checkout to save!`,
+        time: 'Active Offer',
+        badge: discountLabel,
+        badgeType: 'success',
+        codeToCopy: code,
+        actionLabel: 'Shop Now',
+        onAction: () => onShopNow && onShopNow(coupon)
+      });
+    });
+  }
+
+  // 2. Order Lifecycle Notifications from real customer orders
   if (Array.isArray(orders)) {
     orders.forEach((order, idx) => {
       const orderId = order.id || order.orderId || `ORD-${idx + 1}`;
@@ -202,13 +237,14 @@ export function generateCustomerNotifications({
 }
 
 /**
- * Generate real Vendor notifications including both merchant sales and personal purchases
+ * Generate real Vendor notifications including both merchant sales, personal purchases, and coupon campaigns
  */
 export function generateVendorNotifications({
   user,
   products = [],
   orders = [], // Merchant orders received from customers
   purchaseOrders = [], // Orders the vendor bought as a customer
+  coupons = [], // Vendor coupon campaigns (pending approval or approved)
   onGoToTab,
   onOpenPurchaseOrder
 }) {
@@ -219,7 +255,50 @@ export function generateVendorNotifications({
 
   const list = [];
 
-  // 1. Personal Purchase Orders (Vendor ordering as a customer)
+  // 1. Promotional Coupon Campaigns from Admin (Pending Review or Accepted)
+  if (Array.isArray(coupons) && coupons.length > 0) {
+    coupons.forEach((coupon, idx) => {
+      const code = coupon.code ? coupon.code.toUpperCase().trim() : '';
+      if (!code) return;
+      const discountLabel = coupon.discountType === 'PERCENTAGE' 
+        ? `${coupon.discountValue}% Off` 
+        : `₹${coupon.discountValue} Off`;
+      const uniqueSuffix = coupon.id || code || idx;
+      const status = (coupon.approvalStatus || 'PENDING').toUpperCase();
+
+      if (status === 'PENDING') {
+        list.push({
+          id: `vend_coupon_pending_${uniqueSuffix}`,
+          category: 'coupons',
+          iconType: 'coupon',
+          title: `New Coupon Campaign: ${code}`,
+          message: `Admin launched promotional campaign "${code}" (${discountLabel}). Action required: Review and accept or reject for your products.`,
+          time: 'Action Required',
+          badge: 'ACTION REQUIRED',
+          badgeType: 'warning',
+          codeToCopy: code,
+          actionLabel: 'Review Campaign',
+          onAction: () => onGoToTab && onGoToTab('coupons')
+        });
+      } else if (status === 'APPROVED' || status === 'ACCEPTED') {
+        list.push({
+          id: `vend_coupon_accepted_${uniqueSuffix}`,
+          category: 'coupons',
+          iconType: 'coupon',
+          title: `Campaign Active: ${code}`,
+          message: `You accepted coupon campaign "${code}" (${discountLabel}). Participating store products are now active for customer discounts.`,
+          time: 'Active',
+          badge: 'ACCEPTED',
+          badgeType: 'success',
+          codeToCopy: code,
+          actionLabel: 'Manage Campaign',
+          onAction: () => onGoToTab && onGoToTab('coupons')
+        });
+      }
+    });
+  }
+
+  // 2. Personal Purchase Orders (Vendor ordering as a customer)
   if (Array.isArray(purchaseOrders) && purchaseOrders.length > 0) {
     purchaseOrders.forEach((pOrder, idx) => {
       const orderId = pOrder.orderId || pOrder.id || `ORD-${idx + 1}`;
@@ -283,7 +362,7 @@ export function generateVendorNotifications({
     });
   }
 
-  // 2. Incoming Customer Orders (Sales received by vendor)
+  // 3. Incoming Customer Orders (Sales received by vendor)
   if (Array.isArray(orders) && orders.length > 0) {
     orders.forEach((order, idx) => {
       const orderId = order.orderId || order.id || (order.orderItemId ? `ITEM-${order.orderItemId}` : `104${idx + 1}`);
@@ -304,7 +383,7 @@ export function generateVendorNotifications({
     });
   }
 
-  // 3. Product Quality Moderation & Approvals
+  // 4. Product Quality Moderation & Approvals
   if (Array.isArray(products)) {
     const approvedProducts = products.filter(p => p.approvalStatus === 'APPROVED' || !p.approvalStatus);
     const pendingProducts = products.filter(p => p.approvalStatus === 'PENDING');
@@ -341,7 +420,7 @@ export function generateVendorNotifications({
       });
     }
 
-    // 4. Low Stock Alerts
+    // 5. Low Stock Alerts
     if (lowStockProducts.length > 0) {
       const p = lowStockProducts[0];
       list.push({

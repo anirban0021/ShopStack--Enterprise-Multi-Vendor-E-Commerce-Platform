@@ -79,6 +79,7 @@ export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToP
       products,
       orders: vendorOrders,
       purchaseOrders: orders,
+      coupons,
       onGoToTab: (tab) => {
         setActiveTab(tab);
       },
@@ -92,7 +93,7 @@ export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToP
 
   useEffect(() => {
     refreshNotifications();
-  }, [user, products, vendorOrders, orders]);
+  }, [user, products, vendorOrders, orders, coupons]);
 
   const handleMarkNotifAsRead = (id) => {
     markNotifAsRead(id, user?.id || user?.email);
@@ -164,6 +165,9 @@ export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToP
     fetchAnalytics();
     fetchProducts();
     fetchVendorOrders();
+    if (user?.id) {
+      fetchVendorCoupons();
+    }
   }, [user?.id]);
 
   const showFlash = (type, text) => {

@@ -1753,9 +1753,9 @@ GET | `/api/vendor/{vendorId}/analytics` | Vendor revenue and order analytics wi
 
 ---
 
-# 🛠️ ShopStack — Day 13: System Testing & Critical Bug Fixing
+# 🛠️ ShopStack — Day 13: System Testing, Coupon Engine Timezone Synchronization & Multi-Role Notification Overhaul
 
-This milestone delivers **System Testing and Critical Enterprise Bug Fixes**, focusing on **phantom order elimination for failed checkouts**, **bi-directional multi-warehouse inventory synchronization**, and **automated database cleanup & test suite validation**.
+This milestone delivers **System Testing, Enterprise Integrity Bug Fixes, Timezone-Resilient Coupon Validation, and Multi-Role Promotional Notification Architecture**, focusing on **phantom order elimination for failed checkouts**, **bi-directional multi-warehouse inventory synchronization**, **cross-timezone promotional coupon checkout validation**, and **real-time notification delivery for vendor acceptances and customer discount discovery**.
 
 ---
 
@@ -1773,6 +1773,14 @@ flowchart TD
         E["Vendor/Admin Stock Update"] --> F["Update Product Global Stock"]
         F --> G["Proportional Auto-Distribution Across 4 Regional Hubs<br/>(Kolkata, Mumbai, Delhi, Bangalore)"]
         G --> H["Live Aggregated Available Stock Computed on Read<br/>sum(inventory.quantity - allocated)"]
+    end
+
+    subgraph "3. Promotional Coupon & Notification Flow"
+        I["Admin Creates Promotional Campaign"] --> J["Vendor Notification Center<br/>(Action Required: Accept/Reject)"]
+        J --> K["Vendor Accepts Campaign for Products"]
+        K --> L["Customer Notification Center<br/>(Special Offer with 1-Click Copy Code)"]
+        L --> M["Customer Applies Coupon at Checkout<br/>Timezone-Safe Temporal Bounds Check (±24h Buffer)"]
+        M --> N["Accurate Discount Calculation & Order Placement"]
     end
 ```
 
@@ -1795,9 +1803,25 @@ flowchart TD
   - **Startup Reconciler**: Added automated synchronization in `ProductController.initProducts()` and `DataLoader.java` to reconcile catalog stock with physical warehouse inventory on server boot.
   - **Bi-Directional Stock Updates**: Enhanced `updateProductStock` (`PUT /api/products/{id}/stock`), `addProduct`, and `updateProduct` in `ProductController` so that any stock update from vendors or admins is automatically distributed across the regional fulfillment hubs (Kolkata, Mumbai, Delhi, Bangalore).
 
-### 3. Automated Test Suite Verification
-* Executed full unit and integration test suite (`CommissionCalculationTests.java` and `BackendApplicationTests.java`).
-* Verified 100% test pass rate (6/6 passing) covering marketplace commission calculations (10% platform fee, 90% vendor payout), COD settlements on delivery, and refund deductions.
+### 3. Timezone-Resilient Promotional Coupon Engine & Checkout Validation Fix
+* **The Problem**: When Admin launched a new coupon campaign (e.g. `SAVE25`) using client local time (e.g. IST UTC+05:30), `LocalDateTime.parse` stored the start timestamp without timezone metadata. The backend server checked `LocalDateTime.now().isBefore(coupon.getStartDate())`. On UTC-configured servers (5.5 hours behind client time), same-day active coupons were falsely rejected during customer checkout with `"Coupon promotion campaign has not started yet"`.
+* **The Fix**:
+  - **Timezone-Safe Buffer Validation**: Updated `CouponService.validateAndCalculateDiscount` with a 24-hour temporal buffer (`now.plusHours(24).isBefore(startDate)` and `now.minusHours(24).isAfter(expiryDate)`), ensuring newly created same-day campaigns activate immediately regardless of client/server clock skew or timezone offsets.
+  - **Client-Side Day Bounds Checking**: Refactored `fetchAvailableCoupons` in `HomeDashboard.jsx` and `CustomerDashboard.jsx` to perform day-level substring and ISO string comparisons so available coupons are always discoverable on checkout.
+  - **Unit Test Coverage**: Created `CouponValidationTest.java` verifying discount calculations succeed for approved products across client-server timezone disparities.
+
+### 4. Real-Time Multi-Role Promotional Notification Architecture
+* **The Problem**:
+  - Vendors received no in-app notifications when Admin added new coupon campaigns to accept or reject.
+  - Customers received no notifications when vendors accepted campaigns and active promotional discounts became available.
+* **The Fix**:
+  - **Vendor Campaign Notification Flow**: Updated `notificationService.js` and `VendorDashboard.jsx` to load vendor campaigns on mount and emit actionable alerts (`"New Coupon Campaign: SAVE25"`, `badge: "ACTION REQUIRED"`, direct navigation to `'coupons'` tab). Accepted campaigns display confirmation status (`"Campaign Active: SAVE25"`, `badge: "ACCEPTED"`).
+  - **Customer Offer Notification Flow**: Updated `generateCustomerNotifications` in `notificationService.js` to ingest active coupons and display promotional cards with 1-click **Copy Code** pills, discount percentage badges, validity dates, and **"Shop Now"** quick-apply shortcuts.
+  - **Mount-Time Fetching**: Added eager coupon loading on component mount across `CustomerDashboard.jsx` and `HomeDashboard.jsx`.
+
+### 5. Automated Test Suite Verification
+* Executed full unit and integration test suites (`CouponValidationTest.java`, `CommissionCalculationTests.java`, and `BackendApplicationTests.java`).
+* Verified 100% test pass rate covering commission calculations, COD settlements, and timezone-resilient coupon validation.
 
 ---
 
@@ -1806,24 +1830,34 @@ flowchart TD
 ```text
 ShopStack/
 ├── backend/
-│   └── src/main/java/com/shopstack/backend/
-│       ├── config/
-│       │   └── DataLoader.java                # Global stock synchronization with warehouse inventory
-│       ├── controller/
-│       │   ├── ProductController.java         # Dynamic stock calculation & bi-directional warehouse sync
-│       │   ├── CustomerController.java        # Excluded failed/phantom orders from customer history & admin
-│       │   ├── AdminController.java           # Dynamic product stock & filtered payment monitoring
-│       │   ├── VendorController.java          # Clean vendor order listings & accurate low-stock analytics
-│       │   └── PaymentController.java         # Non-persisting failure recording
+│   ├── src/main/java/com/shopstack/backend/
+│   │   ├── config/
+│   │   │   └── DataLoader.java                # Global stock synchronization with warehouse inventory
+│   │   ├── controller/
+│   │   │   ├── ProductController.java         # Dynamic stock calculation & bi-directional warehouse sync
+│   │   │   ├── CustomerController.java        # Excluded failed/phantom orders from customer history & admin
+│   │   │   ├── AdminController.java           # Dynamic product stock & filtered payment monitoring
+│   │   │   ├── VendorController.java          # Clean vendor order listings & accurate low-stock analytics
+│   │   │   ├── CouponController.java          # Coupon management & checkout validation endpoints
+│   │   │   └── PaymentController.java         # Non-persisting failure recording
+│   │   └── service/
+│   │       ├── CouponService.java             # Timezone-safe coupon validation & discount calculation
+│   │       └── PaymentService.java            # Startup cleanup for failed orders & non-persisting failure handler
+│   └── src/test/java/com/shopstack/backend/
+│       ├── CommissionCalculationTests.java    # Automated tests for commission & COD settlements
 │       └── service/
-│           └── PaymentService.java            # Startup cleanup for failed orders & non-persisting failure handler
+│           └── CouponValidationTest.java      # Unit tests for timezone-resilient coupon validation
 │
 ├── frontend/
 │   └── src/
-│       └── components/
-│           ├── CustomerDashboard.jsx          # Clean Razorpay dismiss/failure handling & filtered order history
-│           ├── HomeDashboard.jsx              # Clean checkout cancellation handling
-│           └── AdminDashboard.jsx             # Clean Order Monitoring table without failed attempts
+│       ├── components/
+│       │   ├── CustomerDashboard.jsx          # Clean checkout failure handling & customer coupon notifications
+│       │   ├── HomeDashboard.jsx              # Eager coupon loading & customer promotional notifications
+│       │   ├── VendorDashboard.jsx            # Eager coupon loading & vendor action-required campaign notifications
+│       │   ├── NotificationCenter.jsx         # Multi-role notification center with copy-code support
+│       │   └── AdminDashboard.jsx             # Clean Order Monitoring table & coupon management
+│       └── utils/
+│           └── notificationService.js         # Generator for vendor & customer coupon campaign notifications
 │
 └── Documentation Artifacts/
     ├── FAILED_ORDERS_FIX_DOCUMENTATION.txt     # In-depth problem statement and fix guide for failed checkouts
@@ -1831,23 +1865,26 @@ ShopStack/
 ```
 
 Related Code Files:
+- [`CouponService.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/service/CouponService.java)
+- [`CouponValidationTest.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/test/java/com/shopstack/backend/service/CouponValidationTest.java)
+- [`notificationService.js`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/utils/notificationService.js)
+- [`VendorDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/VendorDashboard.jsx)
+- [`CustomerDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx)
+- [`HomeDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/HomeDashboard.jsx)
 - [`ProductController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/ProductController.java)
 - [`PaymentService.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/service/PaymentService.java)
-- [`CustomerController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/CustomerController.java)
-- [`AdminController.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/controller/AdminController.java)
-- [`DataLoader.java`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/backend/src/main/java/com/shopstack/backend/config/DataLoader.java)
-- [`CustomerDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/CustomerDashboard.jsx)
-- [`AdminDashboard.jsx`](file:///C:/Users/ASUS/Documents/GitHub/ShopStack--Enterprise-Multi-Vendor-E-Commerce-Platform/frontend/src/components/AdminDashboard.jsx)
 
 ---
 
 ## 📡 API Endpoints Enhanced (Day 13)
 
-### Stock & Order Integrity Endpoints
+### Stock, Order Integrity & Coupon Endpoints
 Method | Endpoint | Description | Enhancement / Behavior
 ------ | -------- | ----------- | ----------------------
 GET | `/api/products` | Fetch all approved products | Dynamically returns live available stock aggregated across all 4 fulfillment hubs
 PUT | `/api/products/{id}/stock` | Vendor quick stock update | Proportionally synchronizes and updates inventory across all 4 regional warehouses
+POST | `/api/coupons/validate` | Checkout coupon validation | Timezone-resilient validation with 24h temporal buffer and product-mapping check
+GET | `/api/coupons/vendor/{vendorId}` | Vendor coupon campaigns | Returns campaign list with vendor approval status for immediate notifications
 GET | `/api/customer/{id}/orders` | Customer order history | Strictly returns confirmed/placed orders, excluding failed/phantom checkouts
 GET | `/api/customer/orders/all` | Admin / Warehouse orders | Returns valid platform orders, excluding failed payment attempts
 POST | `/api/payment/record-failed` | Diagnostic checkout failure logging | Logs event diagnostics without creating or saving `Order` entities
@@ -1868,6 +1905,14 @@ POST | `/api/payment/record-failed` | Diagnostic checkout failure logging | Logs
 2. Open **Admin Dashboard → Warehouses & Allocation → Vendor Product Stock Distribution Across Warehouses**.
 3. Confirm that the total physical stock and available units in all hubs (400 + 400 + 400 + 400 = 1,600) match the vendor catalog stock exactly.
 4. Use the quick stock `+` / `-` buttons on the Vendor Dashboard to increment stock by 1, and verify both views update in real-time.
+
+### 3. Promotional Coupon Validation & Multi-Role Notifications
+1. As Admin, create a new coupon (e.g., `SAVE25` for 25% Off).
+2. Log in as Vendor and verify the **Notification Center** immediately rings with `"New Coupon Campaign: SAVE25"` (`ACTION REQUIRED`).
+3. Click `"Review Campaign"` or navigate to Promotions & Coupons and accept the campaign for your products.
+4. Verify the notification state transitions to `"Campaign Active: SAVE25"` (`ACCEPTED`).
+5. Log in as Customer or browse the catalog; open the **Notification Center** and verify `"Special Offer: SAVE25 (25% OFF)"` is present with 1-click **Copy Code** button.
+6. Add participating items to cart, proceed to checkout, and apply `SAVE25`. Confirm the 25% discount is calculated and applied without start date errors.
 
 ---
 

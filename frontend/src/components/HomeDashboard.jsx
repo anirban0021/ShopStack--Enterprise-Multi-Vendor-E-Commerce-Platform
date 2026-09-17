@@ -83,6 +83,7 @@ export default function HomeDashboard({
   const [couponSuccess, setCouponSuccess] = useState('');
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [vendorCoupons, setVendorCoupons] = useState([]);
   const [couponApprovals, setCouponApprovals] = useState([]);
   const [couponMappings, setCouponMappings] = useState([]);
   const [paymentStep, setPaymentStep] = useState(1); // 1: Review & Address, 2: Payment Method, 3: Processing, 4: Confirmed
@@ -272,15 +273,19 @@ export default function HomeDashboard({
           setWarehouseAllocationsCount(pending.length);
         }
       } else if (isVendor && user.id) {
-        const [ordersRes, prodsRes] = await Promise.allSettled([
+        const [ordersRes, prodsRes, couponsRes] = await Promise.allSettled([
           axios.get(`http://localhost:8080/api/vendor/${user.id}/orders`),
-          axios.get(`http://localhost:8080/api/products/vendor/${user.id}`)
+          axios.get(`http://localhost:8080/api/products/vendor/${user.id}`),
+          axios.get(`http://localhost:8080/api/coupons/vendor/${user.id}`)
         ]);
         if (ordersRes.status === 'fulfilled' && Array.isArray(ordersRes.value.data)) {
           setVendorOrders(ordersRes.value.data);
         }
         if (prodsRes.status === 'fulfilled' && Array.isArray(prodsRes.value.data)) {
           setVendorProducts(prodsRes.value.data);
+        }
+        if (couponsRes.status === 'fulfilled' && Array.isArray(couponsRes.value.data)) {
+          setVendorCoupons(couponsRes.value.data);
         }
       }
     } catch (err) {
@@ -317,6 +322,7 @@ export default function HomeDashboard({
         products: vendorProducts,
         orders: vendorOrders,
         purchaseOrders: orders, // Personal customer orders placed by vendor
+        coupons: vendorCoupons,
         onGoToTab: (tab) => {
           if (onGoToVendor) onGoToVendor(tab);
         },
@@ -328,13 +334,23 @@ export default function HomeDashboard({
       list = generateCustomerNotifications({
         user,
         orders,
+        coupons: availableCoupons,
         onOpenOrders: () => {
           setShowOrdersModal(true);
+        },
+        onShopNow: (coupon) => {
+          if (coupon && coupon.code) {
+            setCouponCodeInput(coupon.code);
+          }
         }
       });
     }
     setNotificationList(list);
   };
+
+  useEffect(() => {
+    fetchAvailableCoupons();
+  }, []);
 
   useEffect(() => {
     refreshNotifications();
@@ -347,6 +363,8 @@ export default function HomeDashboard({
     warehouseAllocationsCount, 
     vendorOrders, 
     vendorProducts, 
+    availableCoupons,
+    vendorCoupons,
     isAdmin, 
     isStaff, 
     isVendor
@@ -503,14 +521,18 @@ export default function HomeDashboard({
         axios.get('http://localhost:8080/api/coupons/mappings')
       ]);
       const tzOffset = new Date().getTimezoneOffset() * 60000;
-      const nowStr = new Date(Date.now() - tzOffset).toISOString().substring(0, 16);
+      const nowLocalDate = new Date(Date.now() - tzOffset).toISOString();
+      const todayStr = nowLocalDate.substring(0, 10);
+      const nowStr = nowLocalDate.substring(0, 16);
       const activeCoupons = res.data.filter(c => {
         const start = c.startDate ? c.startDate.substring(0, 16) : '';
         const expiry = c.expiryDate ? c.expiryDate.substring(0, 16) : '';
+        const isStarted = !start || start <= nowStr || start.substring(0, 10) <= todayStr;
+        const isNotExpired = !expiry || expiry >= nowStr || expiry.substring(0, 10) >= todayStr;
         return (
           c.active && 
-          (!start || start <= nowStr) && 
-          (!expiry || expiry >= nowStr) &&
+          isStarted && 
+          isNotExpired &&
           (!c.usageLimit || c.usageCount < c.usageLimit)
         );
       });

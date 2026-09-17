@@ -91,6 +91,10 @@ export default function CustomerDashboard({
   const [warehouseAllocationsCount, setWarehouseAllocationsCount] = useState(0);
   const [vendorOrders, setVendorOrders] = useState([]);
   const [vendorProducts, setVendorProducts] = useState([]);
+  const [vendorCoupons, setVendorCoupons] = useState([]);
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [couponApprovals, setCouponApprovals] = useState([]);
+  const [couponMappings, setCouponMappings] = useState([]);
 
   const activeUserId = profile?.id || user?.id;
 
@@ -119,15 +123,19 @@ export default function CustomerDashboard({
           setWarehouseAllocationsCount(pending.length);
         }
       } else if (isVendor) {
-        const [ordersRes, prodsRes] = await Promise.allSettled([
+        const [ordersRes, prodsRes, couponsRes] = await Promise.allSettled([
           axios.get(`http://localhost:8080/api/vendor/${activeUserId}/orders`),
-          axios.get(`http://localhost:8080/api/products/vendor/${activeUserId}`)
+          axios.get(`http://localhost:8080/api/products/vendor/${activeUserId}`),
+          axios.get(`http://localhost:8080/api/coupons/vendor/${activeUserId}`)
         ]);
         if (ordersRes.status === 'fulfilled' && Array.isArray(ordersRes.value.data)) {
           setVendorOrders(ordersRes.value.data);
         }
         if (prodsRes.status === 'fulfilled' && Array.isArray(prodsRes.value.data)) {
           setVendorProducts(prodsRes.value.data);
+        }
+        if (couponsRes.status === 'fulfilled' && Array.isArray(couponsRes.value.data)) {
+          setVendorCoupons(couponsRes.value.data);
         }
       }
     } catch (err) {
@@ -169,6 +177,7 @@ export default function CustomerDashboard({
         products: vendorProducts,
         orders: vendorOrders,
         purchaseOrders: orders, // Vendor personal shopping orders
+        coupons: vendorCoupons,
         onGoToTab: (tab) => {
           if (onGoToVendor) onGoToVendor(tab);
         },
@@ -180,13 +189,24 @@ export default function CustomerDashboard({
       list = generateCustomerNotifications({
         user: targetUser,
         orders,
+        coupons: availableCoupons,
         onOpenOrders: () => {
           setActiveTab('orders');
+        },
+        onShopNow: (coupon) => {
+          if (coupon && coupon.code) {
+            setCouponCodeInput(coupon.code);
+            setActiveTab('cart');
+          }
         }
       });
     }
     setNotificationList(list);
   };
+
+  useEffect(() => {
+    fetchAvailableCoupons();
+  }, []);
 
   useEffect(() => {
     refreshNotifications();
@@ -200,6 +220,8 @@ export default function CustomerDashboard({
     warehouseAllocationsCount, 
     vendorOrders, 
     vendorProducts, 
+    availableCoupons,
+    vendorCoupons,
     isAdmin, 
     isStaff, 
     isVendor
@@ -635,9 +657,6 @@ export default function CustomerDashboard({
   const [couponError, setCouponError] = useState('');
   const [couponSuccess, setCouponSuccess] = useState('');
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
-  const [availableCoupons, setAvailableCoupons] = useState([]);
-  const [couponApprovals, setCouponApprovals] = useState([]);
-  const [couponMappings, setCouponMappings] = useState([]);
   const [paymentStep, setPaymentStep] = useState(1);
   const [deliveryInfo, setDeliveryInfo] = useState({
     name: '',
@@ -737,14 +756,18 @@ export default function CustomerDashboard({
         axios.get('http://localhost:8080/api/coupons/mappings')
       ]);
       const tzOffset = new Date().getTimezoneOffset() * 60000;
-      const nowStr = new Date(Date.now() - tzOffset).toISOString().substring(0, 16);
+      const nowLocalDate = new Date(Date.now() - tzOffset).toISOString();
+      const todayStr = nowLocalDate.substring(0, 10);
+      const nowStr = nowLocalDate.substring(0, 16);
       const activeCoupons = res.data.filter(c => {
         const start = c.startDate ? c.startDate.substring(0, 16) : '';
         const expiry = c.expiryDate ? c.expiryDate.substring(0, 16) : '';
+        const isStarted = !start || start <= nowStr || start.substring(0, 10) <= todayStr;
+        const isNotExpired = !expiry || expiry >= nowStr || expiry.substring(0, 10) >= todayStr;
         return (
           c.active && 
-          (!start || start <= nowStr) && 
-          (!expiry || expiry >= nowStr) &&
+          isStarted && 
+          isNotExpired &&
           (!c.usageLimit || c.usageCount < c.usageLimit)
         );
       });

@@ -244,13 +244,14 @@ public class CouponService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        if (coupon.getStartDate() != null && now.isBefore(coupon.getStartDate())) {
+        // Allow 24-hour buffer for timezone disparities (e.g. client IST UTC+05:30 vs server UTC)
+        if (coupon.getStartDate() != null && now.plusHours(24).isBefore(coupon.getStartDate())) {
             response.put("valid", false);
             response.put("message", "Coupon promotion campaign has not started yet.");
             return response;
         }
 
-        if (coupon.getExpiryDate() != null && now.isAfter(coupon.getExpiryDate())) {
+        if (coupon.getExpiryDate() != null && now.minusHours(24).isAfter(coupon.getExpiryDate())) {
             response.put("valid", false);
             response.put("message", "Coupon has expired.");
             return response;
