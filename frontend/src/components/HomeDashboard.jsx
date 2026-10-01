@@ -19,7 +19,8 @@ import {
   markNotifAsRead, 
   markAllNotifsAsRead, 
   clearAllNotifs, 
-  dismissNotif 
+  dismissNotif,
+  syncNotificationsWithServer
 } from '../utils/notificationService';
 
 export default function HomeDashboard({ 
@@ -350,7 +351,12 @@ export default function HomeDashboard({
 
   useEffect(() => {
     fetchAvailableCoupons();
-  }, []);
+    if (user?.id) {
+      syncNotificationsWithServer(user.id).then(() => {
+        refreshNotifications();
+      });
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     refreshNotifications();

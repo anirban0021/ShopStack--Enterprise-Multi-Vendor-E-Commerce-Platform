@@ -15,7 +15,8 @@ import {
   markNotifAsRead, 
   markAllNotifsAsRead, 
   clearAllNotifs, 
-  dismissNotif 
+  dismissNotif,
+  syncNotificationsWithServer
 } from '../utils/notificationService';
 
 const getWordCount = (text) => {
@@ -94,6 +95,14 @@ export default function VendorDashboard({ user, orders = [], onGoToHome, onGoToP
     });
     setNotificationList(list);
   };
+
+  useEffect(() => {
+    if (user?.id) {
+      syncNotificationsWithServer(user.id).then(() => {
+        refreshNotifications();
+      });
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     refreshNotifications();

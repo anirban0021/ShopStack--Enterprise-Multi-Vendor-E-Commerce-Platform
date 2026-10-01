@@ -16,7 +16,8 @@ import {
   markNotifAsRead, 
   markAllNotifsAsRead, 
   clearAllNotifs, 
-  dismissNotif 
+  dismissNotif,
+  syncNotificationsWithServer
 } from '../utils/notificationService';
 
 export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout, initialTab = 'analytics' }) {
@@ -138,6 +139,14 @@ export default function WarehouseDashboard({ user, onGoToHome, onGoToProfile, th
     });
     setNotificationList(list);
   };
+
+  useEffect(() => {
+    if (user?.id) {
+      syncNotificationsWithServer(user.id).then(() => {
+        refreshNotifications();
+      });
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     refreshNotifications();

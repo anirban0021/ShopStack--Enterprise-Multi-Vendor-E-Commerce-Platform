@@ -40,6 +40,12 @@ public class User {
     @Column(name = "warehouse_name")
     private String warehouseName;
 
+    @Column(columnDefinition = "TEXT")
+    private String dismissedNotifications;
+
+    @Column(columnDefinition = "TEXT")
+    private String readNotifications;
+
     @jakarta.persistence.Transient
     private String token;
 
@@ -93,4 +99,10 @@ public class User {
 
     public String getToken() { return token; }
     public void setToken(String token) { this.token = token; }
+
+    public String getDismissedNotifications() { return dismissedNotifications; }
+    public void setDismissedNotifications(String dismissedNotifications) { this.dismissedNotifications = dismissedNotifications; }
+
+    public String getReadNotifications() { return readNotifications; }
+    public void setReadNotifications(String readNotifications) { this.readNotifications = readNotifications; }
 }

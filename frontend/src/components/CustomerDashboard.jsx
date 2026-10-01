@@ -20,7 +20,8 @@ import {
   markNotifAsRead, 
   markAllNotifsAsRead, 
   clearAllNotifs, 
-  dismissNotif 
+  dismissNotif,
+  syncNotificationsWithServer
 } from '../utils/notificationService';
 
 export default function CustomerDashboard({ 
@@ -206,6 +207,11 @@ export default function CustomerDashboard({
 
   useEffect(() => {
     fetchAvailableCoupons();
+    if (user?.id || profile?.id) {
+      syncNotificationsWithServer(profile?.id || user?.id).then(() => {
+        refreshNotifications();
+      });
+    }
   }, []);
 
   useEffect(() => {

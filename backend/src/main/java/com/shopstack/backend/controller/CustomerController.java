@@ -505,4 +505,139 @@ public class CustomerController {
         resp.put("status", "SUCCESS");
         return ResponseEntity.ok(resp);
     }
+
+    // ==========================================
+    // Cross-Device Notification Synchronization Endpoints
+    // ==========================================
+
+    private List<String> parseNotifIds(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return new ArrayList<>();
+        return new ArrayList<>(java.util.Arrays.asList(raw.split(",")))
+            .stream().map(String::trim).filter(s -> !s.isEmpty()).distinct().collect(Collectors.toList());
+    }
+
+    private String joinNotifIds(List<String> list) {
+        if (list == null || list.isEmpty()) return "";
+        return list.stream().filter(s -> s != null && !s.trim().isEmpty()).distinct().collect(Collectors.joining(","));
+    }
+
+    @GetMapping("/{id}/notifications")
+    public ResponseEntity<?> getCustomerNotificationsState(@PathVariable Long id) {
+        Optional<User> userOpt = userRepository.findById(id);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("error", "User not found"));
+        }
+        User user = userOpt.get();
+        List<String> dismissed = parseNotifIds(user.getDismissedNotifications());
+        List<String> read = parseNotifIds(user.getReadNotifications());
+        return ResponseEntity.ok(Map.of(
+            "dismissed", dismissed,
+            "read", read
+        ));
+    }
+
+    @PostMapping("/{id}/notifications/dismiss")
+    @Transactional
+    public ResponseEntity<?> dismissCustomerNotification(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+        Optional<User> userOpt = userRepository.findById(id);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("error", "User not found"));
+        }
+        User user = userOpt.get();
+        List<String> dismissed = parseNotifIds(user.getDismissedNotifications());
+
+        if (payload.containsKey("notifId")) {
+            String singleId = String.valueOf(payload.get("notifId"));
+            if (singleId != null && !singleId.trim().isEmpty() && !dismissed.contains(singleId)) {
+                dismissed.add(singleId.trim());
+            }
+        }
+        if (payload.containsKey("notifIds") && payload.get("notifIds") instanceof List) {
+            List<?> ids = (List<?>) payload.get("notifIds");
+            for (Object obj : ids) {
+                if (obj != null) {
+                    String strId = obj.toString().trim();
+                    if (!strId.isEmpty() && !dismissed.contains(strId)) {
+                        dismissed.add(strId);
+                    }
+                }
+            }
+        }
+
+        user.setDismissedNotifications(joinNotifIds(dismissed));
+        userRepository.save(user);
+
+        return ResponseEntity.ok(Map.of(
+            "dismissed", dismissed,
+            "read", parseNotifIds(user.getReadNotifications())
+        ));
+    }
+
+    @PostMapping("/{id}/notifications/read")
+    @Transactional
+    public ResponseEntity<?> markCustomerNotificationRead(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+        Optional<User> userOpt = userRepository.findById(id);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("error", "User not found"));
+        }
+        User user = userOpt.get();
+        List<String> read = parseNotifIds(user.getReadNotifications());
+
+        if (payload.containsKey("notifId")) {
+            String singleId = String.valueOf(payload.get("notifId"));
+            if (singleId != null && !singleId.trim().isEmpty() && !read.contains(singleId)) {
+                read.add(singleId.trim());
+            }
+        }
+        if (payload.containsKey("notifIds") && payload.get("notifIds") instanceof List) {
+            List<?> ids = (List<?>) payload.get("notifIds");
+            for (Object obj : ids) {
+                if (obj != null) {
+                    String strId = obj.toString().trim();
+                    if (!strId.isEmpty() && !read.contains(strId)) {
+                        read.add(strId);
+                    }
+                }
+            }
+        }
+
+        user.setReadNotifications(joinNotifIds(read));
+        userRepository.save(user);
+
+        return ResponseEntity.ok(Map.of(
+            "dismissed", parseNotifIds(user.getDismissedNotifications()),
+            "read", read
+        ));
+    }
+
+    @PostMapping("/{id}/notifications/clear")
+    @Transactional
+    public ResponseEntity<?> clearAllCustomerNotifications(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+        Optional<User> userOpt = userRepository.findById(id);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("error", "User not found"));
+        }
+        User user = userOpt.get();
+        List<String> dismissed = parseNotifIds(user.getDismissedNotifications());
+
+        if (payload.containsKey("notifIds") && payload.get("notifIds") instanceof List) {
+            List<?> ids = (List<?>) payload.get("notifIds");
+            for (Object obj : ids) {
+                if (obj != null) {
+                    String strId = obj.toString().trim();
+                    if (!strId.isEmpty() && !dismissed.contains(strId)) {
+                        dismissed.add(strId);
+                    }
+                }
+            }
+        }
+
+        user.setDismissedNotifications(joinNotifIds(dismissed));
+        userRepository.save(user);
+
+        return ResponseEntity.ok(Map.of(
+            "dismissed", dismissed,
+            "read", parseNotifIds(user.getReadNotifications())
+        ));
+    }
 }

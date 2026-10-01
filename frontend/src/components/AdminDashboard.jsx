@@ -18,7 +18,8 @@ import {
   markNotifAsRead, 
   markAllNotifsAsRead, 
   clearAllNotifs, 
-  dismissNotif 
+  dismissNotif,
+  syncNotificationsWithServer
 } from '../utils/notificationService';
 
 export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme, onToggleTheme, onLogout, initialTab = 'overview' }) {
@@ -140,6 +141,14 @@ export default function AdminDashboard({ user, onGoToHome, onGoToProfile, theme,
     });
     setNotificationList(list);
   };
+
+  useEffect(() => {
+    if (user?.id) {
+      syncNotificationsWithServer(user.id).then(() => {
+        refreshNotifications();
+      });
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     refreshNotifications();

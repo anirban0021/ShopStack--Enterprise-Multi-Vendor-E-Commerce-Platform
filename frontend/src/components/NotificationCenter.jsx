@@ -333,7 +333,7 @@ export default function NotificationCenter({
             ) : (
               filteredNotifications.map((item, idx) => (
                 <div 
-                  key={item.id ? `${item.id}_${idx}` : `notif_${idx}`}
+                  key={item.id || `notif_${idx}`}
                   className={`notif-card ${!item.read ? 'unread' : ''}`}
                   onClick={() => {
                     if (!item.read && onMarkAsRead) {
