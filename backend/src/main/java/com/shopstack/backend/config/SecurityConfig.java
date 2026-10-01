@@ -55,9 +55,13 @@ public class SecurityConfig {
                 // Public auth, static files & uploads
                 .requestMatchers("/api/auth/**", "/uploads/**").permitAll()
                 
-                // Public product and coupon viewing
+                // Public product, coupon and vendor viewing
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/coupons/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/admin/vendors/**").permitAll()
+                
+                // Refund requests management (Admin, Warehouse Staff, Vendor)
+                .requestMatchers("/api/admin/refunds/**").hasAnyRole("ADMINISTRATOR", "ADMIN", "WAREHOUSE_STAFF", "VENDOR")
                 
                 // Admin specific routes
                 .requestMatchers("/api/admin/**").hasAnyRole("ADMINISTRATOR", "ADMIN")
@@ -66,7 +70,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/vendor/**").hasRole("VENDOR")
                 
                 // Warehouse specific routes
-                .requestMatchers("/api/warehouse/**").hasRole("WAREHOUSE_STAFF")
+                .requestMatchers("/api/warehouses/**", "/api/warehouse/**").hasAnyRole("ADMINISTRATOR", "ADMIN", "WAREHOUSE_STAFF")
                 
                 // All other API endpoints require authentication
                 .requestMatchers("/api/**").authenticated()
